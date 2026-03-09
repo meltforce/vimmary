@@ -96,30 +96,20 @@ func (c *Client) UpdateNote(ctx context.Context, bookmarkID, note string) error 
 	return nil
 }
 
-// AddTag adds a tag to a bookmark, preserving existing tags.
+// AddTag attaches a tag to a bookmark. Karakeep's POST endpoint is additive,
+// so existing tags are preserved automatically.
 func (c *Client) AddTag(ctx context.Context, bookmarkID, tagName string) error {
-	// Read existing tags so PUT doesn't overwrite them
-	bm, err := c.GetBookmark(ctx, bookmarkID)
-	if err != nil {
-		return fmt.Errorf("get bookmark for tags: %w", err)
+	payload := map[string]any{
+		"tags": []map[string]string{
+			{"tagName": tagName},
+		},
 	}
-
-	tags := make([]map[string]string, 0, len(bm.Tags)+1)
-	for _, t := range bm.Tags {
-		if t.Name == tagName {
-			return nil // already tagged
-		}
-		tags = append(tags, map[string]string{"tagName": t.Name})
-	}
-	tags = append(tags, map[string]string{"tagName": tagName})
-
-	payload := map[string]any{"tags": tags}
 	jsonBody, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal tag: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "PUT", c.baseURL+"/api/v1/bookmarks/"+bookmarkID+"/tags", bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/v1/bookmarks/"+bookmarkID+"/tags", bytes.NewReader(jsonBody))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
