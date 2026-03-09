@@ -96,13 +96,24 @@ func (c *Client) UpdateNote(ctx context.Context, bookmarkID, note string) error 
 	return nil
 }
 
-// AddTag adds a tag to a bookmark.
+// AddTag adds a tag to a bookmark, preserving existing tags.
 func (c *Client) AddTag(ctx context.Context, bookmarkID, tagName string) error {
-	payload := map[string]any{
-		"tags": []map[string]string{
-			{"tagName": tagName},
-		},
+	// Read existing tags so PUT doesn't overwrite them
+	bm, err := c.GetBookmark(ctx, bookmarkID)
+	if err != nil {
+		return fmt.Errorf("get bookmark for tags: %w", err)
 	}
+
+	tags := make([]map[string]string, 0, len(bm.Tags)+1)
+	for _, t := range bm.Tags {
+		if t.Name == tagName {
+			return nil // already tagged
+		}
+		tags = append(tags, map[string]string{"tagName": t.Name})
+	}
+	tags = append(tags, map[string]string{"tagName": tagName})
+
+	payload := map[string]any{"tags": tags}
 	jsonBody, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal tag: %w", err)

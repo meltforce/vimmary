@@ -47,8 +47,15 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 	s.log.Info("processing video", "youtube_id", youtubeID, "bookmark_id", bookmarkID)
 
 	// Check if already processed
-	existing, err := s.db.GetByYouTubeID(ctx, youtubeID)
+	existing, err := s.db.GetByYouTubeID(ctx, userID, youtubeID)
 	if err == nil && existing.Status == "completed" {
+		// Video exists — update bookmark ID if webhook provides one, then do writeback
+		if bookmarkID != "" && existing.KarakeepBookmarkID != bookmarkID {
+			if err := s.db.UpdateBookmarkID(ctx, existing.ID, bookmarkID); err != nil {
+				s.log.Warn("failed to update bookmark ID", "video_id", existing.ID, "error", err)
+			}
+			s.writeBackToKarakeep(ctx, userID, bookmarkID, existing.ID, existing.Title, existing.Summary)
+		}
 		s.log.Info("video already processed", "youtube_id", youtubeID)
 		return nil
 	}
