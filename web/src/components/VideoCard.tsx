@@ -1,4 +1,6 @@
 import { Link } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { retryVideo } from "../api.ts";
 import { formatDuration } from "../utils.ts";
 
 interface Props {
@@ -9,6 +11,8 @@ interface Props {
   durationSeconds?: number;
   summary?: string;
   topics?: string[];
+  status?: string;
+  errorMessage?: string;
   score?: number;
   matchType?: string;
 }
@@ -21,15 +25,30 @@ export default function VideoCard({
   durationSeconds,
   summary,
   topics,
+  status,
+  errorMessage,
   score,
   matchType,
 }: Props) {
-  const thumbnail = `https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`;
+  const queryClient = useQueryClient();
+  const retry = useMutation({
+    mutationFn: () => retryVideo(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["videos"] });
+    },
+  });
 
-  return (
-    <Link
-      to={`/video/${id}`}
-      className="block bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden hover:border-zinc-400 dark:hover:border-zinc-600 transition-colors"
+  const thumbnail = `https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`;
+  const isFailed = status === "failed";
+  const isProcessing = status === "processing" || status === "pending";
+
+  const card = (
+    <div
+      className={`bg-white dark:bg-zinc-900 border rounded-lg overflow-hidden transition-colors ${
+        isFailed
+          ? "border-red-300 dark:border-red-900/50"
+          : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600"
+      }`}
     >
       <div className="flex gap-4 p-4">
         <img
@@ -39,16 +58,26 @@ export default function VideoCard({
         />
         <div className="flex-1 min-w-0">
           <h3 className="font-medium text-zinc-900 dark:text-zinc-100 truncate">
-            {title}
+            {title || youtubeId}
           </h3>
           <div className="flex items-center gap-2 mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            <span>{channel}</span>
+            {channel && <span>{channel}</span>}
             {durationSeconds ? (
               <>
                 <span>·</span>
                 <span>{formatDuration(durationSeconds)}</span>
               </>
             ) : null}
+            {isFailed && (
+              <span className="px-1.5 py-0.5 rounded text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
+                failed
+              </span>
+            )}
+            {isProcessing && (
+              <span className="px-1.5 py-0.5 rounded text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                processing
+              </span>
+            )}
             {score !== undefined && (
               <>
                 <span>·</span>
@@ -71,7 +100,25 @@ export default function VideoCard({
               </span>
             )}
           </div>
-          {summary && (
+          {isFailed && errorMessage && (
+            <p className="mt-1 text-xs text-red-600 dark:text-red-400 truncate">
+              {errorMessage}
+            </p>
+          )}
+          {isFailed && (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                retry.mutate();
+              }}
+              disabled={retry.isPending}
+              className="mt-2 px-3 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors disabled:opacity-50"
+            >
+              {retry.isPending ? "Retrying..." : "Retry"}
+            </button>
+          )}
+          {!isFailed && summary && (
             <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2">
               {summary}
             </p>
@@ -90,6 +137,15 @@ export default function VideoCard({
           )}
         </div>
       </div>
+    </div>
+  );
+
+  // Don't link failed/processing videos to detail page
+  if (isFailed || isProcessing) return card;
+
+  return (
+    <Link to={`/video/${id}`} className="block">
+      {card}
     </Link>
   );
 }

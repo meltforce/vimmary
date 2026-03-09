@@ -87,6 +87,7 @@ export function listVideos(opts?: {
   channel?: string;
   language?: string;
   topic?: string;
+  status?: string;
   limit?: number;
   offset?: number;
 }): Promise<ListResponse> {
@@ -94,6 +95,7 @@ export function listVideos(opts?: {
   if (opts?.channel) params.set("channel", opts.channel);
   if (opts?.language) params.set("language", opts.language);
   if (opts?.topic) params.set("topic", opts.topic);
+  if (opts?.status) params.set("status", opts.status);
   if (opts?.limit) params.set("limit", String(opts.limit));
   if (opts?.offset) params.set("offset", String(opts.offset));
   const qs = params.toString();
@@ -122,6 +124,22 @@ export function resummarizeVideo(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ level }),
   });
+}
+
+export function submitVideo(
+  url: string
+): Promise<{ status: string; youtube_id: string }> {
+  return fetchJSON("/api/v1/videos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+}
+
+export function retryVideo(
+  id: string
+): Promise<{ status: string }> {
+  return fetchJSON(`/api/v1/videos/${id}/retry`, { method: "POST" });
 }
 
 export function fetchStats(): Promise<VideoStats> {

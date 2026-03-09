@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
+	"github.com/google/uuid"
 	"github.com/meltforce/vimmary/internal/config"
 	"github.com/meltforce/vimmary/internal/karakeep"
 	"github.com/meltforce/vimmary/internal/storage"
@@ -49,4 +51,20 @@ func New(
 		summaryCfg: summaryCfg,
 		log:        log,
 	}
+}
+
+// RetryVideo resets a failed video and re-processes it.
+func (s *Service) RetryVideo(ctx context.Context, userID int, id uuid.UUID) error {
+	video, err := s.db.GetVideo(ctx, userID, id)
+	if err != nil {
+		return err
+	}
+	if video.Status != "failed" {
+		return fmt.Errorf("video is not in failed state (status: %s)", video.Status)
+	}
+	if err := s.db.UpdateVideoStatus(ctx, id, "pending", ""); err != nil {
+		return fmt.Errorf("reset status: %w", err)
+	}
+	s.ProcessVideoAsync(userID, video.YouTubeID, video.KarakeepBookmarkID)
+	return nil
 }
