@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/meltforce/vimmary/internal/karakeep"
@@ -182,6 +183,10 @@ func (s *Service) writeBackToKarakeep(ctx context.Context, userID int, bookmarkI
 	if err := client.UpdateNote(ctx, bookmarkID, note); err != nil {
 		s.log.Warn("karakeep note update failed", "bookmark_id", bookmarkID, "error", err)
 	}
+
+	// Delay before tagging so Karakeep's AI tagging finishes first.
+	// AddTag reads existing tags and appends, so we need AI tags to be present.
+	time.Sleep(10 * time.Second)
 
 	if err := client.AddTag(ctx, bookmarkID, "video-summarized"); err != nil {
 		s.log.Warn("karakeep tag update failed", "bookmark_id", bookmarkID, "error", err)
