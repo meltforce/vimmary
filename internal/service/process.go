@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/meltforce/vimmary/internal/karakeep"
@@ -54,7 +55,10 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 			if err := s.db.UpdateBookmarkID(ctx, existing.ID, bookmarkID); err != nil {
 				s.log.Warn("failed to update bookmark ID", "video_id", existing.ID, "error", err)
 			}
-			s.writeBackToKarakeep(ctx, userID, bookmarkID, existing.ID, existing.Title, existing.Summary)
+			go func() {
+				time.Sleep(30 * time.Second)
+				s.writeBackToKarakeep(context.Background(), userID, bookmarkID, existing.ID, existing.Title, existing.Summary)
+			}()
 		}
 		s.log.Info("video already processed", "youtube_id", youtubeID)
 		return nil
@@ -148,9 +152,13 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 
 	s.log.Info("video processed successfully", "youtube_id", youtubeID, "title", title)
 
-	// Write back to Karakeep (best-effort, per-user client)
+	// Write back to Karakeep after a delay so Karakeep's crawler finishes first.
+	// The crawler runs on new bookmarks and can overwrite the note we set.
 	if bookmarkID != "" {
-		s.writeBackToKarakeep(ctx, userID, bookmarkID, video.ID, title, sum.Text)
+		go func() {
+			time.Sleep(30 * time.Second)
+			s.writeBackToKarakeep(context.Background(), userID, bookmarkID, video.ID, title, sum.Text)
+		}()
 	}
 
 	return nil
@@ -186,4 +194,6 @@ func (s *Service) writeBackToKarakeep(ctx context.Context, userID int, bookmarkI
 	if err := client.AddTag(ctx, bookmarkID, "video-summarized"); err != nil {
 		s.log.Warn("karakeep tag update failed", "bookmark_id", bookmarkID, "error", err)
 	}
+
+	s.log.Info("karakeep writeback complete", "bookmark_id", bookmarkID, "video_id", videoID)
 }
