@@ -30,9 +30,10 @@ Karakeep ──webhook──▶ vimmary ──▶ fetch transcript ──▶ gen
 - **MCP server** — 6 tools for searching, browsing, and managing video summaries
 - **Web UI** — React frontend embedded in the Go binary (Videos, Stats, Settings pages)
 - **Tailscale auth** — zero-config authentication via tsnet
+- **Multi-user support** — per-user video libraries (same YouTube video can be bookmarked by multiple users independently)
 - **Per-user Karakeep integration** — each user configures their own API key and webhook token via the Settings page
 - **Bidirectional sync** — summaries written back to Karakeep notes; bookmark deletions in Karakeep remove videos from vimmary
-- **Karakeep writeback** — plain-text summary with link to vimmary detail page
+- **Karakeep writeback** — plain-text summary with vimmary detail link, `video-summarized` tag added (preserves existing Karakeep AI tags)
 
 ## Architecture
 
@@ -98,7 +99,7 @@ Deployed via Docker Compose on a Tailscale-connected host. Config is mounted ext
 
 ```bash
 # Production deploy (via Ansible)
-cd configuration/docker-stacks && ./run.sh --limit totalrecall-lxc -e target_stack=vimmary
+cd configuration/docker-stacks && ./run.sh --limit vimmary-lxc
 ```
 
 ## Related projects
