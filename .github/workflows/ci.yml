@@ -72,6 +72,8 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Connect to Tailscale
+        continue-on-error: true
+        id: tailscale
         uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
@@ -79,6 +81,8 @@ jobs:
           tags: tag:ci
 
       - name: Deploy
+        if: steps.tailscale.outcome == 'success'
+        continue-on-error: true
         run: |
           ssh -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} \
             "docker pull meltforce/vimmary:edge && \
