@@ -115,14 +115,25 @@ export function searchVideos(
   return fetchJSON(`/api/v1/search?${params}`);
 }
 
+export async function deleteVideo(id: string): Promise<void> {
+  const res = await fetch(`/api/v1/videos/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(body.error || res.statusText);
+  }
+}
+
 export function resummarizeVideo(
   id: string,
-  level: string
+  level: string,
+  language?: string
 ): Promise<{ message: string; level: string }> {
+  const payload: Record<string, string> = { level };
+  if (language) payload.language = language;
   return fetchJSON(`/api/v1/videos/${id}/resummarize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ level }),
+    body: JSON.stringify(payload),
   });
 }
 

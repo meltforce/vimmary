@@ -31,8 +31,8 @@ func NewMistralSummarizer(apiKey, model string) *MistralSummarizer {
 	}
 }
 
-func (m *MistralSummarizer) Summarize(ctx context.Context, title, transcript, level string) (*Summary, error) {
-	prompt := fmt.Sprintf(promptForLevel(level), title, truncateTranscript(transcript))
+func (m *MistralSummarizer) Summarize(ctx context.Context, title, transcript, level, language string) (*Summary, error) {
+	prompt := fmt.Sprintf(promptForLevel(level), title, languageInstruction(language), truncateTranscript(transcript))
 
 	body := map[string]any{
 		"model": m.model,

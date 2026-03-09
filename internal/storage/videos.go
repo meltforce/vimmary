@@ -158,6 +158,17 @@ func (db *DB) UpdateVideoStatus(ctx context.Context, id uuid.UUID, status, error
 	return err
 }
 
+func (db *DB) DeleteVideo(ctx context.Context, userID int, id uuid.UUID) error {
+	tag, err := db.Pool.Exec(ctx, `DELETE FROM videos WHERE id = $1 AND user_id = $2`, id, userID)
+	if err != nil {
+		return fmt.Errorf("delete video: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 func (db *DB) SearchVideos(ctx context.Context, userID int, embedding []float32, threshold float64, limit int) ([]VideoMatch, error) {
 	rows, err := db.Pool.Query(ctx, `
 		SELECT id, youtube_id, title, channel, summary, metadata, similarity, created_at
@@ -221,7 +232,7 @@ type ListFilters struct {
 }
 
 func (db *DB) ListRecent(ctx context.Context, userID int, filters ListFilters, limit, offset int) ([]Video, int, error) {
-	statusFilter := "status IN ('completed', 'failed', 'processing')"
+	statusFilter := "status IN ('completed', 'failed', 'processing', 'pending')"
 	if filters.Status != "" {
 		statusFilter = fmt.Sprintf("status = '%s'", filters.Status)
 	}

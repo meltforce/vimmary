@@ -140,8 +140,8 @@ export default function VideoCard({
     </div>
   );
 
-  // Don't link failed/processing videos to detail page
-  if (isFailed || isProcessing) return card;
+  // Don't link failed videos to detail page
+  if (isFailed) return card;
 
   return (
     <Link to={`/video/${id}`} className="block">
