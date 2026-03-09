@@ -1,0 +1,40 @@
+# Binary
+/vimmary
+*.exe
+
+# Go
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+pgdata/
+
+# Config and secrets
+config.yaml
+.env
+
+# Tailscale state
+tsnet-*/
+
+# Claude Code
+.claude/settings.local.json
+.claude/skills/
+.claude/agents/
+
+# Web frontend build artifacts
+web/node_modules/
+web/dist/
+web/tsconfig.tsbuildinfo
+
+# Internal docs
+plan.md
+internal_docs/
