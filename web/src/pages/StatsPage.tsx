@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchStats, listVideos, retryVideo } from "../api.ts";
+import { fetchStats, listVideos, retryVideo, deleteVideo } from "../api.ts";
 import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
 
 export default function StatsPage() {
@@ -24,6 +24,14 @@ export default function StatsPage() {
 
   const retry = useMutation({
     mutationFn: (id: string) => retryVideo(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["videos"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteVideo(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["videos"] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
@@ -114,13 +122,22 @@ export default function StatsPage() {
                     {new Date(v.created_at).toLocaleString()}
                   </p>
                 </div>
-                <button
-                  onClick={() => retry.mutate(v.id)}
-                  disabled={retry.isPending}
-                  className="px-3 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors disabled:opacity-50 shrink-0"
-                >
-                  Retry
-                </button>
+                <div className="flex gap-1.5 shrink-0">
+                  <button
+                    onClick={() => retry.mutate(v.id)}
+                    disabled={retry.isPending}
+                    className="px-3 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors disabled:opacity-50"
+                  >
+                    Retry
+                  </button>
+                  <button
+                    onClick={() => remove.mutate(v.id)}
+                    disabled={remove.isPending}
+                    className="px-3 py-1 text-xs bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             ))}
           </div>

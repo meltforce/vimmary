@@ -31,7 +31,7 @@ export default function VideoListPage() {
       if (data?.videos.some(v => v.status === "pending" || v.status === "processing")) {
         return 3000;
       }
-      return false;
+      return 10000;
     },
   });
 

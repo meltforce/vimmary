@@ -6,6 +6,7 @@ import Layout from "./components/Layout.tsx";
 const VideoListPage = lazy(() => import("./pages/VideoListPage.tsx"));
 const VideoDetailPage = lazy(() => import("./pages/VideoDetailPage.tsx"));
 const StatsPage = lazy(() => import("./pages/StatsPage.tsx"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage.tsx"));
 
 function Loading() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
             <Route path="/" element={<VideoListPage />} />
             <Route path="/video/:id" element={<VideoDetailPage />} />
             <Route path="/stats" element={<StatsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

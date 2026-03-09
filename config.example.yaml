@@ -1,3 +1,5 @@
+external_url: ""  # e.g. "https://vimmary.leo-royal.ts.net"
+
 server:
   host: "0.0.0.0"
   port: 8080
@@ -23,7 +25,6 @@ summary:
 
 karakeep:
   base_url: "https://karakeep.leo-royal.ts.net"
-  webhook_token: ""         # Bearer token for webhook verification
 
 youtube:
   sub_langs:
@@ -34,4 +35,3 @@ secrets:
   postgres_password: "vimmary"
   mistral_api_key: ""
   claude_api_key: ""
-  karakeep_api_key: ""

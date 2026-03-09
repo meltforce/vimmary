@@ -4,10 +4,32 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/google/uuid"
+	"github.com/meltforce/vimmary/internal/karakeep"
 	"github.com/meltforce/vimmary/internal/storage"
 )
+
+var (
+	mdHeaderRe = regexp.MustCompile(`(?m)^#{1,6}\s+`)
+	mdBoldRe   = regexp.MustCompile(`\*\*(.+?)\*\*`)
+	mdItalicRe = regexp.MustCompile(`\*(.+?)\*`)
+	mdLinkRe   = regexp.MustCompile(`\[(.+?)\]\(.+?\)`)
+	mdBulletRe = regexp.MustCompile(`(?m)^[\t ]*[-*]\s+`)
+)
+
+// stripMarkdown converts markdown text to plain text for Karakeep notes.
+func stripMarkdown(s string) string {
+	s = mdHeaderRe.ReplaceAllString(s, "")
+	s = mdBoldRe.ReplaceAllString(s, "$1")
+	s = mdItalicRe.ReplaceAllString(s, "$1")
+	s = mdLinkRe.ReplaceAllString(s, "$1")
+	s = mdBulletRe.ReplaceAllString(s, "- ")
+	s = strings.ReplaceAll(s, "`", "")
+	return strings.TrimSpace(s)
+}
 
 // ProcessVideoAsync starts video processing in a background goroutine.
 func (s *Service) ProcessVideoAsync(userID int, youtubeID, bookmarkID string) {
@@ -119,25 +141,42 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 
 	s.log.Info("video processed successfully", "youtube_id", youtubeID, "title", title)
 
-	// Write back to Karakeep (best-effort)
-	if s.karakeep != nil && bookmarkID != "" {
-		s.writeBackToKarakeep(ctx, bookmarkID, title, sum.Text)
+	// Write back to Karakeep (best-effort, per-user client)
+	if bookmarkID != "" {
+		s.writeBackToKarakeep(ctx, userID, bookmarkID, video.ID, title, sum.Text)
 	}
 
 	return nil
 }
 
-func (s *Service) writeBackToKarakeep(ctx context.Context, bookmarkID, title, summaryText string) {
-	note := summaryText
-	if title != "" {
-		note = "## " + title + "\n\n" + summaryText
+func (s *Service) writeBackToKarakeep(ctx context.Context, userID int, bookmarkID string, videoID uuid.UUID, title, summaryText string) {
+	if s.karakeepBaseURL == "" {
+		return
 	}
 
-	if err := s.karakeep.UpdateNote(ctx, bookmarkID, note); err != nil {
+	apiKey, err := s.db.GetKarakeepAPIKey(ctx, userID)
+	if err != nil || apiKey == "" {
+		s.log.Debug("no karakeep API key for user, skipping writeback", "user_id", userID)
+		return
+	}
+
+	client := karakeep.NewClient(s.karakeepBaseURL, apiKey)
+
+	plain := stripMarkdown(summaryText)
+	var note string
+	if s.externalURL != "" {
+		note = s.externalURL + "/video/" + videoID.String() + "\n\n"
+	}
+	if title != "" {
+		note += title + "\n\n"
+	}
+	note += plain
+
+	if err := client.UpdateNote(ctx, bookmarkID, note); err != nil {
 		s.log.Warn("karakeep note update failed", "bookmark_id", bookmarkID, "error", err)
 	}
 
-	if err := s.karakeep.AddTag(ctx, bookmarkID, "video-summarized"); err != nil {
+	if err := client.AddTag(ctx, bookmarkID, "video-summarized"); err != nil {
 		s.log.Warn("karakeep tag update failed", "bookmark_id", bookmarkID, "error", err)
 	}
 }

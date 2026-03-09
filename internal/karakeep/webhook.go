@@ -1,6 +1,7 @@
 package karakeep
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"regexp"
@@ -15,10 +16,14 @@ type WebhookPayload struct {
 	Operation  string `json:"operation"`
 }
 
-// VideoProcessor is called when a YouTube video bookmark is received.
-type VideoProcessor interface {
+// WebhookProcessor handles webhook events from Karakeep.
+type WebhookProcessor interface {
 	ProcessVideoAsync(userID int, youtubeID, bookmarkID string)
+	DeleteByBookmarkID(ctx context.Context, userID int, bookmarkID string) error
 }
+
+// TokenResolver resolves a Bearer token to a user ID.
+type TokenResolver func(ctx context.Context, token string) (int, error)
 
 var youtubeIDRegex = regexp.MustCompile(`(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]{11})`)
 
@@ -32,15 +37,20 @@ func ExtractYouTubeID(url string) string {
 }
 
 // WebhookHandler returns an HTTP handler for Karakeep webhooks.
-func WebhookHandler(processor VideoProcessor, webhookToken string) http.HandlerFunc {
+// The tokenResolver maps a Bearer token to a user ID.
+func WebhookHandler(processor WebhookProcessor, tokenResolver TokenResolver) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Verify webhook token if configured
-		if webhookToken != "" {
-			auth := r.Header.Get("Authorization")
-			if !strings.HasPrefix(auth, "Bearer ") || strings.TrimPrefix(auth, "Bearer ") != webhookToken {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
-			}
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		token := strings.TrimPrefix(auth, "Bearer ")
+
+		userID, err := tokenResolver(r.Context(), token)
+		if err != nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
 		}
 
 		var payload WebhookPayload
@@ -49,24 +59,29 @@ func WebhookHandler(processor VideoProcessor, webhookToken string) http.HandlerF
 			return
 		}
 
-		// Only process new bookmarks
-		if payload.Operation != "created" {
+		switch payload.Operation {
+		case "created":
+			youtubeID := ExtractYouTubeID(payload.URL)
+			if youtubeID == "" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			processor.ProcessVideoAsync(userID, youtubeID, payload.BookmarkID)
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"status":"accepted"}`))
+
+		case "deleted":
+			if payload.BookmarkID == "" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			// Best-effort delete — ignore errors if bookmark wasn't tracked
+			_ = processor.DeleteByBookmarkID(r.Context(), userID, payload.BookmarkID)
 			w.WriteHeader(http.StatusOK)
-			return
-		}
+			_, _ = w.Write([]byte(`{"status":"deleted"}`))
 
-		// Extract YouTube ID
-		youtubeID := ExtractYouTubeID(payload.URL)
-		if youtubeID == "" {
-			// Not a YouTube URL, ignore
+		default:
 			w.WriteHeader(http.StatusOK)
-			return
 		}
-
-		// Process asynchronously (user_id=1 for webhook-triggered processing)
-		processor.ProcessVideoAsync(1, youtubeID, payload.BookmarkID)
-
-		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte(`{"status":"accepted"}`))
 	}
 }
