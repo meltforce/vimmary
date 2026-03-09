@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/meltforce/meltkit/pkg/middleware"
 	"github.com/meltforce/vimmary/internal/karakeep"
+	"github.com/meltforce/vimmary/internal/service"
 	"github.com/meltforce/vimmary/internal/storage"
 )
 
@@ -45,6 +46,9 @@ func (s *Server) handleListVideos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if videos == nil {
+		videos = []storage.Video{}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"total":  total,
 		"count":  len(videos),
@@ -209,6 +213,9 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if matches == nil {
+		matches = []service.HybridMatch{}
+	}
 	resp := map[string]any{
 		"count":   len(matches),
 		"results": matches,
