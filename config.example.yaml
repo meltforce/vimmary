@@ -1,0 +1,38 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+database:
+  host: "localhost"
+  port: 5434
+  name: "vimmary"
+  user: "vimmary"
+
+tailscale:
+  enabled: false
+
+search:
+  default_threshold: 0.3
+  default_limit: 10
+
+summary:
+  provider: "claude"        # "claude" or "mistral"
+  claude_model: "claude-sonnet-4-5-20250514"
+  mistral_model: "mistral-large-latest"
+  default_level: "medium"   # "medium" or "deep"
+
+karakeep:
+  base_url: "https://karakeep.leo-royal.ts.net"
+  webhook_token: ""         # Bearer token for webhook verification
+
+youtube:
+  ytdlp_path: "yt-dlp"
+  sub_langs:
+    - en
+    - de
+
+secrets:
+  postgres_password: "vimmary"
+  mistral_api_key: ""
+  claude_api_key: ""
+  karakeep_api_key: ""
