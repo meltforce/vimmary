@@ -5,6 +5,7 @@ go 1.25.5
 require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/google/uuid v1.6.0
+	github.com/horiagug/youtube-transcript-api-go v0.0.13
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/mark3labs/mcp-go v0.44.1
 	github.com/meltforce/meltkit v0.0.0-20260309052458-764090009b39
