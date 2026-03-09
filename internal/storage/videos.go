@@ -217,14 +217,19 @@ type ListFilters struct {
 	Channel  string
 	Language string
 	Topic    string
+	Status   string
 }
 
 func (db *DB) ListRecent(ctx context.Context, userID int, filters ListFilters, limit, offset int) ([]Video, int, error) {
-	query := `SELECT id, user_id, karakeep_bookmark_id, youtube_id, title, channel,
+	statusFilter := "status IN ('completed', 'failed', 'processing')"
+	if filters.Status != "" {
+		statusFilter = fmt.Sprintf("status = '%s'", filters.Status)
+	}
+	query := fmt.Sprintf(`SELECT id, user_id, karakeep_bookmark_id, youtube_id, title, channel,
 		duration_seconds, language, '', summary, detail_level, metadata,
 		status, COALESCE(error_message, ''), created_at, updated_at
-		FROM videos WHERE user_id = $1 AND status = 'completed'`
-	countQuery := `SELECT COUNT(*) FROM videos WHERE user_id = $1 AND status = 'completed'`
+		FROM videos WHERE user_id = $1 AND %s`, statusFilter)
+	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM videos WHERE user_id = $1 AND %s`, statusFilter)
 	args := []any{userID}
 	argN := 2
 

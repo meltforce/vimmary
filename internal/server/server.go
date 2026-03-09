@@ -36,8 +36,10 @@ func (s *Server) routes(webhookToken string) {
 		r.Use(s.IdentityMiddleware())
 
 		r.Get("/api/v1/videos", s.handleListVideos)
+		r.Post("/api/v1/videos", s.handleSubmitVideo)
 		r.Get("/api/v1/videos/{id}", s.handleGetVideo)
 		r.Post("/api/v1/videos/{id}/resummarize", s.handleResummarize)
+		r.Post("/api/v1/videos/{id}/retry", s.handleRetryVideo)
 		r.Get("/api/v1/search", s.handleSearch)
 		r.Get("/api/v1/stats", s.handleStats)
 	})

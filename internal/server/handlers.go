@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/meltforce/meltkit/pkg/middleware"
+	"github.com/meltforce/vimmary/internal/karakeep"
 	"github.com/meltforce/vimmary/internal/storage"
 )
 
@@ -32,6 +33,7 @@ func (s *Server) handleListVideos(w http.ResponseWriter, r *http.Request) {
 		Channel:  q.Get("channel"),
 		Language: q.Get("language"),
 		Topic:    q.Get("topic"),
+		Status:   q.Get("status"),
 	}
 	limit, _ := strconv.Atoi(q.Get("limit"))
 	offset, _ := strconv.Atoi(q.Get("offset"))
@@ -48,6 +50,30 @@ func (s *Server) handleListVideos(w http.ResponseWriter, r *http.Request) {
 		"count":  len(videos),
 		"videos": videos,
 	})
+}
+
+func (s *Server) handleSubmitVideo(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	var body struct {
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "url is required"})
+		return
+	}
+
+	youtubeID := karakeep.ExtractYouTubeID(body.URL)
+	if youtubeID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid YouTube URL"})
+		return
+	}
+
+	s.svc.ProcessVideoAsync(uid, youtubeID, "")
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted", "youtube_id": youtubeID})
 }
 
 func (s *Server) handleGetVideo(w http.ResponseWriter, r *http.Request) {
@@ -109,6 +135,31 @@ func (s *Server) handleResummarize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "resummarized successfully", "level": body.Level})
+}
+
+func (s *Server) handleRetryVideo(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid video ID"})
+		return
+	}
+
+	if err := s.svc.RetryVideo(r.Context(), uid, id); err != nil {
+		if err == pgx.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "video not found"})
+			return
+		}
+		s.log.Error("retry failed", "error", err)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "retrying"})
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
