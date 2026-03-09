@@ -14,6 +14,8 @@ Create a summary with:
 - Action items or takeaways (if applicable)
 - Topic tags (3-7 lowercase tags)
 
+Formatting: Use **bold** for emphasis. Do not use *italic*.
+
 Return ONLY valid JSON with these fields:
 {
   "text": "The summary text in markdown format",
@@ -37,6 +39,8 @@ Create a comprehensive summary with:
 - Detailed key points
 - Specific action items and takeaways
 - Topic tags (5-10 lowercase tags)
+
+Formatting: Use **bold** for emphasis. Do not use *italic*.
 
 Return ONLY valid JSON with these fields:
 {
