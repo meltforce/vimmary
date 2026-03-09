@@ -1,0 +1,38 @@
+# Git
+.git/
+.gitignore
+
+# Config and secrets
+config.yaml
+.env
+
+# Docker volumes
+pgdata/
+
+# Tailscale state
+tsnet-*/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Binary
+/vimmary
+*.exe
+
+# Docs and internal
+plan.md
+internal_docs/
+CLAUDE.md
+
+# Claude Code
+.claude/
+
+# CI
+.github/
