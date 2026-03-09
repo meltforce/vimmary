@@ -21,6 +21,6 @@ FROM alpine:3.21
 RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=backend /app/vimmary .
-COPY --from=backend /app/config.example.yaml ./config.yaml
+COPY --from=backend /app/migrations /migrations
 EXPOSE 443
-CMD ["./vimmary", "--config", "config.yaml"]
+CMD ["./vimmary", "--config", "/data/config.yaml"]
