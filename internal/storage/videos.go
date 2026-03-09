@@ -82,14 +82,14 @@ func (db *DB) InsertVideo(ctx context.Context, v *Video) error {
 	return nil
 }
 
-func (db *DB) GetByYouTubeID(ctx context.Context, youtubeID string) (*Video, error) {
+func (db *DB) GetByYouTubeID(ctx context.Context, userID int, youtubeID string) (*Video, error) {
 	var v Video
 	err := db.Pool.QueryRow(ctx, `
 		SELECT id, user_id, karakeep_bookmark_id, youtube_id, title, channel,
 			duration_seconds, language, transcript, summary, detail_level, metadata,
 			status, COALESCE(error_message, ''), created_at, updated_at
-		FROM videos WHERE youtube_id = $1
-	`, youtubeID).Scan(&v.ID, &v.UserID, &v.KarakeepBookmarkID, &v.YouTubeID,
+		FROM videos WHERE user_id = $1 AND youtube_id = $2
+	`, userID, youtubeID).Scan(&v.ID, &v.UserID, &v.KarakeepBookmarkID, &v.YouTubeID,
 		&v.Title, &v.Channel, &v.DurationSeconds, &v.Language, &v.Transcript,
 		&v.Summary, &v.DetailLevel, &v.Metadata, &v.Status, &v.ErrorMessage,
 		&v.CreatedAt, &v.UpdatedAt)
@@ -97,6 +97,13 @@ func (db *DB) GetByYouTubeID(ctx context.Context, youtubeID string) (*Video, err
 		return nil, err
 	}
 	return &v, nil
+}
+
+func (db *DB) UpdateBookmarkID(ctx context.Context, id uuid.UUID, bookmarkID string) error {
+	_, err := db.Pool.Exec(ctx,
+		`UPDATE videos SET karakeep_bookmark_id = $1, updated_at = NOW() WHERE id = $2`,
+		bookmarkID, id)
+	return err
 }
 
 func (db *DB) GetVideo(ctx context.Context, userID int, id uuid.UUID) (*Video, error) {
