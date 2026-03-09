@@ -135,7 +135,7 @@ func main() {
 
 	// Init clients
 	mc := mistral.NewClient(mistralKey)
-	ytClient := youtube.NewClient(cfg.YouTube.YtDlpPath, cfg.YouTube.SubLangs)
+	ytClient := youtube.NewClient(cfg.YouTube.SubLangs)
 
 	// Init Karakeep client (optional)
 	var kkClient *karakeep.Client

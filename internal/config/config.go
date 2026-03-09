@@ -36,8 +36,7 @@ type KarakeepConfig struct {
 }
 
 type YouTubeConfig struct {
-	YtDlpPath string   `yaml:"ytdlp_path"` // path to yt-dlp binary
-	SubLangs  []string `yaml:"sub_langs"`   // preferred subtitle languages
+	SubLangs []string `yaml:"sub_langs"` // preferred subtitle languages
 }
 
 func Load(path string) (*Config, error) {
@@ -53,8 +52,7 @@ func Load(path string) (*Config, error) {
 			DefaultLevel: "medium",
 		},
 		YouTube: YouTubeConfig{
-			YtDlpPath: "yt-dlp",
-			SubLangs:  []string{"en", "de"},
+			SubLangs: []string{"en", "de"},
 		},
 		Tailscale: mkconfig.TailscaleConfig{
 			Enabled:  true,

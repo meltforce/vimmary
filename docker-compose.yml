@@ -1,4 +1,17 @@
 services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      VIMMARY_DB_HOST: db
+      VIMMARY_DB_PORT: "5432"
+
   db:
     image: pgvector/pgvector:pg16
     environment:
@@ -9,6 +22,11 @@ services:
       - "5434:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vimmary"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 volumes:
   pgdata:

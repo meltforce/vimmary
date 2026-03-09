@@ -18,7 +18,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o vimmary .
 
 # Stage 3: Runtime
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates yt-dlp python3
+RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=backend /app/vimmary .
 COPY --from=backend /app/config.example.yaml ./config.yaml

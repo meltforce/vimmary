@@ -26,7 +26,6 @@ karakeep:
   webhook_token: ""         # Bearer token for webhook verification
 
 youtube:
-  ytdlp_path: "yt-dlp"
   sub_langs:
     - en
     - de
