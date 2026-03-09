@@ -53,6 +53,11 @@ func New(
 	}
 }
 
+// DeleteVideo removes a video from the database.
+func (s *Service) DeleteVideo(ctx context.Context, userID int, id uuid.UUID) error {
+	return s.db.DeleteVideo(ctx, userID, id)
+}
+
 // RetryVideo resets a failed video and re-processes it.
 func (s *Service) RetryVideo(ctx context.Context, userID int, id uuid.UUID) error {
 	video, err := s.db.GetVideo(ctx, userID, id)

@@ -38,6 +38,7 @@ func (s *Server) routes(webhookToken string) {
 		r.Get("/api/v1/videos", s.handleListVideos)
 		r.Post("/api/v1/videos", s.handleSubmitVideo)
 		r.Get("/api/v1/videos/{id}", s.handleGetVideo)
+		r.Delete("/api/v1/videos/{id}", s.handleDeleteVideo)
 		r.Post("/api/v1/videos/{id}/resummarize", s.handleResummarize)
 		r.Post("/api/v1/videos/{id}/retry", s.handleRetryVideo)
 		r.Get("/api/v1/search", s.handleSearch)

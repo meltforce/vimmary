@@ -115,7 +115,8 @@ func (s *Server) handleResummarize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Level string `json:"level"`
+		Level    string `json:"level"`
+		Language string `json:"language"`
 	}
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&body)
@@ -124,7 +125,7 @@ func (s *Server) handleResummarize(w http.ResponseWriter, r *http.Request) {
 		body.Level = "deep"
 	}
 
-	if err := s.svc.Resummarize(r.Context(), uid, id, body.Level); err != nil {
+	if err := s.svc.ResummarizeAsync(uid, id, body.Level, body.Language); err != nil {
 		if err == pgx.ErrNoRows {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "video not found"})
 			return
@@ -134,7 +135,7 @@ func (s *Server) handleResummarize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"message": "resummarized successfully", "level": body.Level})
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "processing", "level": body.Level})
 }
 
 func (s *Server) handleRetryVideo(w http.ResponseWriter, r *http.Request) {
@@ -160,6 +161,31 @@ func (s *Server) handleRetryVideo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "retrying"})
+}
+
+func (s *Server) handleDeleteVideo(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid video ID"})
+		return
+	}
+
+	if err := s.svc.DeleteVideo(r.Context(), uid, id); err != nil {
+		if err == pgx.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "video not found"})
+			return
+		}
+		s.log.Error("delete video failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {

@@ -26,6 +26,13 @@ export default function VideoListPage() {
     queryKey: ["videos", offset],
     queryFn: () => listVideos({ limit: PAGE_SIZE, offset }),
     enabled: query.length === 0,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (data?.videos.some(v => v.status === "pending" || v.status === "processing")) {
+        return 3000;
+      }
+      return false;
+    },
   });
 
   const submit = useMutation({

@@ -1,8 +1,12 @@
 package summary
 
+import "strings"
+
 const mediumPrompt = `You are a video summary assistant. Summarize the following video transcript.
 
 Video title: %s
+
+%s
 
 Create a summary with:
 - 3-5 paragraphs covering the main content
@@ -24,6 +28,8 @@ Transcript:
 const deepPrompt = `You are a video summary assistant. Create a detailed, chapter-by-chapter summary of the following video transcript.
 
 Video title: %s
+
+%s
 
 Create a comprehensive summary with:
 - Chapter-by-chapter breakdown with headers
@@ -48,4 +54,21 @@ func promptForLevel(level string) string {
 		return deepPrompt
 	}
 	return mediumPrompt
+}
+
+func languageInstruction(lang string) string {
+	// Normalize "de-DE" → "de", "en-US" → "en", etc.
+	base, _, _ := strings.Cut(strings.ToLower(lang), "-")
+	switch base {
+	case "en", "":
+		return "Write the entire summary in English."
+	case "de":
+		return "Write the entire summary in German (Deutsch)."
+	case "fr":
+		return "Write the entire summary in French (Français)."
+	case "es":
+		return "Write the entire summary in Spanish (Español)."
+	default:
+		return "Write the entire summary in the same language as the transcript."
+	}
 }

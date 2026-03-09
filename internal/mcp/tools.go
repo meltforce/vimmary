@@ -78,9 +78,10 @@ func (h *handlers) resummarize(ctx context.Context, req mcp.CallToolRequest) (*m
 	}
 
 	level := req.GetString("level", "deep")
+	language := req.GetString("language", "")
 	userID := UserIDFromContext(ctx)
 
-	if err := h.svc.Resummarize(ctx, userID, id, level); err != nil {
+	if err := h.svc.Resummarize(ctx, userID, id, level, language); err != nil {
 		h.log.Error("resummarize failed", "error", err)
 		return mcp.NewToolResultError(fmt.Sprintf("resummarize failed: %v", err)), nil
 	}
@@ -113,6 +114,28 @@ func (h *handlers) listRecent(ctx context.Context, req mcp.CallToolRequest) (*mc
 		return mcp.NewToolResultError("serialization failed"), nil
 	}
 	return resp, nil
+}
+
+func (h *handlers) deleteVideo(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	idStr, err := req.RequireString("id")
+	if err != nil {
+		return mcp.NewToolResultError("id is required"), nil
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return mcp.NewToolResultError("invalid video ID"), nil
+	}
+
+	userID := UserIDFromContext(ctx)
+	if err := h.svc.DeleteVideo(ctx, userID, id); err != nil {
+		if err == pgx.ErrNoRows {
+			return mcp.NewToolResultError("video not found"), nil
+		}
+		h.log.Error("delete video failed", "error", err)
+		return mcp.NewToolResultError(fmt.Sprintf("delete failed: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText("Video deleted successfully."), nil
 }
 
 func (h *handlers) stats(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

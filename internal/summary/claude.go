@@ -31,8 +31,8 @@ func NewClaudeSummarizer(apiKey, model string) *ClaudeSummarizer {
 	}
 }
 
-func (c *ClaudeSummarizer) Summarize(ctx context.Context, title, transcript, level string) (*Summary, error) {
-	prompt := fmt.Sprintf(promptForLevel(level), title, truncateTranscript(transcript))
+func (c *ClaudeSummarizer) Summarize(ctx context.Context, title, transcript, level, language string) (*Summary, error) {
+	prompt := fmt.Sprintf(promptForLevel(level), title, languageInstruction(language), truncateTranscript(transcript))
 
 	body := map[string]any{
 		"model":      c.model,

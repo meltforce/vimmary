@@ -12,5 +12,5 @@ type Summary struct {
 
 // Summarizer generates summaries from video transcripts.
 type Summarizer interface {
-	Summarize(ctx context.Context, title, transcript, level string) (*Summary, error)
+	Summarize(ctx context.Context, title, transcript, level, language string) (*Summary, error)
 }

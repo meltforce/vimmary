@@ -87,7 +87,7 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 	}
 
 	// Generate summary
-	sum, err := s.summarizer.Summarize(ctx, title, transcript.Text, video.DetailLevel)
+	sum, err := s.summarizer.Summarize(ctx, title, transcript.Text, video.DetailLevel, language)
 	if err != nil {
 		errMsg := fmt.Sprintf("summary generation failed: %v", err)
 		_ = s.db.UpdateVideoStatus(ctx, video.ID, "failed", errMsg)
