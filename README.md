@@ -28,8 +28,11 @@ Karakeep ──webhook──▶ vimmary ──▶ fetch transcript ──▶ gen
 - **Two detail levels** — medium (automatic) and deep (on-demand via MCP or web UI)
 - **Hybrid search** — keyword + semantic search with Reciprocal Rank Fusion
 - **MCP server** — 6 tools for searching, browsing, and managing video summaries
-- **Web UI** — React frontend embedded in the Go binary
+- **Web UI** — React frontend embedded in the Go binary (Videos, Stats, Settings pages)
 - **Tailscale auth** — zero-config authentication via tsnet
+- **Per-user Karakeep integration** — each user configures their own API key and webhook token via the Settings page
+- **Bidirectional sync** — summaries written back to Karakeep notes; bookmark deletions in Karakeep remove videos from vimmary
+- **Karakeep writeback** — plain-text summary with link to vimmary detail page
 
 ## Architecture
 
@@ -59,6 +62,14 @@ cp config.example.yaml config.yaml
 # Run the server
 go run ./cmd/vimmary --config config.yaml
 ```
+
+## Setup Karakeep integration
+
+1. Open vimmary's **Settings** page (Tailscale auth required)
+2. Enter your **Karakeep API key** (from Karakeep Settings → API Keys)
+3. Copy the generated **Webhook URL** and **Bearer Token**
+4. In Karakeep Settings → Webhooks, create webhooks for `created` and `deleted` events
+5. If Karakeep runs in Docker and vimmary is on Tailscale, add `CRAWLER_ALLOWED_INTERNAL_HOSTNAMES=.your-tailnet.ts.net` to Karakeep's env to allow webhook delivery
 
 ## Build
 
