@@ -50,7 +50,7 @@ func (c *Client) GetBookmark(ctx context.Context, id string) (*Bookmark, error) 
 	if err != nil {
 		return nil, fmt.Errorf("get bookmark: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -87,7 +87,7 @@ func (c *Client) UpdateNote(ctx context.Context, bookmarkID, note string) error 
 	if err != nil {
 		return fmt.Errorf("update note: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -119,7 +119,7 @@ func (c *Client) AddTag(ctx context.Context, bookmarkID, tagName string) error {
 	if err != nil {
 		return fmt.Errorf("add tag: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

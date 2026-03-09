@@ -27,7 +27,7 @@ func (c *Client) FetchMetadata(ctx context.Context, youtubeID string) (*Metadata
 	if err != nil {
 		return nil, fmt.Errorf("fetch watch page: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("watch page returned status %d", resp.StatusCode)

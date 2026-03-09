@@ -59,7 +59,7 @@ func (c *ClaudeSummarizer) Summarize(ctx context.Context, title, transcript, lev
 	if err != nil {
 		return nil, fmt.Errorf("claude API request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
