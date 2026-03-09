@@ -7,6 +7,7 @@ import (
 )
 
 type Config struct {
+	ExternalURL   string                       `yaml:"external_url"`
 	Server        mkconfig.ServerConfig        `yaml:"server"`
 	Database      mkconfig.DatabaseConfig      `yaml:"database"`
 	Tailscale     mkconfig.TailscaleConfig     `yaml:"tailscale"`
@@ -31,8 +32,7 @@ type SummaryConfig struct {
 }
 
 type KarakeepConfig struct {
-	BaseURL      string `yaml:"base_url"`
-	WebhookToken string `yaml:"webhook_token"` // Bearer token for webhook auth
+	BaseURL string `yaml:"base_url"`
 }
 
 type YouTubeConfig struct {

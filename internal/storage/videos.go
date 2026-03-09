@@ -169,6 +169,11 @@ func (db *DB) DeleteVideo(ctx context.Context, userID int, id uuid.UUID) error {
 	return nil
 }
 
+func (db *DB) DeleteByBookmarkID(ctx context.Context, userID int, bookmarkID string) error {
+	_, err := db.Pool.Exec(ctx, `DELETE FROM videos WHERE karakeep_bookmark_id = $1 AND user_id = $2`, bookmarkID, userID)
+	return err
+}
+
 func (db *DB) SearchVideos(ctx context.Context, userID int, embedding []float32, threshold float64, limit int) ([]VideoMatch, error) {
 	rows, err := db.Pool.Query(ctx, `
 		SELECT id, youtube_id, title, channel, summary, metadata, similarity, created_at

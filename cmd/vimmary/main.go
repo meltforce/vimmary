@@ -15,7 +15,6 @@ import (
 
 	vimmary "github.com/meltforce/vimmary"
 	"github.com/meltforce/vimmary/internal/config"
-	"github.com/meltforce/vimmary/internal/karakeep"
 	vimmarymcp "github.com/meltforce/vimmary/internal/mcp"
 	"github.com/meltforce/vimmary/internal/mistral"
 	"github.com/meltforce/vimmary/internal/server"
@@ -137,17 +136,6 @@ func main() {
 	mc := mistral.NewClient(mistralKey)
 	ytClient := youtube.NewClient(cfg.YouTube.SubLangs)
 
-	// Init Karakeep client (optional)
-	var kkClient *karakeep.Client
-	if cfg.Karakeep.BaseURL != "" {
-		karakeepKey, err := resolver.ResolveSecret("karakeep_api_key")
-		if err != nil {
-			log.Warn("karakeep API key not configured, writeback disabled", "error", err)
-		} else {
-			kkClient = karakeep.NewClient(cfg.Karakeep.BaseURL, karakeepKey)
-		}
-	}
-
 	// Init summarizer
 	var summarizer summary.Summarizer
 	switch cfg.Summary.Provider {
@@ -162,7 +150,7 @@ func main() {
 		summarizer = summary.NewClaudeSummarizer(claudeKey, cfg.Summary.ClaudeModel)
 	}
 
-	svc := service.New(store, summarizer, ytClient, kkClient, mc, cfg.Search, cfg.Summary, log)
+	svc := service.New(store, summarizer, ytClient, cfg.Karakeep.BaseURL, cfg.ExternalURL, mc, cfg.Search, cfg.Summary, log)
 
 	// MCP stdio mode
 	if *mcpMode {
@@ -180,8 +168,7 @@ func main() {
 	}
 
 	// HTTP server
-	webhookToken := cfg.Karakeep.WebhookToken
-	srv := server.New(svc, webhookToken, log)
+	srv := server.New(svc, store, log)
 
 	// Mount MCP
 	mcpSrv := vimmarymcp.New(svc, Version, log)

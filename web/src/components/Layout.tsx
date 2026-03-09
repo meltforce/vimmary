@@ -5,6 +5,7 @@ import ThemeToggle from "./ThemeToggle.tsx";
 const navItems = [
   { to: "/", label: "Videos" },
   { to: "/stats", label: "Stats" },
+  { to: "/settings", label: "Settings" },
 ];
 
 export default function Layout({ children }: { children: ReactNode }) {

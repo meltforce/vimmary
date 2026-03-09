@@ -156,3 +156,31 @@ export function retryVideo(
 export function fetchStats(): Promise<VideoStats> {
   return fetchJSON("/api/v1/stats");
 }
+
+// Settings API
+
+export interface WebhookInfo {
+  token: string;
+}
+
+export interface KarakeepStatus {
+  configured: boolean;
+}
+
+export function fetchWebhookInfo(): Promise<WebhookInfo> {
+  return fetchJSON("/api/v1/settings/webhook");
+}
+
+export function fetchKarakeepStatus(): Promise<KarakeepStatus> {
+  return fetchJSON("/api/v1/settings/karakeep");
+}
+
+export function setKarakeepAPIKey(
+  apiKey: string
+): Promise<{ status: string }> {
+  return fetchJSON("/api/v1/settings/karakeep", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ api_key: apiKey }),
+  });
+}

@@ -86,8 +86,8 @@ func (s *Service) Resummarize(ctx context.Context, userID int, videoID uuid.UUID
 	s.log.Info("video resummarized", "video_id", videoID, "level", level)
 
 	// Update Karakeep if applicable
-	if s.karakeep != nil && video.KarakeepBookmarkID != "" {
-		s.writeBackToKarakeep(ctx, video.KarakeepBookmarkID, video.Title, sum.Text)
+	if video.KarakeepBookmarkID != "" {
+		s.writeBackToKarakeep(ctx, userID, video.KarakeepBookmarkID, videoID, video.Title, sum.Text)
 	}
 
 	return nil

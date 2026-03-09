@@ -242,6 +242,63 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, stats)
 }
 
+func (s *Server) handleGetWebhook(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	token, err := s.svc.GetWebhookInfo(r.Context(), uid)
+	if err != nil {
+		s.log.Error("get webhook info failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get webhook info"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"token": token,
+	})
+}
+
+func (s *Server) handleGetKarakeepStatus(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	hasKey, err := s.svc.HasKarakeepAPIKey(r.Context(), uid)
+	if err != nil {
+		s.log.Error("get karakeep status failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get status"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]bool{"configured": hasKey})
+}
+
+func (s *Server) handleSetKarakeepKey(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	var body struct {
+		APIKey string `json:"api_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.APIKey == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "api_key is required"})
+		return
+	}
+
+	if err := s.svc.SetKarakeepAPIKey(r.Context(), uid, body.APIKey); err != nil {
+		s.log.Error("set karakeep key failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save key"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
