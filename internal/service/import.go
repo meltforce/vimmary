@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/meltforce/vimmary/internal/karakeep"
 )
@@ -64,18 +63,8 @@ func (s *Service) ImportKarakeepBookmarks(ctx context.Context, userID int) (*Imp
 
 	result.Imported = len(toProcess)
 
-	if len(toProcess) > 0 {
-		go func() {
-			for i, item := range toProcess {
-				if i > 0 {
-					time.Sleep(10 * time.Second)
-				}
-				if err := s.ProcessVideo(context.Background(), userID, item.youtubeID, item.bookmarkID); err != nil {
-					s.log.Error("import: video processing failed", "youtube_id", item.youtubeID, "error", err)
-				}
-			}
-			s.log.Info("karakeep import complete", "user_id", userID, "processed", len(toProcess))
-		}()
+	for _, item := range toProcess {
+		s.ProcessVideoAsync(userID, item.youtubeID, item.bookmarkID)
 	}
 
 	return result, nil
