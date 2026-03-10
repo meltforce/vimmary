@@ -22,11 +22,12 @@ type Config struct {
 type SearchConfig struct {
 	DefaultThreshold float64 `yaml:"default_threshold"`
 	DefaultLimit     int     `yaml:"default_limit"`
+	ScoreCutoffRatio float64 `yaml:"score_cutoff_ratio"`
 }
 
 type SummaryConfig struct {
 	Provider     string `yaml:"provider"`      // "claude" or "mistral"
-	ClaudeModel  string `yaml:"claude_model"`  // e.g. "claude-sonnet-4-5-20250514"
+	ClaudeModel  string `yaml:"claude_model"`  // e.g. "claude-sonnet-4-6-latest"
 	MistralModel string `yaml:"mistral_model"` // e.g. "mistral-large-latest"
 	DefaultLevel string `yaml:"default_level"` // "medium" or "deep"
 }
@@ -42,13 +43,14 @@ type YouTubeConfig struct {
 func Load(path string) (*Config, error) {
 	cfg := &Config{
 		Search: SearchConfig{
-			DefaultThreshold: 0.3,
+			DefaultThreshold: 0.5,
 			DefaultLimit:     10,
+			ScoreCutoffRatio: 0.5,
 		},
 		Summary: SummaryConfig{
 			Provider:     "claude",
-			ClaudeModel:  "claude-sonnet-4-5-20250514",
-			MistralModel: "mistral-large-latest",
+			ClaudeModel:  "",
+			MistralModel: "",
 			DefaultLevel: "medium",
 		},
 		YouTube: YouTubeConfig{

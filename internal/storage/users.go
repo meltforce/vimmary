@@ -85,3 +85,72 @@ func (db *DB) GetKarakeepAPIKey(ctx context.Context, userID int) (string, error)
 	}
 	return *key, nil
 }
+
+// GetSummaryPrompts returns the user's custom summary prompts. Nil means use default.
+func (db *DB) GetSummaryPrompts(ctx context.Context, userID int) (medium, deep *string, err error) {
+	err = db.Pool.QueryRow(ctx,
+		`SELECT summary_prompt_medium, summary_prompt_deep FROM users WHERE id = $1`, userID,
+	).Scan(&medium, &deep)
+	return
+}
+
+// GetModelPreference returns the user's preferred model for a provider. Empty means use default.
+func (db *DB) GetModelPreference(ctx context.Context, userID int, provider string) (string, error) {
+	col := "claude_model"
+	if provider == "mistral" {
+		col = "mistral_model"
+	}
+	var model *string
+	err := db.Pool.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM users WHERE id = $1`, col), userID).Scan(&model)
+	if err != nil {
+		return "", err
+	}
+	if model == nil {
+		return "", nil
+	}
+	return *model, nil
+}
+
+// SetModelPreference sets the user's preferred model for a provider. Empty string resets to default (NULL).
+func (db *DB) SetModelPreference(ctx context.Context, userID int, provider, model string) error {
+	col := "claude_model"
+	if provider == "mistral" {
+		col = "mistral_model"
+	}
+	var val *string
+	if model != "" {
+		val = &model
+	}
+	_, err := db.Pool.Exec(ctx, fmt.Sprintf(`UPDATE users SET %s = $1 WHERE id = $2`, col), val, userID)
+	return err
+}
+
+// GetModelPreferences returns the user's preferred models for all providers.
+func (db *DB) GetModelPreferences(ctx context.Context, userID int) (claude, mistral string, err error) {
+	var cm, mm *string
+	err = db.Pool.QueryRow(ctx, `SELECT claude_model, mistral_model FROM users WHERE id = $1`, userID).Scan(&cm, &mm)
+	if err != nil {
+		return "", "", err
+	}
+	if cm != nil {
+		claude = *cm
+	}
+	if mm != nil {
+		mistral = *mm
+	}
+	return
+}
+
+// SetSummaryPrompt sets a custom summary prompt for the given level. Empty string resets to default (NULL).
+func (db *DB) SetSummaryPrompt(ctx context.Context, userID int, level, prompt string) error {
+	col := "summary_prompt_medium"
+	if level == "deep" {
+		col = "summary_prompt_deep"
+	}
+	var val *string
+	if prompt != "" {
+		val = &prompt
+	}
+	_, err := db.Pool.Exec(ctx, fmt.Sprintf(`UPDATE users SET %s = $1 WHERE id = $2`, col), val, userID)
+	return err
+}

@@ -18,6 +18,10 @@ export interface Video {
   transcript?: string;
   summary?: string;
   detail_level: string;
+  summary_provider?: string;
+  summary_model?: string;
+  summary_input_tokens?: number;
+  summary_output_tokens?: number;
   metadata: VideoMetadata;
   status: string;
   error_message?: string;
@@ -126,10 +130,12 @@ export async function deleteVideo(id: string): Promise<void> {
 export function resummarizeVideo(
   id: string,
   level: string,
-  language?: string
+  language?: string,
+  provider?: string
 ): Promise<{ message: string; level: string }> {
   const payload: Record<string, string> = { level };
   if (language) payload.language = language;
+  if (provider) payload.provider = provider;
   return fetchJSON(`/api/v1/videos/${id}/resummarize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -151,6 +157,26 @@ export function retryVideo(
   id: string
 ): Promise<{ status: string }> {
   return fetchJSON(`/api/v1/videos/${id}/retry`, { method: "POST" });
+}
+
+export interface ProvidersInfo {
+  providers: string[];
+  default: string;
+  models: Record<string, string>;
+}
+
+export interface ModelInfo {
+  id: string;
+  display_name: string;
+}
+
+export interface ModelsResponse {
+  models: ModelInfo[];
+  selected: string;
+}
+
+export function fetchProviders(): Promise<ProvidersInfo> {
+  return fetchJSON("/api/v1/config/providers");
 }
 
 export function fetchStats(): Promise<VideoStats> {
@@ -182,5 +208,46 @@ export function setKarakeepAPIKey(
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ api_key: apiKey }),
+  });
+}
+
+export interface SummaryPromptsInfo {
+  medium: string;
+  deep: string;
+  default_medium: string;
+  default_deep: string;
+}
+
+export function fetchSummaryPrompts(): Promise<SummaryPromptsInfo> {
+  return fetchJSON("/api/v1/settings/prompts");
+}
+
+export function setSummaryPrompt(
+  level: string,
+  prompt: string
+): Promise<{ status: string }> {
+  return fetchJSON("/api/v1/settings/prompts", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ level, prompt }),
+  });
+}
+
+export function fetchModels(provider: string): Promise<ModelsResponse> {
+  return fetchJSON(`/api/v1/config/models?provider=${encodeURIComponent(provider)}`);
+}
+
+export function fetchModelPreferences(): Promise<Record<string, string>> {
+  return fetchJSON("/api/v1/settings/models");
+}
+
+export function setModel(
+  provider: string,
+  model: string
+): Promise<{ status: string }> {
+  return fetchJSON("/api/v1/settings/model", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider, model }),
   });
 }

@@ -136,6 +136,17 @@ func (s *Service) Search(ctx context.Context, userID int, query string, limit in
 		return results[i].Score > results[j].Score
 	})
 
+	// Drop results below the configured ratio of the top score
+	if len(results) > 0 {
+		cutoff := results[0].Score * s.searchCfg.ScoreCutoffRatio
+		for i, r := range results {
+			if r.Score < cutoff {
+				results = results[:i]
+				break
+			}
+		}
+	}
+
 	if len(results) > limit {
 		results = results[:limit]
 	}

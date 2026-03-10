@@ -120,7 +120,15 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 	}
 
 	// Generate summary
-	sum, err := s.summarizer.Summarize(ctx, title, transcript.Text, video.DetailLevel, language)
+	summarizer, providerName, err := s.getSummarizer("")
+	if err != nil {
+		errMsg := fmt.Sprintf("no summarizer available: %v", err)
+		_ = s.db.UpdateVideoStatus(ctx, video.ID, "failed", errMsg)
+		return fmt.Errorf("get summarizer: %w", err)
+	}
+	model := s.getModelForProvider(ctx, userID, providerName)
+	customPrompt := s.getUserPrompt(ctx, userID, video.DetailLevel)
+	sum, err := summarizer.Summarize(ctx, title, transcript.Text, video.DetailLevel, language, customPrompt, model)
 	if err != nil {
 		errMsg := fmt.Sprintf("summary generation failed: %v", err)
 		_ = s.db.UpdateVideoStatus(ctx, video.ID, "failed", errMsg)
@@ -146,7 +154,7 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 	}
 
 	// Store summary + embedding
-	if err := s.db.UpdateVideoSummary(ctx, video.ID, sum.Text, video.DetailLevel, embedding, metaJSON); err != nil {
+	if err := s.db.UpdateVideoSummary(ctx, video.ID, sum.Text, video.DetailLevel, providerName, model, sum.Usage.InputTokens, sum.Usage.OutputTokens, embedding, metaJSON); err != nil {
 		return fmt.Errorf("update summary: %w", err)
 	}
 

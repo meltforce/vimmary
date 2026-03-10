@@ -33,8 +33,7 @@ Use stats for aggregate statistics about the video library.`)
 		server.ServerTool{Tool: toolResummarize, Handler: h.resummarize},
 		server.ServerTool{Tool: toolListRecent, Handler: h.listRecent},
 		server.ServerTool{Tool: toolStats, Handler: h.stats},
-		server.ServerTool{Tool: toolDeleteVideo, Handler: h.deleteVideo},
-	)
+)
 
 	return s
 }
@@ -75,6 +74,9 @@ var toolResummarize = mcp.NewTool("resummarize",
 	mcp.WithString("language",
 		mcp.Description("Override language for the summary (e.g. 'de', 'en', 'fr'). If omitted, uses the detected transcript language."),
 	),
+	mcp.WithString("provider",
+		mcp.Description("Summarizer provider to use (e.g. 'claude', 'mistral'). If omitted, uses the default provider."),
+	),
 )
 
 var toolListRecent = mcp.NewTool("list_recent",
@@ -100,10 +102,3 @@ var toolStats = mcp.NewTool("stats",
 	mcp.WithDescription("Get aggregate statistics: total video count, status distribution, top channels, top topics, and daily activity."),
 )
 
-var toolDeleteVideo = mcp.NewTool("delete_video",
-	mcp.WithDescription("Delete a video and all its associated data (summary, transcript, embedding)."),
-	mcp.WithString("id",
-		mcp.Required(),
-		mcp.Description("UUID of the video to delete."),
-	),
-)

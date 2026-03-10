@@ -17,6 +17,7 @@ import (
 	"github.com/meltforce/vimmary/internal/config"
 	vimmarymcp "github.com/meltforce/vimmary/internal/mcp"
 	"github.com/meltforce/vimmary/internal/mistral"
+	"github.com/meltforce/vimmary/internal/models"
 	"github.com/meltforce/vimmary/internal/server"
 	"github.com/meltforce/vimmary/internal/service"
 	"github.com/meltforce/vimmary/internal/storage"
@@ -136,21 +137,37 @@ func main() {
 	mc := mistral.NewClient(mistralKey)
 	ytClient := youtube.NewClient(cfg.YouTube.SubLangs)
 
-	// Init summarizer
-	var summarizer summary.Summarizer
-	switch cfg.Summary.Provider {
-	case "mistral":
-		summarizer = summary.NewMistralSummarizer(mistralKey, cfg.Summary.MistralModel)
-	default:
-		claudeKey, err := resolver.ResolveSecret("claude_api_key")
-		if err != nil {
-			log.Error("failed to resolve claude api key", "error", err)
-			os.Exit(1)
-		}
-		summarizer = summary.NewClaudeSummarizer(claudeKey, cfg.Summary.ClaudeModel)
+	// Init summarizers
+	summarizers := make(map[string]summary.Summarizer)
+
+	// Claude summarizer
+	claudeKey, err := resolver.ResolveSecret("claude_api_key")
+	if err != nil {
+		log.Warn("claude api key not available, claude summarizer disabled", "error", err)
+	} else if claudeKey != "" {
+		summarizers["claude"] = summary.NewClaudeSummarizer(claudeKey)
+		log.Info("summarizer registered", "provider", "claude")
 	}
 
-	svc := service.New(store, summarizer, ytClient, cfg.Karakeep.BaseURL, cfg.ExternalURL, mc, cfg.Search, cfg.Summary, log)
+	// Mistral summarizer (uses the same key as embeddings)
+	if mistralKey != "" {
+		summarizers["mistral"] = summary.NewMistralSummarizer(mistralKey)
+		log.Info("summarizer registered", "provider", "mistral")
+	}
+
+	if _, ok := summarizers[cfg.Summary.Provider]; !ok {
+		available := make([]string, 0, len(summarizers))
+		for k := range summarizers {
+			available = append(available, k)
+		}
+		log.Error("default summary provider not available", "provider", cfg.Summary.Provider, "available", available)
+		os.Exit(1)
+	}
+
+	// Init model registry
+	registry := models.NewRegistry(claudeKey, mistralKey, log)
+
+	svc := service.New(store, summarizers, cfg.Summary.Provider, registry, ytClient, cfg.Karakeep.BaseURL, cfg.ExternalURL, mc, cfg.Search, cfg.Summary, log)
 
 	// MCP stdio mode
 	if *mcpMode {

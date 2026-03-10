@@ -1,0 +1,1 @@
+ALTER TABLE videos ADD COLUMN summary_provider TEXT NOT NULL DEFAULT '';

@@ -4,9 +4,9 @@ import "strings"
 
 const mediumPrompt = `You are a video summary assistant. Summarize the following video transcript.
 
-Video title: %s
+Video title: {{TITLE}}
 
-%s
+{{LANGUAGE}}
 
 Create a summary with:
 - 3-5 paragraphs covering the main content
@@ -25,13 +25,13 @@ Return ONLY valid JSON with these fields:
 }
 
 Transcript:
-%s`
+{{TRANSCRIPT}}`
 
 const deepPrompt = `You are a video summary assistant. Create a detailed, chapter-by-chapter summary of the following video transcript.
 
-Video title: %s
+Video title: {{TITLE}}
 
-%s
+{{LANGUAGE}}
 
 Create a comprehensive summary with:
 - Chapter-by-chapter breakdown with headers
@@ -51,13 +51,28 @@ Return ONLY valid JSON with these fields:
 }
 
 Transcript:
-%s`
+{{TRANSCRIPT}}`
 
 func promptForLevel(level string) string {
 	if level == "deep" {
 		return deepPrompt
 	}
 	return mediumPrompt
+}
+
+// DefaultPrompt returns the default prompt template for a given level.
+func DefaultPrompt(level string) string {
+	return promptForLevel(level)
+}
+
+// BuildPrompt replaces named placeholders in a prompt template with actual values.
+func BuildPrompt(template, title, language, transcript string) string {
+	r := strings.NewReplacer(
+		"{{TITLE}}", title,
+		"{{LANGUAGE}}", languageInstruction(language),
+		"{{TRANSCRIPT}}", transcript,
+	)
+	return r.Replace(template)
 }
 
 func languageInstruction(lang string) string {

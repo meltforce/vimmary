@@ -15,27 +15,30 @@ const claudeAPIURL = "https://api.anthropic.com/v1/messages"
 // ClaudeSummarizer uses the Anthropic API for summary generation.
 type ClaudeSummarizer struct {
 	apiKey string
-	model  string
 	http   *http.Client
 }
 
 // NewClaudeSummarizer creates a Claude-based summarizer.
-func NewClaudeSummarizer(apiKey, model string) *ClaudeSummarizer {
-	if model == "" {
-		model = "claude-sonnet-4-5-20250514"
-	}
+func NewClaudeSummarizer(apiKey string) *ClaudeSummarizer {
 	return &ClaudeSummarizer{
 		apiKey: apiKey,
-		model:  model,
 		http:   &http.Client{Timeout: 5 * time.Minute},
 	}
 }
 
-func (c *ClaudeSummarizer) Summarize(ctx context.Context, title, transcript, level, language string) (*Summary, error) {
-	prompt := fmt.Sprintf(promptForLevel(level), title, languageInstruction(language), truncateTranscript(transcript))
+func (c *ClaudeSummarizer) Summarize(ctx context.Context, title, transcript, level, language, customPrompt, model string) (*Summary, error) {
+	template := promptForLevel(level)
+	if customPrompt != "" {
+		template = customPrompt
+	}
+	prompt := BuildPrompt(template, title, language, truncateTranscript(transcript))
+
+	if model == "" {
+		model = "claude-sonnet-4-20250514"
+	}
 
 	body := map[string]any{
-		"model":      c.model,
+		"model":      model,
 		"max_tokens": 4096,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
@@ -74,6 +77,10 @@ func (c *ClaudeSummarizer) Summarize(ctx context.Context, title, transcript, lev
 		Content []struct {
 			Text string `json:"text"`
 		} `json:"content"`
+		Usage struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return nil, fmt.Errorf("parse response: %w", err)
@@ -82,7 +89,15 @@ func (c *ClaudeSummarizer) Summarize(ctx context.Context, title, transcript, lev
 		return nil, fmt.Errorf("empty response from Claude")
 	}
 
-	return parseSummaryJSON(result.Content[0].Text)
+	sum, err := parseSummaryJSON(result.Content[0].Text)
+	if err != nil {
+		return nil, err
+	}
+	sum.Usage = Usage{
+		InputTokens:  result.Usage.InputTokens,
+		OutputTokens: result.Usage.OutputTokens,
+	}
+	return sum, nil
 }
 
 // truncateTranscript limits transcript length to avoid token limits.

@@ -15,27 +15,30 @@ const mistralAPIURL = "https://api.mistral.ai/v1/chat/completions"
 // MistralSummarizer uses the Mistral API for summary generation.
 type MistralSummarizer struct {
 	apiKey string
-	model  string
 	http   *http.Client
 }
 
 // NewMistralSummarizer creates a Mistral-based summarizer.
-func NewMistralSummarizer(apiKey, model string) *MistralSummarizer {
-	if model == "" {
-		model = "mistral-large-latest"
-	}
+func NewMistralSummarizer(apiKey string) *MistralSummarizer {
 	return &MistralSummarizer{
 		apiKey: apiKey,
-		model:  model,
 		http:   &http.Client{Timeout: 5 * time.Minute},
 	}
 }
 
-func (m *MistralSummarizer) Summarize(ctx context.Context, title, transcript, level, language string) (*Summary, error) {
-	prompt := fmt.Sprintf(promptForLevel(level), title, languageInstruction(language), truncateTranscript(transcript))
+func (m *MistralSummarizer) Summarize(ctx context.Context, title, transcript, level, language, customPrompt, model string) (*Summary, error) {
+	template := promptForLevel(level)
+	if customPrompt != "" {
+		template = customPrompt
+	}
+	prompt := BuildPrompt(template, title, language, truncateTranscript(transcript))
+
+	if model == "" {
+		model = "mistral-large-latest"
+	}
 
 	body := map[string]any{
-		"model": m.model,
+		"model": model,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
@@ -76,6 +79,10 @@ func (m *MistralSummarizer) Summarize(ctx context.Context, title, transcript, le
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+		} `json:"usage"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return nil, fmt.Errorf("parse response: %w", err)
@@ -84,5 +91,13 @@ func (m *MistralSummarizer) Summarize(ctx context.Context, title, transcript, le
 		return nil, fmt.Errorf("empty response from Mistral")
 	}
 
-	return parseSummaryJSON(result.Choices[0].Message.Content)
+	sum, err := parseSummaryJSON(result.Choices[0].Message.Content)
+	if err != nil {
+		return nil, err
+	}
+	sum.Usage = Usage{
+		InputTokens:  result.Usage.PromptTokens,
+		OutputTokens: result.Usage.CompletionTokens,
+	}
+	return sum, nil
 }

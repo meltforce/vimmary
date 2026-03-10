@@ -23,6 +23,10 @@ type Video struct {
 	Transcript          string          `json:"transcript,omitempty"`
 	Summary             string          `json:"summary,omitempty"`
 	DetailLevel         string          `json:"detail_level"`
+	SummaryProvider     string          `json:"summary_provider,omitempty"`
+	SummaryModel        string          `json:"summary_model,omitempty"`
+	SummaryInputTokens  int             `json:"summary_input_tokens,omitempty"`
+	SummaryOutputTokens int             `json:"summary_output_tokens,omitempty"`
 	Metadata            json.RawMessage `json:"metadata"`
 	Status              string          `json:"status"`
 	ErrorMessage        string          `json:"error_message,omitempty"`
@@ -71,10 +75,13 @@ func (db *DB) InsertVideo(ctx context.Context, v *Video) error {
 	}
 	_, err := db.Pool.Exec(ctx, `
 		INSERT INTO videos (id, user_id, karakeep_bookmark_id, youtube_id, title, channel,
-			duration_seconds, language, transcript, summary, detail_level, embedding, metadata, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			duration_seconds, language, transcript, summary, detail_level, summary_provider,
+			summary_model, summary_input_tokens, summary_output_tokens,
+			embedding, metadata, status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 	`, v.ID, v.UserID, v.KarakeepBookmarkID, v.YouTubeID, v.Title, v.Channel,
-		v.DurationSeconds, v.Language, v.Transcript, v.Summary, v.DetailLevel,
+		v.DurationSeconds, v.Language, v.Transcript, v.Summary, v.DetailLevel, v.SummaryProvider,
+		v.SummaryModel, v.SummaryInputTokens, v.SummaryOutputTokens,
 		embeddingArg, v.Metadata, v.Status)
 	if err != nil {
 		return fmt.Errorf("insert video: %w", err)
@@ -86,13 +93,15 @@ func (db *DB) GetByYouTubeID(ctx context.Context, userID int, youtubeID string) 
 	var v Video
 	err := db.Pool.QueryRow(ctx, `
 		SELECT id, user_id, karakeep_bookmark_id, youtube_id, title, channel,
-			duration_seconds, language, transcript, summary, detail_level, metadata,
+			duration_seconds, language, transcript, summary, detail_level, summary_provider,
+			summary_model, summary_input_tokens, summary_output_tokens, metadata,
 			status, COALESCE(error_message, ''), created_at, updated_at
 		FROM videos WHERE user_id = $1 AND youtube_id = $2
 	`, userID, youtubeID).Scan(&v.ID, &v.UserID, &v.KarakeepBookmarkID, &v.YouTubeID,
 		&v.Title, &v.Channel, &v.DurationSeconds, &v.Language, &v.Transcript,
-		&v.Summary, &v.DetailLevel, &v.Metadata, &v.Status, &v.ErrorMessage,
-		&v.CreatedAt, &v.UpdatedAt)
+		&v.Summary, &v.DetailLevel, &v.SummaryProvider,
+		&v.SummaryModel, &v.SummaryInputTokens, &v.SummaryOutputTokens, &v.Metadata,
+		&v.Status, &v.ErrorMessage, &v.CreatedAt, &v.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -110,29 +119,32 @@ func (db *DB) GetVideo(ctx context.Context, userID int, id uuid.UUID) (*Video, e
 	var v Video
 	err := db.Pool.QueryRow(ctx, `
 		SELECT id, user_id, karakeep_bookmark_id, youtube_id, title, channel,
-			duration_seconds, language, transcript, summary, detail_level, metadata,
+			duration_seconds, language, transcript, summary, detail_level, summary_provider,
+			summary_model, summary_input_tokens, summary_output_tokens, metadata,
 			status, COALESCE(error_message, ''), created_at, updated_at
 		FROM videos WHERE id = $1 AND user_id = $2
 	`, id, userID).Scan(&v.ID, &v.UserID, &v.KarakeepBookmarkID, &v.YouTubeID,
 		&v.Title, &v.Channel, &v.DurationSeconds, &v.Language, &v.Transcript,
-		&v.Summary, &v.DetailLevel, &v.Metadata, &v.Status, &v.ErrorMessage,
-		&v.CreatedAt, &v.UpdatedAt)
+		&v.Summary, &v.DetailLevel, &v.SummaryProvider,
+		&v.SummaryModel, &v.SummaryInputTokens, &v.SummaryOutputTokens, &v.Metadata,
+		&v.Status, &v.ErrorMessage, &v.CreatedAt, &v.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	return &v, nil
 }
 
-func (db *DB) UpdateVideoSummary(ctx context.Context, id uuid.UUID, summary string, detailLevel string, embedding []float32, metadata json.RawMessage) error {
+func (db *DB) UpdateVideoSummary(ctx context.Context, id uuid.UUID, summary string, detailLevel string, provider string, model string, inputTokens, outputTokens int, embedding []float32, metadata json.RawMessage) error {
 	var embeddingArg any
 	if embedding != nil {
 		embeddingArg = pgvector.NewVector(embedding)
 	}
 	tag, err := db.Pool.Exec(ctx, `
-		UPDATE videos SET summary = $1, detail_level = $2, embedding = $3,
-			metadata = $4, status = 'completed', error_message = NULL, updated_at = NOW()
-		WHERE id = $5
-	`, summary, detailLevel, embeddingArg, metadata, id)
+		UPDATE videos SET summary = $1, detail_level = $2, summary_provider = $3,
+			summary_model = $4, summary_input_tokens = $5, summary_output_tokens = $6,
+			embedding = $7, metadata = $8, status = 'completed', error_message = NULL, updated_at = NOW()
+		WHERE id = $9
+	`, summary, detailLevel, provider, model, inputTokens, outputTokens, embeddingArg, metadata, id)
 	if err != nil {
 		return fmt.Errorf("update video summary: %w", err)
 	}
@@ -249,7 +261,8 @@ func (db *DB) ListRecent(ctx context.Context, userID int, filters ListFilters, l
 		statusFilter = fmt.Sprintf("status = '%s'", filters.Status)
 	}
 	query := fmt.Sprintf(`SELECT id, user_id, karakeep_bookmark_id, youtube_id, title, channel,
-		duration_seconds, language, '', summary, detail_level, metadata,
+		duration_seconds, language, '', summary, detail_level, summary_provider,
+		summary_model, summary_input_tokens, summary_output_tokens, metadata,
 		status, COALESCE(error_message, ''), created_at, updated_at
 		FROM videos WHERE user_id = $1 AND %s`, statusFilter)
 	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM videos WHERE user_id = $1 AND %s`, statusFilter)
@@ -297,8 +310,9 @@ func (db *DB) ListRecent(ctx context.Context, userID int, filters ListFilters, l
 		var v Video
 		if err := rows.Scan(&v.ID, &v.UserID, &v.KarakeepBookmarkID, &v.YouTubeID,
 			&v.Title, &v.Channel, &v.DurationSeconds, &v.Language, &v.Transcript,
-			&v.Summary, &v.DetailLevel, &v.Metadata, &v.Status, &v.ErrorMessage,
-			&v.CreatedAt, &v.UpdatedAt); err != nil {
+			&v.Summary, &v.DetailLevel, &v.SummaryProvider,
+			&v.SummaryModel, &v.SummaryInputTokens, &v.SummaryOutputTokens, &v.Metadata,
+			&v.Status, &v.ErrorMessage, &v.CreatedAt, &v.UpdatedAt); err != nil {
 			return nil, 0, fmt.Errorf("scan video: %w", err)
 		}
 		videos = append(videos, v)
