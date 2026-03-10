@@ -25,8 +25,12 @@ Karakeep ──webhook──▶ vimmary ──▶ fetch transcript ──▶ gen
 ## Features
 
 - **Automatic summaries** — triggered by Karakeep webhooks, no manual action needed
+- **Bulk import** — import all existing YouTube bookmarks from Karakeep via Settings page
 - **Two detail levels** — medium (automatic) and deep (on-demand via MCP or web UI)
 - **Hybrid search** — keyword + semantic search with Reciprocal Rank Fusion
+- **Adaptive rate limiting** — YouTube API delays scale with queue depth (10s–45s) to avoid 429s during bulk operations
+- **Auto-retry** — transcript fetch failures are automatically retried with exponential backoff (2m/5m/10m, max 3 retries)
+- **Retry all failed** — batch-retry all failed videos from the web UI
 - **MCP server** — 6 tools for searching, browsing, and managing video summaries
 - **Web UI** — React frontend embedded in the Go binary (Videos, Stats, Settings pages)
 - **Tailscale auth** — zero-config authentication via tsnet
