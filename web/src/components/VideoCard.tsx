@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { retryVideo } from "../api.ts";
-import { formatDuration } from "../utils.ts";
+import { formatDuration, stripMarkdown } from "../utils.ts";
 
 interface Props {
   id: string;
@@ -120,7 +120,7 @@ export default function VideoCard({
           )}
           {!isFailed && summary && (
             <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2">
-              {summary}
+              {stripMarkdown(summary)}
             </p>
           )}
           {topics && topics.length > 0 && (
