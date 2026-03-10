@@ -34,6 +34,9 @@ jobs:
       - name: Build
         run: CGO_ENABLED=0 go build -o vimmary ./cmd/vimmary
 
+      - name: Test
+        run: go test ./...
+
       - name: Vet
         run: go vet ./...
 
