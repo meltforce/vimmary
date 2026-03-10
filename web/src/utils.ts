@@ -13,6 +13,16 @@ export function formatDuration(seconds: number): string {
   return s > 0 ? `${m}m ${s}s` : `${m}m`;
 }
 
+export function stripMarkdown(s: string): string {
+  return s
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/\*(.+?)\*/g, "$1")
+    .replace(/\[(.+?)\]\(.+?\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^[\t ]*[-*]\s+/gm, "- ");
+}
+
 export function videoToMarkdown(video: {
   title: string;
   channel: string;
