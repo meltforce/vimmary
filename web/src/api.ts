@@ -191,6 +191,13 @@ export interface WebhookInfo {
 
 export interface KarakeepStatus {
   configured: boolean;
+  base_url: string;
+}
+
+export interface ImportResult {
+  total: number;
+  imported: number;
+  skipped: number;
 }
 
 export function fetchWebhookInfo(): Promise<WebhookInfo> {
@@ -199,6 +206,10 @@ export function fetchWebhookInfo(): Promise<WebhookInfo> {
 
 export function fetchKarakeepStatus(): Promise<KarakeepStatus> {
   return fetchJSON("/api/v1/settings/karakeep");
+}
+
+export function importKarakeepBookmarks(): Promise<ImportResult> {
+  return fetchJSON("/api/v1/settings/karakeep/import", { method: "POST" });
 }
 
 export function setKarakeepAPIKey(

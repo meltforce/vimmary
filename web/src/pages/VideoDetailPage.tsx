@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
-import { getVideo, resummarizeVideo, deleteVideo, fetchProviders } from "../api.ts";
+import { getVideo, resummarizeVideo, deleteVideo, fetchProviders, fetchKarakeepStatus } from "../api.ts";
 import { formatDuration, formatTokens, videoToMarkdown } from "../utils.ts";
 import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
 
@@ -19,6 +19,11 @@ export default function VideoDetailPage() {
   const { data: providers } = useQuery({
     queryKey: ["providers"],
     queryFn: fetchProviders,
+  });
+
+  const { data: karakeepStatus } = useQuery({
+    queryKey: ["settings", "karakeep"],
+    queryFn: fetchKarakeepStatus,
   });
 
   const { data: video, isLoading, error } = useQuery({
@@ -128,6 +133,16 @@ export default function VideoDetailPage() {
             >
               Watch on YouTube
             </a>
+            {video.karakeep_bookmark_id && karakeepStatus?.base_url && (
+              <a
+                href={`${karakeepStatus.base_url}/dashboard/preview/${video.karakeep_bookmark_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 text-xs bg-zinc-600 text-white rounded-md hover:bg-zinc-500 transition-colors"
+              >
+                View in Karakeep
+              </a>
+            )}
             <span className="px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 rounded text-xs">
               {video.detail_level}
             </span>
