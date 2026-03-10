@@ -193,6 +193,22 @@ func (s *Server) handleDeleteVideo(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) handleRetryAllFailed(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	count, err := s.svc.RetryAllFailed(r.Context(), uid)
+	if err != nil {
+		s.log.Error("retry all failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "retry all failed"})
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, map[string]int{"retried": count})
+}
+
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	uid, ok := mustUserID(w, r)
 	if !ok {

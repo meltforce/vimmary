@@ -39,3 +39,6 @@ web/tsconfig.tsbuildinfo
 plan.md
 internal_docs/
 CLAUDE.md
+
+# Import data
+import/

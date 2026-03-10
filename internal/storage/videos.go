@@ -177,6 +177,34 @@ func (db *DB) UpdateVideoStatus(ctx context.Context, id uuid.UUID, status, error
 	return err
 }
 
+func (db *DB) ListFailedVideos(ctx context.Context, userID int) ([]Video, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT id, user_id, karakeep_bookmark_id, youtube_id, title, channel,
+			duration_seconds, language, '', summary, detail_level, summary_provider,
+			summary_model, summary_input_tokens, summary_output_tokens, metadata,
+			status, COALESCE(error_message, ''), created_at, updated_at
+		FROM videos WHERE user_id = $1 AND status = 'failed'
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list failed videos: %w", err)
+	}
+	defer rows.Close()
+
+	var videos []Video
+	for rows.Next() {
+		var v Video
+		if err := rows.Scan(&v.ID, &v.UserID, &v.KarakeepBookmarkID, &v.YouTubeID,
+			&v.Title, &v.Channel, &v.DurationSeconds, &v.Language, &v.Transcript,
+			&v.Summary, &v.DetailLevel, &v.SummaryProvider,
+			&v.SummaryModel, &v.SummaryInputTokens, &v.SummaryOutputTokens, &v.Metadata,
+			&v.Status, &v.ErrorMessage, &v.CreatedAt, &v.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan failed video: %w", err)
+		}
+		videos = append(videos, v)
+	}
+	return videos, rows.Err()
+}
+
 func (db *DB) DeleteVideo(ctx context.Context, userID int, id uuid.UUID) error {
 	tag, err := db.Pool.Exec(ctx, `DELETE FROM videos WHERE id = $1 AND user_id = $2`, id, userID)
 	if err != nil {
