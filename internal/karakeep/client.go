@@ -96,6 +96,57 @@ func (c *Client) UpdateNote(ctx context.Context, bookmarkID, note string) error 
 	return nil
 }
 
+// ListBookmarksResponse is the paginated response from the Karakeep bookmarks API.
+type ListBookmarksResponse struct {
+	Bookmarks  []Bookmark `json:"bookmarks"`
+	NextCursor *string    `json:"nextCursor"`
+}
+
+// ListBookmarks retrieves all bookmarks, paginating through all results.
+func (c *Client) ListBookmarks(ctx context.Context) ([]Bookmark, error) {
+	var all []Bookmark
+	var cursor string
+
+	for {
+		url := c.baseURL + "/api/v1/bookmarks"
+		if cursor != "" {
+			url += "?cursor=" + cursor
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("create request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+		resp, err := c.http.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("list bookmarks: %w", err)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close() //nolint:errcheck
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("list bookmarks: status %d: %s", resp.StatusCode, string(body))
+		}
+
+		var page ListBookmarksResponse
+		if err := json.Unmarshal(body, &page); err != nil {
+			return nil, fmt.Errorf("parse bookmarks page: %w", err)
+		}
+
+		all = append(all, page.Bookmarks...)
+
+		if page.NextCursor == nil || *page.NextCursor == "" {
+			break
+		}
+		cursor = *page.NextCursor
+	}
+
+	return all, nil
+}
+
 // AddTag attaches a tag to a bookmark. Karakeep's POST endpoint is additive,
 // so existing tags are preserved automatically.
 func (c *Client) AddTag(ctx context.Context, bookmarkID, tagName string) error {

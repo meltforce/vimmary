@@ -274,7 +274,26 @@ func (s *Server) handleGetKarakeepStatus(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]bool{"configured": hasKey})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"configured": hasKey,
+		"base_url":   s.svc.KarakeepBaseURL(),
+	})
+}
+
+func (s *Server) handleImportKarakeep(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	result, err := s.svc.ImportKarakeepBookmarks(r.Context(), uid)
+	if err != nil {
+		s.log.Error("karakeep import failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, result)
 }
 
 func (s *Server) handleSetKarakeepKey(w http.ResponseWriter, r *http.Request) {

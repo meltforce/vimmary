@@ -53,6 +53,7 @@ func (s *Server) routes() {
 		r.Get("/api/v1/settings/webhook", s.handleGetWebhook)
 		r.Get("/api/v1/settings/karakeep", s.handleGetKarakeepStatus)
 		r.Put("/api/v1/settings/karakeep", s.handleSetKarakeepKey)
+		r.Post("/api/v1/settings/karakeep/import", s.handleImportKarakeep)
 		r.Get("/api/v1/settings/models", s.handleGetModelPreferences)
 		r.Put("/api/v1/settings/model", s.handleSetModel)
 		r.Get("/api/v1/settings/prompts", s.handleGetPrompts)

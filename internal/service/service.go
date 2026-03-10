@@ -97,6 +97,11 @@ func (s *Service) DefaultProvider() string {
 	return s.defaultProvider
 }
 
+// KarakeepBaseURL returns the configured Karakeep base URL.
+func (s *Service) KarakeepBaseURL() string {
+	return s.karakeepBaseURL
+}
+
 // DeleteVideo removes a video from the database.
 func (s *Service) DeleteVideo(ctx context.Context, userID int, id uuid.UUID) error {
 	return s.db.DeleteVideo(ctx, userID, id)

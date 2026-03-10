@@ -4,6 +4,7 @@ import {
   fetchWebhookInfo,
   fetchKarakeepStatus,
   setKarakeepAPIKey,
+  importKarakeepBookmarks,
   fetchSummaryPrompts,
   setSummaryPrompt,
   fetchProviders,
@@ -221,6 +222,13 @@ export default function SettingsPage() {
     },
   });
 
+  const importBookmarks = useMutation({
+    mutationFn: importKarakeepBookmarks,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["videos"] });
+    },
+  });
+
   const isLoading = webhookLoading || karakeepLoading || promptsLoading;
   const error = webhookError || karakeepError || promptsError;
 
@@ -287,6 +295,36 @@ export default function SettingsPage() {
           <p className="text-sm text-red-600 dark:text-red-400">
             {(saveKey.error as Error).message}
           </p>
+        )}
+        {karakeepStatus?.configured && (
+          <div className="border-t border-zinc-200 dark:border-zinc-800 pt-4 space-y-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => importBookmarks.mutate()}
+                disabled={importBookmarks.isPending}
+                className="px-4 py-2 text-sm bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-md hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50"
+              >
+                {importBookmarks.isPending
+                  ? "Importing..."
+                  : "Import existing bookmarks"}
+              </button>
+              <span className="text-xs text-zinc-500">
+                Import all YouTube bookmarks from Karakeep
+              </span>
+            </div>
+            {importBookmarks.isSuccess && importBookmarks.data && (
+              <p className="text-sm text-green-600 dark:text-green-400">
+                Found {importBookmarks.data.total} videos, imported{" "}
+                {importBookmarks.data.imported}, skipped{" "}
+                {importBookmarks.data.skipped}
+              </p>
+            )}
+            {importBookmarks.isError && (
+              <p className="text-sm text-red-600 dark:text-red-400">
+                {(importBookmarks.error as Error).message}
+              </p>
+            )}
+          </div>
         )}
       </div>
 
