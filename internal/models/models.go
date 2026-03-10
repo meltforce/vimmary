@@ -16,6 +16,7 @@ import (
 type Model struct {
 	ID          string `json:"id"`
 	DisplayName string `json:"display_name"`
+	Provider    string `json:"provider"`
 }
 
 type cachedModels struct {
@@ -86,6 +87,20 @@ func (r *Registry) ListModels(ctx context.Context, provider string) ([]Model, er
 	return models, nil
 }
 
+// ListAllModels returns models from all configured providers, tagged with provider name.
+func (r *Registry) ListAllModels(ctx context.Context) []Model {
+	var all []Model
+	for provider := range r.apiKeys {
+		models, err := r.ListModels(ctx, provider)
+		if err != nil {
+			r.log.Warn("failed to list models for provider", "provider", provider, "error", err)
+			continue
+		}
+		all = append(all, models...)
+	}
+	return all
+}
+
 func (r *Registry) fetchModels(ctx context.Context, provider string) ([]Model, error) {
 	switch provider {
 	case "claude":
@@ -136,6 +151,7 @@ func (r *Registry) fetchClaudeModels(ctx context.Context) ([]Model, error) {
 		models = append(models, Model{
 			ID:          m.ID,
 			DisplayName: m.DisplayName,
+			Provider:    "claude",
 		})
 	}
 	return models, nil
@@ -174,19 +190,34 @@ func (r *Registry) fetchMistralModels(ctx context.Context) ([]Model, error) {
 		return nil, fmt.Errorf("parse mistral models: %w", err)
 	}
 
+	// Only keep key "latest" models from Mistral
+	wantPrefixes := []string{
+		"mistral-tiny-latest",
+		"mistral-small-latest",
+		"mistral-medium-latest",
+		"mistral-large-latest",
+		"codestral-latest",
+	}
+
 	var models []Model
 	for _, m := range result.Data {
-		// Filter: only chat-capable models, skip embed/moderation/ocr
 		if !m.Capabilities.CompletionChat {
 			continue
 		}
-		lower := strings.ToLower(m.ID)
-		if strings.Contains(lower, "embed") || strings.Contains(lower, "moderation") {
+		matched := false
+		for _, prefix := range wantPrefixes {
+			if m.ID == prefix {
+				matched = true
+				break
+			}
+		}
+		if !matched {
 			continue
 		}
 		models = append(models, Model{
 			ID:          m.ID,
 			DisplayName: m.ID,
+			Provider:    "mistral",
 		})
 	}
 	return models, nil
@@ -234,6 +265,7 @@ func (r *Registry) fetchApertureModels(ctx context.Context) ([]Model, error) {
 		models = append(models, Model{
 			ID:          m.ID,
 			DisplayName: m.ID,
+			Provider:    "aperture",
 		})
 	}
 	return models, nil
