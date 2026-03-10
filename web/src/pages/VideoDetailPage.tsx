@@ -11,6 +11,7 @@ export default function VideoDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showTranscript, setShowTranscript] = useState(false);
+  const [showActions, setShowActions] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [resumLang, setResumLang] = useState("");
   const [resumProvider, setResumProvider] = useState("");
@@ -239,93 +240,6 @@ export default function VideoDetailPage() {
         </div>
       )}
 
-      {/* Resummarize */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-sm text-zinc-500">Resummarize:</span>
-        {providers && providers.providers.length > 1 && (
-          <select
-            value={resumProvider}
-            onChange={(e) => setResumProvider(e.target.value)}
-            className="px-2 py-1.5 text-sm bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md border-none focus:ring-2 focus:ring-cyan-500/50"
-          >
-            <option value="">Default ({providers.default})</option>
-            {providers.providers.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        )}
-        <select
-          value={resumLang}
-          onChange={(e) => setResumLang(e.target.value)}
-          className="px-2 py-1.5 text-sm bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md border-none focus:ring-2 focus:ring-cyan-500/50"
-        >
-          <option value="">Auto ({video.language || "?"})</option>
-          <option value="de">Deutsch</option>
-          <option value="en">English</option>
-          <option value="fr">Français</option>
-          <option value="es">Español</option>
-        </select>
-        {["medium", "deep"].map((level) => (
-          <button
-            key={level}
-            disabled={resummarize.isPending}
-            onClick={() => resummarize.mutate(level)}
-            className="px-3 py-1.5 text-sm bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50"
-          >
-            {level}
-          </button>
-        ))}
-        {resummarize.isPending && (
-          <span className="text-sm text-zinc-500">Processing...</span>
-        )}
-        {resummarize.isSuccess && (
-          <span className="text-sm text-emerald-500">Done!</span>
-        )}
-        {resummarize.isError && (
-          <span className="text-sm text-red-500">
-            {(resummarize.error as Error).message}
-          </span>
-        )}
-      </div>
-
-      {/* Delete */}
-      <div className="flex items-center gap-3">
-        {!confirmDelete ? (
-          <button
-            onClick={() => setConfirmDelete(true)}
-            className="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 border border-red-300 dark:border-red-900/50 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-          >
-            Delete video
-          </button>
-        ) : (
-          <>
-            <span className="text-sm text-red-600 dark:text-red-400">
-              Are you sure?
-            </span>
-            <button
-              onClick={() => del.mutate()}
-              disabled={del.isPending}
-              className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-500 transition-colors disabled:opacity-50"
-            >
-              {del.isPending ? "Deleting..." : "Yes, delete"}
-            </button>
-            <button
-              onClick={() => setConfirmDelete(false)}
-              className="px-3 py-1.5 text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
-            >
-              Cancel
-            </button>
-          </>
-        )}
-        {del.isError && (
-          <span className="text-sm text-red-500">
-            {(del.error as Error).message}
-          </span>
-        )}
-      </div>
-
       {/* Transcript */}
       {video.transcript && (
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg">
@@ -349,6 +263,107 @@ export default function VideoDetailPage() {
           )}
         </div>
       )}
+
+      {/* Actions */}
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg">
+        <button
+          onClick={() => setShowActions(!showActions)}
+          className="w-full px-6 py-4 flex items-center justify-between text-left"
+        >
+          <h3 className="font-medium text-zinc-900 dark:text-zinc-100">Actions</h3>
+          <span className="text-zinc-400 text-sm">{showActions ? "Hide" : "Show"}</span>
+        </button>
+        {showActions && (
+          <div className="px-6 pb-6 space-y-4">
+            {/* Resummarize */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-sm text-zinc-500">Resummarize:</span>
+              {providers && providers.providers.length > 1 && (
+                <select
+                  value={resumProvider}
+                  onChange={(e) => setResumProvider(e.target.value)}
+                  className="px-2 py-1.5 text-sm bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md border-none focus:ring-2 focus:ring-cyan-500/50"
+                >
+                  <option value="">Default ({providers.default})</option>
+                  {providers.providers.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <select
+                value={resumLang}
+                onChange={(e) => setResumLang(e.target.value)}
+                className="px-2 py-1.5 text-sm bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md border-none focus:ring-2 focus:ring-cyan-500/50"
+              >
+                <option value="">Auto ({video.language || "?"})</option>
+                <option value="de">Deutsch</option>
+                <option value="en">English</option>
+                <option value="fr">Français</option>
+                <option value="es">Español</option>
+              </select>
+              {["medium", "deep"].map((level) => (
+                <button
+                  key={level}
+                  disabled={resummarize.isPending}
+                  onClick={() => resummarize.mutate(level)}
+                  className="px-3 py-1.5 text-sm bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50"
+                >
+                  {level}
+                </button>
+              ))}
+              {resummarize.isPending && (
+                <span className="text-sm text-zinc-500">Processing...</span>
+              )}
+              {resummarize.isSuccess && (
+                <span className="text-sm text-emerald-500">Done!</span>
+              )}
+              {resummarize.isError && (
+                <span className="text-sm text-red-500">
+                  {(resummarize.error as Error).message}
+                </span>
+              )}
+            </div>
+
+            {/* Delete */}
+            <div className="flex items-center gap-3">
+              {!confirmDelete ? (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 border border-red-300 dark:border-red-900/50 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                >
+                  Delete video
+                </button>
+              ) : (
+                <>
+                  <span className="text-sm text-red-600 dark:text-red-400">
+                    Are you sure?
+                  </span>
+                  <button
+                    onClick={() => del.mutate()}
+                    disabled={del.isPending}
+                    className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-500 transition-colors disabled:opacity-50"
+                  >
+                    {del.isPending ? "Deleting..." : "Yes, delete"}
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete(false)}
+                    className="px-3 py-1.5 text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
+              {del.isError && (
+                <span className="text-sm text-red-500">
+                  {(del.error as Error).message}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
