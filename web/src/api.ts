@@ -159,6 +159,10 @@ export function retryVideo(
   return fetchJSON(`/api/v1/videos/${id}/retry`, { method: "POST" });
 }
 
+export function retryAllFailed(): Promise<{ retried: number }> {
+  return fetchJSON("/api/v1/videos/retry-all", { method: "POST" });
+}
+
 export interface ProvidersInfo {
   providers: string[];
   default: string;

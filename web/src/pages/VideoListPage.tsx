@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listVideos, searchVideos, submitVideo } from "../api.ts";
+import { listVideos, searchVideos, submitVideo, retryAllFailed } from "../api.ts";
 import VideoCard from "../components/VideoCard.tsx";
 import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
 
@@ -43,9 +43,17 @@ export default function VideoListPage() {
     },
   });
 
+  const retryAll = useMutation({
+    mutationFn: () => retryAllFailed(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["videos"] });
+    },
+  });
+
   const isSearching = query.length > 0;
   const isLoading = isSearching ? searchResult.isLoading : listResult.isLoading;
   const error = isSearching ? searchResult.error : listResult.error;
+  const failedCount = listResult.data?.videos.filter(v => v.status === "failed").length ?? 0;
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -121,6 +129,31 @@ export default function VideoListPage() {
       {submit.isError && (
         <div className="text-red-600 dark:text-red-400 text-sm bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-lg p-3">
           {(submit.error as Error).message}
+        </div>
+      )}
+
+      {!isSearching && failedCount > 0 && (
+        <div className="flex items-center justify-between bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-lg p-3">
+          <span className="text-red-600 dark:text-red-400 text-sm">
+            {failedCount} video{failedCount !== 1 ? "s" : ""} failed
+          </span>
+          <button
+            onClick={() => retryAll.mutate()}
+            disabled={retryAll.isPending}
+            className="px-3 py-1.5 bg-red-600 text-white rounded-md text-sm hover:bg-red-500 transition-colors disabled:opacity-50"
+          >
+            {retryAll.isPending ? "Retrying..." : "Retry All Failed"}
+          </button>
+        </div>
+      )}
+      {retryAll.isSuccess && (
+        <div className="text-emerald-600 dark:text-emerald-400 text-sm bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 rounded-lg p-3">
+          {retryAll.data.retried} video{retryAll.data.retried !== 1 ? "s" : ""} queued for retry.
+        </div>
+      )}
+      {retryAll.isError && (
+        <div className="text-red-600 dark:text-red-400 text-sm bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-lg p-3">
+          Retry all failed: {(retryAll.error as Error).message}
         </div>
       )}
 

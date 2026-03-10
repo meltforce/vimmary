@@ -6,29 +6,34 @@ Zwei Apps (Recall + Karakeep) nötig, um YouTube-Videos zu bookmarken und Summar
 
 ## Lösung
 
-Eigenständiger Go-Service, der per Karakeep-Webhook getriggert wird. Erstellt automatisch Transkripte und Summaries für gebookmarkte YouTube-Videos. Ergebnisse werden in pgvector gespeichert, per MCP durchsuchbar gemacht und nach Karakeep zurückgeschrieben.
+Eigenständiger Go-Service, der per Karakeep-Webhook oder Bulk-Import getriggert wird. Erstellt automatisch Transkripte und Summaries für gebookmarkte YouTube-Videos. Ergebnisse werden in pgvector gespeichert, per MCP + Web UI durchsuchbar gemacht und nach Karakeep zurückgeschrieben.
 
 ## Flow
 
 ```
 Karakeep ──webhook "created"──▶ vimmary
-                                  │
+                     oder                │
+Settings ──"Import bookmarks"──▶         │
                                   ▼
                            YouTube URL? ──nein──▶ ignorieren
                                   │ ja
                                   ▼
-                        Transkript holen
-                        (yt-dlp captions, Whisper fallback)
-                                  │
-                                  ▼
-                        Summary generieren (LLM)
-                                  │
-                        ┌─────────┼─────────┐
-                        ▼         ▼         ▼
-                   pgvector    Karakeep    Web UI
-                   speichern   updaten     anzeigen
-                               (note +
-                               tag)
+                        ┌── Processing Queue (10s Spacing) ──┐
+                        │                                     │
+                        ▼                                     │
+                  Transkript holen                            │
+                  (YouTube InnerTube API)                     │
+                        │                                     │
+                        ▼                                     │
+                  Summary generieren (LLM)                    │
+                        │                                     │
+              ┌─────────┼─────────┐                           │
+              ▼         ▼         ▼                           │
+         pgvector    Karakeep    Web UI                       │
+         speichern   updaten     anzeigen                     │
+                     (note +                                  │
+                     tag)                                     │
+                        └─────────────────────────────────────┘
 ```
 
 ## Architektur-Entscheidungen
@@ -39,34 +44,36 @@ Karakeep ──webhook "created"──▶ vimmary
 - Eigener Service ist am saubersten und fokussiertesten
 
 ### Shared Go Module (`meltkit`)
-- Gemeinsame Infrastruktur mit totalrecall wird in eigenes Repo extrahiert
-- Zentrale Go-Library für alle zukünftigen Services
-- Packages: pgvec, mistral, mcp, tsnet, setec, httpkit, …
-- Versioniert via Go modules, eigenes Repo (`github.com/…/meltkit`)
-- Services importieren nur benötigte Packages (`import "…/meltkit/pgvec"`)
+- Gemeinsame Infrastruktur mit totalrecall in eigenem Repo
+- Packages: `pkg/db`, `pkg/config`, `pkg/secrets`, `pkg/middleware`, `pkg/server`, `pkg/mcp`
+- Versioniert via Go modules (`github.com/meltforce/meltkit`)
 
 ### LLM-Provider konfigurierbar
-- Summaries: Mistral ODER Claude API — per Config wählbar
+- Summaries: Mistral ODER Claude API — per Config + per User wählbar
 - Embeddings: Mistral (`mistral-embed`, 1024-dim)
-- Default: Claude API für Summaries (bessere Qualität bei langen Transkripten), Mistral für Embeddings
+- Modelle: Dynamisch von Provider-APIs geladen, per User konfigurierbar
+
+### Processing Queue
+- Alle Video-Verarbeitung (Webhooks, Retries, Imports) läuft über eine zentrale Queue
+- 10s Mindestabstand zwischen YouTube API Calls um 429 Rate Limiting zu vermeiden
+- Buffered Channel (Kapazität 100), ein Worker
 
 ## Tech Stack
 
 | Komponente           | Technologie                                  |
 |----------------------|----------------------------------------------|
 | Sprache              | Go                                           |
-| HTTP                 | chi router                                   |
+| HTTP                 | chi router + meltkit server                  |
 | DB                   | PostgreSQL 16 + pgvector                     |
 | Embeddings           | Mistral (`mistral-embed`, 1024-dim)          |
 | Summary              | Claude API oder Mistral (konfigurierbar)     |
-| Auth                 | Tailscale tsnet                              |
-| Secrets              | setec                                        |
-| Transkript           | yt-dlp (YouTube Captions)                    |
-| Transkript-Fallback  | Whisper (faster-whisper oder API)             |
+| Auth                 | Tailscale tsnet (multi-user)                 |
+| Secrets              | setec (prod) → env vars → literal (dev)      |
+| Transkript           | YouTube InnerTube API (native Go library)    |
 | Search               | Hybrid: keyword + semantic mit RRF           |
 | MCP                  | mcp-go, mounted at `/mcp`                    |
-| Frontend             | Minimalistisches React/Vite (embedded in Go) |
-| Deploy               | Docker + Komodo                              |
+| Frontend             | React + Vite (embedded in Go binary)         |
+| Deploy               | Docker Compose + GitHub Actions CI/CD        |
 
 ## Datenmodell
 
@@ -75,7 +82,7 @@ videos (
   id                    UUID PRIMARY KEY,
   user_id               INTEGER REFERENCES users(id),
   karakeep_bookmark_id  TEXT,
-  youtube_id            TEXT UNIQUE,
+  youtube_id            TEXT,             -- UNIQUE(user_id, youtube_id)
   title                 TEXT,
   channel               TEXT,
   duration_seconds      INTEGER,
@@ -83,72 +90,108 @@ videos (
   transcript            TEXT,
   summary               TEXT,
   detail_level          TEXT DEFAULT 'medium',
+  summary_provider      TEXT,             -- "claude" oder "mistral"
+  summary_model         TEXT,             -- konkretes Modell
+  summary_input_tokens  INTEGER,
+  summary_output_tokens INTEGER,
   embedding             vector(1024),
-  metadata              JSONB,  -- {topics, action_items, key_points, tags}
+  metadata              JSONB,            -- {topics, action_items, key_points}
+  status                TEXT DEFAULT 'pending',  -- pending/processing/completed/failed
+  error_message         TEXT,
   created_at            TIMESTAMPTZ,
   updated_at            TIMESTAMPTZ
+)
+
+users (
+  id              SERIAL PRIMARY KEY,
+  tailscale_id    TEXT UNIQUE,
+  webhook_token   TEXT UNIQUE,            -- per-user Bearer Token für Webhooks
+  karakeep_api_key TEXT,                  -- per-user Karakeep API Key
+  claude_model    TEXT,                   -- bevorzugtes Claude-Modell
+  mistral_model   TEXT,                   -- bevorzugtes Mistral-Modell
+  summary_prompt_medium TEXT,             -- Custom Prompt (medium)
+  summary_prompt_deep   TEXT,             -- Custom Prompt (deep)
 )
 ```
 
 ## Karakeep-Integration
 
 ### Webhook (Eingang)
-- Event: `created` (neuer Bookmark)
-- Payload enthält `bookmarkId`, `url`, `type`, `operation`
-- Payload ist minimal — Details via Karakeep REST API nachladen
-- Auth: Bearer Token im `Authorization`-Header
+- Events: `created` (neuer Bookmark) und `deleted` (Bookmark gelöscht)
+- Auth: Per-user Bearer Token im `Authorization`-Header
+- Nur YouTube-URLs werden verarbeitet, Rest wird ignoriert
 
-### API (Rückschreiben)
-- Summary als `note` auf dem Bookmark speichern
-- Tag `video-summarized` setzen
-- Karakeep REST API direkt aus Go aufrufen (kein Python-Wrapper)
+### Bulk-Import
+- `POST /api/v1/settings/karakeep/import` — importiert alle bestehenden YouTube-Bookmarks
+- Paginiert über Karakeep API, filtert YouTube-URLs, queued neue Videos
+- Bereits verarbeitete Videos werden übersprungen (Bookmark-ID wird ggf. nachgetragen)
+
+### Writeback (Rückschreiben)
+- Summary als `note` auf dem Bookmark (plain text, Markdown gestrippt)
+- vimmary Detail-URL + Titel als Prefix
+- Tag `video-summarized` setzen (POST, additiv — preserves AI tags)
+- 30s Delay damit Karakeeps Crawler zuerst fertig wird
+
+### Backlink
+- Video-Detail zeigt "View in Karakeep" → `{base_url}/dashboard/preview/{bookmark_id}`
 
 ## Transkript-Strategie
 
-1. **YouTube Captions** (First Choice): `yt-dlp --write-auto-sub --sub-lang en,de --skip-download`
-   - Englisch: Sehr gute Qualität
-   - Deutsch: Brauchbar, Fehler bei Fachbegriffen möglich
-   - Manuell hochgeladene Untertitel: Perfekt, wenn vorhanden
-2. **Whisper** (Fallback): Nur wenn keine Captions existieren (selten bei YouTube)
+- **YouTube InnerTube API** via native Go-Library (`youtube-transcript-api-go`)
+- Konfigurierbare Sprach-Präferenzen (default: `en`, `de`)
+- Manuelle Untertitel bevorzugt vor auto-generierten
+- Kein Whisper-Fallback implementiert (bei YouTube selten nötig)
 
 ## Summary-Stufen
 
 | Stufe      | Beschreibung                                          | Trigger                          |
 |------------|-------------------------------------------------------|----------------------------------|
-| `medium`   | 3-5 Absätze, Key Points, Action Items                 | Automatisch bei Webhook          |
+| `medium`   | 3-5 Absätze, Key Points, Action Items                 | Automatisch bei Webhook/Import   |
 | `deep`     | Kapitelweise, Zitate, detaillierte Action Items       | Manuell via MCP-Tool oder Web UI |
 
 ## MCP Tools
 
-1. `search_videos` — Semantic Search über Transkripte und Summaries
+1. `search_videos` — Hybrid Search (keyword + semantic) über Summaries und Transkripte
 2. `get_video` — Einzelnes Video mit Transkript + Summary abrufen
-3. `resummarize` — Summary neu generieren mit anderem Detail-Level oder Provider
-4. `list_recent` — Letzte Videos mit Filtern (Kanal, Sprache, Topics)
-5. `stats` — Aggregierte Statistiken
+3. `resummarize` — Summary neu generieren mit anderem Detail-Level, Sprache oder Provider
+4. `list_recent` — Letzte Videos mit Filtern (Kanal, Sprache, Topics) + Pagination
+5. `stats` — Aggregierte Statistiken (Counts, Channels, Topics, Daily Activity)
 
 ## Web UI
 
-Minimalistisch, embedded in Go binary (React + Vite, wie totalrecall):
+React + Vite, embedded in Go binary:
 
-- **Video-Liste**: Letzte Videos mit Summary-Preview
+- **Video-Liste**: Letzte Videos mit Summary-Preview (Markdown gestrippt), Topics, Status
+  - Suchfeld (Hybrid Search)
+  - YouTube-URL direkt submitten
+  - Pagination
+  - Auto-Refresh bei processing Videos
 - **Detail-Ansicht**: Formatierte Markdown-Summary
-  - Button: "Copy as Markdown"
-  - Button: "Download as Markdown"
-  - Link zum Original-Video
-- **Direkt-URL**: `https://vimmary.…/video/{youtube_id}` → formatierte Summary-Anzeige
+  - Buttons: "Copy as Markdown", "Download .md"
+  - Links: "Watch on YouTube", "View in Karakeep"
+  - Key Points, Action Items, Topics
+  - Resummarize (Level, Sprache, Provider wählbar)
+  - Transcript (collapsible)
+  - Retry (bei Failed)
+- **Stats-Seite**: Counts, Top Channels, Top Topics, Daily Activity
+- **Settings-Seite**:
+  - Karakeep API Key + Import-Button
+  - Model-Auswahl (per Provider, dynamisch geladen)
+  - Custom Summary Prompts (medium + deep)
+  - Webhook-URL + Bearer Token (copy-paste ready)
 
 ## Deployment
 
-- Docker Compose (Go App + pgvector)
-- LXC-Container auf Proxmox
-- Tailscale-vernetzt
-- Komodo-managed
-- Secrets via setec
+- Docker Compose (Go App + pgvector) auf Proxmox LXC
+- Tailscale-vernetzt (`vimmary.leo-royal.ts.net`)
+- GitHub Actions CI/CD: Build → Test → Lint → Docker Push → SSH Deploy
+- Secrets via setec über Tailscale
+- Ansible-managed Config (`configuration/docker-stacks`)
 
 ## Repo-Struktur
 
 ```
-github.com/meltforce/meltkit        ← Shared Go Library (pgvec, mistral, mcp, tsnet, setec, httpkit)
+github.com/meltforce/meltkit        ← Shared Go Library (db, config, secrets, middleware, server, mcp)
 github.com/meltforce/totalrecall   ← Personal Knowledge System (importiert meltkit)
 github.com/meltforce/vimmary       ← YouTube Summary Service (importiert meltkit)
 ```
@@ -158,11 +201,3 @@ github.com/meltforce/vimmary       ← YouTube Summary Service (importiert meltk
 - Max. 10 Videos pro Tag, typischerweise weniger
 - Primär Englisch, manchmal Deutsch
 - Nur klassische Videos (Talks, Tutorials) — keine Livestreams, Shorts, Playlists
-
-## Offene Punkte (für Implementierung)
-
-- [ ] `meltkit` Repo aufsetzen, gemeinsamen Code aus totalrecall extrahieren
-- [ ] Whisper-Fallback: Lokaler Whisper oder API-basiert?
-- [ ] Summary-Prompts designen (medium + deep)
-- [ ] Karakeep Webhook in der UI registrieren
-- [ ] Entscheidung: Braucht die Web UI Suche, oder reicht MCP?

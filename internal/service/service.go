@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -32,6 +33,7 @@ type processJob struct {
 	userID     int
 	youtubeID  string
 	bookmarkID string
+	retryCount int
 }
 
 // Service contains all business logic for vimmary.
@@ -82,15 +84,65 @@ func New(
 	return s
 }
 
-// processWorker drains the queue sequentially with rate limiting to avoid YouTube 429s.
+// adaptiveDelay returns the rate-limit delay based on current queue depth.
+func (s *Service) adaptiveDelay() time.Duration {
+	depth := len(s.queue)
+	switch {
+	case depth >= 26:
+		return 45 * time.Second
+	case depth >= 11:
+		return 30 * time.Second
+	case depth >= 4:
+		return 20 * time.Second
+	default:
+		return 10 * time.Second
+	}
+}
+
+// retryBackoff returns the backoff duration for the given retry attempt (1-indexed).
+func retryBackoff(retry int) time.Duration {
+	switch retry {
+	case 1:
+		return 2 * time.Minute
+	case 2:
+		return 5 * time.Minute
+	default:
+		return 10 * time.Minute
+	}
+}
+
+const maxRetries = 3
+
+// processWorker drains the queue sequentially with adaptive rate limiting to avoid YouTube 429s.
 func (s *Service) processWorker() {
 	var last time.Time
 	for job := range s.queue {
-		if since := time.Since(last); since < 10*time.Second {
-			time.Sleep(10*time.Second - since)
+		delay := s.adaptiveDelay()
+		if since := time.Since(last); since < delay {
+			time.Sleep(delay - since)
 		}
 		if err := s.ProcessVideo(context.Background(), job.userID, job.youtubeID, job.bookmarkID); err != nil {
-			s.log.Error("video processing failed", "youtube_id", job.youtubeID, "error", err)
+			s.log.Error("video processing failed", "youtube_id", job.youtubeID, "retry", job.retryCount, "error", err)
+
+			// Auto-retry transcript fetch failures with backoff
+			if job.retryCount < maxRetries && strings.Contains(err.Error(), "transcript fetch failed") {
+				nextRetry := job.retryCount + 1
+				backoff := retryBackoff(nextRetry)
+				s.log.Info("scheduling retry for video", "youtube_id", job.youtubeID, "retry", nextRetry, "delay", backoff)
+				retryJob := processJob{
+					userID:     job.userID,
+					youtubeID:  job.youtubeID,
+					bookmarkID: job.bookmarkID,
+					retryCount: nextRetry,
+				}
+				time.AfterFunc(backoff, func() {
+					select {
+					case s.queue <- retryJob:
+					default:
+						s.log.Warn("queue full, dropping retry", "youtube_id", retryJob.youtubeID, "retry", retryJob.retryCount)
+					}
+				})
+			}
 		}
 		last = time.Now()
 	}
@@ -152,6 +204,22 @@ func (s *Service) RetryVideo(ctx context.Context, userID int, id uuid.UUID) erro
 	}
 	s.ProcessVideoAsync(userID, video.YouTubeID, video.KarakeepBookmarkID)
 	return nil
+}
+
+// RetryAllFailed resets all failed videos for a user and re-enqueues them.
+func (s *Service) RetryAllFailed(ctx context.Context, userID int) (int, error) {
+	videos, err := s.db.ListFailedVideos(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("list failed videos: %w", err)
+	}
+	for _, v := range videos {
+		if err := s.db.UpdateVideoStatus(ctx, v.ID, "pending", ""); err != nil {
+			s.log.Warn("failed to reset video status", "video_id", v.ID, "error", err)
+			continue
+		}
+		s.ProcessVideoAsync(userID, v.YouTubeID, v.KarakeepBookmarkID)
+	}
+	return len(videos), nil
 }
 
 // GetWebhookInfo returns the webhook URL and token for a user.
