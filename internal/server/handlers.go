@@ -121,6 +121,7 @@ func (s *Server) handleResummarize(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Level    string `json:"level"`
 		Language string `json:"language"`
+		Provider string `json:"provider"`
 	}
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&body)
@@ -129,7 +130,7 @@ func (s *Server) handleResummarize(w http.ResponseWriter, r *http.Request) {
 		body.Level = "deep"
 	}
 
-	if err := s.svc.ResummarizeAsync(uid, id, body.Level, body.Language); err != nil {
+	if err := s.svc.ResummarizeAsync(uid, id, body.Level, body.Language, body.Provider); err != nil {
 		if err == pgx.ErrNoRows {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "video not found"})
 			return
@@ -293,6 +294,141 @@ func (s *Server) handleSetKarakeepKey(w http.ResponseWriter, r *http.Request) {
 	if err := s.svc.SetKarakeepAPIKey(r.Context(), uid, body.APIKey); err != nil {
 		s.log.Error("set karakeep key failed", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save key"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
+}
+
+func (s *Server) handleGetPrompts(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	info, err := s.svc.GetSummaryPrompts(r.Context(), uid)
+	if err != nil {
+		s.log.Error("get prompts failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get prompts"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, info)
+}
+
+func (s *Server) handleSetPrompt(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	var body struct {
+		Level  string `json:"level"`
+		Prompt string `json:"prompt"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Level == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "level is required"})
+		return
+	}
+
+	if err := s.svc.SetSummaryPrompt(r.Context(), uid, body.Level, body.Prompt); err != nil {
+		s.log.Error("set prompt failed", "error", err)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
+}
+
+func (s *Server) handleGetProviders(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	claude, mistral, _ := s.svc.GetModelPreferences(r.Context(), uid)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"providers": s.svc.AvailableProviders(),
+		"default":   s.svc.DefaultProvider(),
+		"models": map[string]string{
+			"claude":  claude,
+			"mistral": mistral,
+		},
+	})
+}
+
+func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	provider := r.URL.Query().Get("provider")
+	if provider == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provider parameter is required"})
+		return
+	}
+
+	models, err := s.svc.ListModels(r.Context(), provider)
+	if err != nil {
+		s.log.Error("list models failed", "provider", provider, "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list models"})
+		return
+	}
+
+	claudeModel, mistralModel, _ := s.svc.GetModelPreferences(r.Context(), uid)
+	var sel string
+	switch provider {
+	case "claude":
+		sel = claudeModel
+	case "mistral":
+		sel = mistralModel
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"models":   models,
+		"selected": sel,
+	})
+}
+
+func (s *Server) handleGetModelPreferences(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	claude, mistral, err := s.svc.GetModelPreferences(r.Context(), uid)
+	if err != nil {
+		s.log.Error("get model preferences failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get model preferences"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"claude":  claude,
+		"mistral": mistral,
+	})
+}
+
+func (s *Server) handleSetModel(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	var body struct {
+		Provider string `json:"provider"`
+		Model    string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Provider == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provider is required"})
+		return
+	}
+
+	if err := s.svc.SetModelPreference(r.Context(), uid, body.Provider, body.Model); err != nil {
+		s.log.Error("set model failed", "error", err)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 

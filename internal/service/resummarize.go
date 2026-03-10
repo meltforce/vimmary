@@ -9,7 +9,7 @@ import (
 )
 
 // ResummarizeAsync starts resummarization in a background goroutine.
-func (s *Service) ResummarizeAsync(userID int, videoID uuid.UUID, level, language string) error {
+func (s *Service) ResummarizeAsync(userID int, videoID uuid.UUID, level, language, provider string) error {
 	ctx := context.Background()
 
 	// Validate video exists and has transcript before going async
@@ -27,7 +27,7 @@ func (s *Service) ResummarizeAsync(userID int, videoID uuid.UUID, level, languag
 	}
 
 	go func() {
-		if err := s.Resummarize(context.Background(), userID, videoID, level, language); err != nil {
+		if err := s.Resummarize(context.Background(), userID, videoID, level, language, provider); err != nil {
 			s.log.Error("resummarize failed", "video_id", videoID, "error", err)
 			_ = s.db.UpdateVideoStatus(context.Background(), videoID, "failed", err.Error())
 		}
@@ -36,7 +36,7 @@ func (s *Service) ResummarizeAsync(userID int, videoID uuid.UUID, level, languag
 }
 
 // Resummarize regenerates the summary for a video with a new detail level.
-func (s *Service) Resummarize(ctx context.Context, userID int, videoID uuid.UUID, level, language string) error {
+func (s *Service) Resummarize(ctx context.Context, userID int, videoID uuid.UUID, level, language, provider string) error {
 	if level == "" {
 		level = "deep"
 	}
@@ -57,7 +57,13 @@ func (s *Service) Resummarize(ctx context.Context, userID int, videoID uuid.UUID
 	}
 
 	// Generate new summary
-	sum, err := s.summarizer.Summarize(ctx, video.Title, video.Transcript, level, lang)
+	summarizer, providerName, err := s.getSummarizer(provider)
+	if err != nil {
+		return fmt.Errorf("get summarizer: %w", err)
+	}
+	model := s.getModelForProvider(ctx, userID, providerName)
+	customPrompt := s.getUserPrompt(ctx, userID, level)
+	sum, err := summarizer.Summarize(ctx, video.Title, video.Transcript, level, lang, customPrompt, model)
 	if err != nil {
 		return fmt.Errorf("generate summary: %w", err)
 	}
@@ -79,7 +85,7 @@ func (s *Service) Resummarize(ctx context.Context, userID int, videoID uuid.UUID
 		return fmt.Errorf("marshal metadata: %w", err)
 	}
 
-	if err := s.db.UpdateVideoSummary(ctx, videoID, sum.Text, level, embedding, metaJSON); err != nil {
+	if err := s.db.UpdateVideoSummary(ctx, videoID, sum.Text, level, providerName, model, sum.Usage.InputTokens, sum.Usage.OutputTokens, embedding, metaJSON); err != nil {
 		return fmt.Errorf("update summary: %w", err)
 	}
 

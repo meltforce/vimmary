@@ -32,11 +32,14 @@ server:
 	}
 
 	// Check defaults
-	if cfg.Search.DefaultThreshold != 0.3 {
-		t.Errorf("SearchConfig.DefaultThreshold = %f, want 0.3", cfg.Search.DefaultThreshold)
+	if cfg.Search.DefaultThreshold != 0.5 {
+		t.Errorf("SearchConfig.DefaultThreshold = %f, want 0.5", cfg.Search.DefaultThreshold)
 	}
 	if cfg.Search.DefaultLimit != 10 {
 		t.Errorf("SearchConfig.DefaultLimit = %d, want 10", cfg.Search.DefaultLimit)
+	}
+	if cfg.Search.ScoreCutoffRatio != 0.5 {
+		t.Errorf("SearchConfig.ScoreCutoffRatio = %f, want 0.5", cfg.Search.ScoreCutoffRatio)
 	}
 	if cfg.Summary.Provider != "claude" {
 		t.Errorf("SummaryConfig.Provider = %q, want %q", cfg.Summary.Provider, "claude")

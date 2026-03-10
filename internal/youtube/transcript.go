@@ -3,6 +3,7 @@ package youtube
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -17,7 +18,28 @@ func (c *Client) FetchTranscript(_ context.Context, youtubeID string) (*Transcri
 		return nil, fmt.Errorf("no transcripts available for %s", youtubeID)
 	}
 
-	// Use the first available transcript (ordered by subLangs preference)
+	// The library returns transcripts in non-deterministic order (goroutines).
+	// Re-sort by subLangs preference, preferring manual over auto-generated.
+	langRank := make(map[string]int, len(c.subLangs))
+	for i, lang := range c.subLangs {
+		langRank[lang] = i
+	}
+	sort.SliceStable(transcripts, func(i, j int) bool {
+		ri, oki := langRank[transcripts[i].LanguageCode]
+		rj, okj := langRank[transcripts[j].LanguageCode]
+		if !oki {
+			ri = len(c.subLangs)
+		}
+		if !okj {
+			rj = len(c.subLangs)
+		}
+		if ri != rj {
+			return ri < rj
+		}
+		// Same language: prefer manual over auto-generated
+		return !transcripts[i].IsGenerated && transcripts[j].IsGenerated
+	})
+
 	t := transcripts[0]
 
 	var lines []string

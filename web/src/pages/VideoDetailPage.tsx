@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
-import { getVideo, resummarizeVideo, deleteVideo } from "../api.ts";
-import { formatDuration, videoToMarkdown } from "../utils.ts";
+import { getVideo, resummarizeVideo, deleteVideo, fetchProviders } from "../api.ts";
+import { formatDuration, formatTokens, videoToMarkdown } from "../utils.ts";
 import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
 
 export default function VideoDetailPage() {
@@ -13,6 +13,12 @@ export default function VideoDetailPage() {
   const [showTranscript, setShowTranscript] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [resumLang, setResumLang] = useState("");
+  const [resumProvider, setResumProvider] = useState("");
+
+  const { data: providers } = useQuery({
+    queryKey: ["providers"],
+    queryFn: fetchProviders,
+  });
 
   const { data: video, isLoading, error } = useQuery({
     queryKey: ["video", id],
@@ -28,7 +34,7 @@ export default function VideoDetailPage() {
   });
 
   const resummarize = useMutation({
-    mutationFn: (level: string) => resummarizeVideo(id!, level, resumLang || undefined),
+    mutationFn: (level: string) => resummarizeVideo(id!, level, resumLang || undefined, resumProvider || undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["video", id] });
     },
@@ -124,6 +130,17 @@ export default function VideoDetailPage() {
             <span className="px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 rounded text-xs">
               {video.detail_level}
             </span>
+            {video.summary_provider && (
+              <span className="px-2 py-0.5 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 rounded text-xs">
+                {video.summary_provider}
+                {video.summary_model && ` · ${video.summary_model}`}
+              </span>
+            )}
+            {(video.summary_input_tokens ?? 0) > 0 && (
+              <span className="px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 rounded text-xs">
+                {formatTokens(video.summary_input_tokens!)} in · {formatTokens(video.summary_output_tokens!)} out
+              </span>
+            )}
             {isProcessing && (
               <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded text-xs">
                 {video.status}...
@@ -225,6 +242,20 @@ export default function VideoDetailPage() {
       {/* Resummarize */}
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-sm text-zinc-500">Resummarize:</span>
+        {providers && providers.providers.length > 1 && (
+          <select
+            value={resumProvider}
+            onChange={(e) => setResumProvider(e.target.value)}
+            className="px-2 py-1.5 text-sm bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md border-none focus:ring-2 focus:ring-cyan-500/50"
+          >
+            <option value="">Default ({providers.default})</option>
+            {providers.providers.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        )}
         <select
           value={resumLang}
           onChange={(e) => setResumLang(e.target.value)}

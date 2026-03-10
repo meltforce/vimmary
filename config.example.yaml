@@ -16,6 +16,7 @@ tailscale:
 search:
   default_threshold: 0.3
   default_limit: 10
+  score_cutoff_ratio: 0.5
 
 summary:
   provider: "claude"        # "claude" or "mistral"

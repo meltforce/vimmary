@@ -34,7 +34,7 @@ type mockSummarizer struct {
 	err     error
 }
 
-func (m *mockSummarizer) Summarize(_ context.Context, _, _, _, _ string) (*summary.Summary, error) {
+func (m *mockSummarizer) Summarize(_ context.Context, _, _, _, _, _, _ string) (*summary.Summary, error) {
 	return m.summary, m.err
 }
 
@@ -192,13 +192,15 @@ func TestNewService(t *testing.T) {
 	summarizer := &mockSummarizer{summary: &summary.Summary{Text: "test"}}
 
 	svc := New(
-		nil, // db - nil is OK for construction
-		summarizer,
+		nil, // db
+		map[string]summary.Summarizer{"claude": summarizer},
+		"claude",
+		nil, // registry
 		nil, // yt client
 		"https://karakeep.example.com",
 		"https://vimmary.example.com",
 		embedder,
-		config.SearchConfig{DefaultThreshold: 0.3, DefaultLimit: 10},
+		config.SearchConfig{DefaultThreshold: 0.3, DefaultLimit: 10, ScoreCutoffRatio: 0.5},
 		config.SummaryConfig{DefaultLevel: "medium"},
 		slog.Default(),
 	)

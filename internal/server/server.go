@@ -44,6 +44,8 @@ func (s *Server) routes() {
 		r.Delete("/api/v1/videos/{id}", s.handleDeleteVideo)
 		r.Post("/api/v1/videos/{id}/resummarize", s.handleResummarize)
 		r.Post("/api/v1/videos/{id}/retry", s.handleRetryVideo)
+		r.Get("/api/v1/config/providers", s.handleGetProviders)
+		r.Get("/api/v1/config/models", s.handleListModels)
 		r.Get("/api/v1/search", s.handleSearch)
 		r.Get("/api/v1/stats", s.handleStats)
 
@@ -51,6 +53,10 @@ func (s *Server) routes() {
 		r.Get("/api/v1/settings/webhook", s.handleGetWebhook)
 		r.Get("/api/v1/settings/karakeep", s.handleGetKarakeepStatus)
 		r.Put("/api/v1/settings/karakeep", s.handleSetKarakeepKey)
+		r.Get("/api/v1/settings/models", s.handleGetModelPreferences)
+		r.Put("/api/v1/settings/model", s.handleSetModel)
+		r.Get("/api/v1/settings/prompts", s.handleGetPrompts)
+		r.Put("/api/v1/settings/prompts", s.handleSetPrompt)
 	})
 }
 
