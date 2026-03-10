@@ -10,19 +10,23 @@ import (
 	"time"
 )
 
-const claudeAPIURL = "https://api.anthropic.com/v1/messages"
-
 // ClaudeSummarizer uses the Anthropic API for summary generation.
 type ClaudeSummarizer struct {
-	apiKey string
-	http   *http.Client
+	apiKey  string
+	baseURL string
+	http    *http.Client
 }
 
 // NewClaudeSummarizer creates a Claude-based summarizer.
-func NewClaudeSummarizer(apiKey string) *ClaudeSummarizer {
+// If baseURL is empty, defaults to the Anthropic API.
+func NewClaudeSummarizer(apiKey, baseURL string) *ClaudeSummarizer {
+	if baseURL == "" {
+		baseURL = "https://api.anthropic.com"
+	}
 	return &ClaudeSummarizer{
-		apiKey: apiKey,
-		http:   &http.Client{Timeout: 5 * time.Minute},
+		apiKey:  apiKey,
+		baseURL: baseURL,
+		http:    &http.Client{Timeout: 5 * time.Minute},
 	}
 }
 
@@ -50,7 +54,7 @@ func (c *ClaudeSummarizer) Summarize(ctx context.Context, title, transcript, lev
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", claudeAPIURL, bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/v1/messages", bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}

@@ -34,13 +34,17 @@ type Registry struct {
 }
 
 // NewRegistry creates a model registry with API keys for each provider.
-func NewRegistry(claudeAPIKey, mistralAPIKey string, log *slog.Logger) *Registry {
+// For aperture, pass the base URL instead of an API key.
+func NewRegistry(claudeAPIKey, mistralAPIKey, apertureBaseURL string, log *slog.Logger) *Registry {
 	keys := make(map[string]string)
 	if claudeAPIKey != "" {
 		keys["claude"] = claudeAPIKey
 	}
 	if mistralAPIKey != "" {
 		keys["mistral"] = mistralAPIKey
+	}
+	if apertureBaseURL != "" {
+		keys["aperture"] = apertureBaseURL
 	}
 	return &Registry{
 		cache:    make(map[string]*cachedModels),
@@ -88,6 +92,8 @@ func (r *Registry) fetchModels(ctx context.Context, provider string) ([]Model, e
 		return r.fetchClaudeModels(ctx)
 	case "mistral":
 		return r.fetchMistralModels(ctx)
+	case "aperture":
+		return r.fetchApertureModels(ctx)
 	default:
 		return nil, fmt.Errorf("unknown provider: %q", provider)
 	}
@@ -175,6 +181,53 @@ func (r *Registry) fetchMistralModels(ctx context.Context) ([]Model, error) {
 			continue
 		}
 		lower := strings.ToLower(m.ID)
+		if strings.Contains(lower, "embed") || strings.Contains(lower, "moderation") {
+			continue
+		}
+		models = append(models, Model{
+			ID:          m.ID,
+			DisplayName: m.ID,
+		})
+	}
+	return models, nil
+}
+
+func (r *Registry) fetchApertureModels(ctx context.Context) ([]Model, error) {
+	baseURL := r.apiKeys["aperture"]
+	req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/v1/models", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := r.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("aperture models API: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("aperture models API %d: %s", resp.StatusCode, string(body))
+	}
+
+	// OpenAI-compatible model list response
+	var result struct {
+		Data []struct {
+			ID      string `json:"id"`
+			OwnedBy string `json:"owned_by"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parse aperture models: %w", err)
+	}
+
+	var models []Model
+	for _, m := range result.Data {
+		lower := strings.ToLower(m.ID)
+		// Filter to chat models — skip embedding and moderation models
 		if strings.Contains(lower, "embed") || strings.Contains(lower, "moderation") {
 			continue
 		}
