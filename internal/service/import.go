@@ -68,7 +68,7 @@ func (s *Service) ImportKarakeepBookmarks(ctx context.Context, userID int) (*Imp
 		go func() {
 			for i, item := range toProcess {
 				if i > 0 {
-					time.Sleep(2 * time.Second)
+					time.Sleep(10 * time.Second)
 				}
 				if err := s.ProcessVideo(context.Background(), userID, item.youtubeID, item.bookmarkID); err != nil {
 					s.log.Error("import: video processing failed", "youtube_id", item.youtubeID, "error", err)
