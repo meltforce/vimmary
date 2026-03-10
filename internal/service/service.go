@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/meltforce/vimmary/internal/config"
@@ -26,6 +27,13 @@ type Embedder interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
+// processJob represents a video processing request queued for rate-limited execution.
+type processJob struct {
+	userID     int
+	youtubeID  string
+	bookmarkID string
+}
+
 // Service contains all business logic for vimmary.
 type Service struct {
 	db              *storage.DB
@@ -39,6 +47,7 @@ type Service struct {
 	searchCfg       config.SearchConfig
 	summaryCfg      config.SummaryConfig
 	log             *slog.Logger
+	queue           chan processJob
 }
 
 // New creates a new Service.
@@ -55,7 +64,7 @@ func New(
 	summaryCfg config.SummaryConfig,
 	log *slog.Logger,
 ) *Service {
-	return &Service{
+	s := &Service{
 		db:              db,
 		summarizers:     summarizers,
 		defaultProvider: defaultProvider,
@@ -67,6 +76,23 @@ func New(
 		searchCfg:       searchCfg,
 		summaryCfg:      summaryCfg,
 		log:             log,
+		queue:           make(chan processJob, 100),
+	}
+	go s.processWorker()
+	return s
+}
+
+// processWorker drains the queue sequentially with rate limiting to avoid YouTube 429s.
+func (s *Service) processWorker() {
+	var last time.Time
+	for job := range s.queue {
+		if since := time.Since(last); since < 10*time.Second {
+			time.Sleep(10*time.Second - since)
+		}
+		if err := s.ProcessVideo(context.Background(), job.userID, job.youtubeID, job.bookmarkID); err != nil {
+			s.log.Error("video processing failed", "youtube_id", job.youtubeID, "error", err)
+		}
+		last = time.Now()
 	}
 }
 

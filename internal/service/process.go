@@ -32,14 +32,14 @@ func stripMarkdown(s string) string {
 	return strings.TrimSpace(s)
 }
 
-// ProcessVideoAsync starts video processing in a background goroutine.
+// ProcessVideoAsync enqueues a video for background processing.
+// All jobs go through a single rate-limited worker to avoid YouTube 429s.
 func (s *Service) ProcessVideoAsync(userID int, youtubeID, bookmarkID string) {
-	go func() {
-		ctx := context.Background()
-		if err := s.ProcessVideo(ctx, userID, youtubeID, bookmarkID); err != nil {
-			s.log.Error("video processing failed", "youtube_id", youtubeID, "error", err)
-		}
-	}()
+	select {
+	case s.queue <- processJob{userID: userID, youtubeID: youtubeID, bookmarkID: bookmarkID}:
+	default:
+		s.log.Warn("processing queue full, dropping job", "youtube_id", youtubeID)
+	}
 }
 
 // ProcessVideo fetches transcript, generates summary, creates embedding, stores in DB,
