@@ -381,15 +381,13 @@ func (s *Server) handleGetProviders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claude, mistral, _ := s.svc.GetModelPreferences(r.Context(), uid)
+	prefProvider, prefModel, _ := s.svc.GetModelPreference(r.Context(), uid)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"providers": s.svc.AvailableProviders(),
 		"default":   s.svc.DefaultProvider(),
-		"models": map[string]string{
-			"claude":  claude,
-			"mistral": mistral,
-		},
+		"selected_provider": prefProvider,
+		"selected_model":    prefModel,
 	})
 }
 
@@ -399,31 +397,13 @@ func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider := r.URL.Query().Get("provider")
-	if provider == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provider parameter is required"})
-		return
-	}
-
-	models, err := s.svc.ListModels(r.Context(), provider)
-	if err != nil {
-		s.log.Error("list models failed", "provider", provider, "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list models"})
-		return
-	}
-
-	claudeModel, mistralModel, _ := s.svc.GetModelPreferences(r.Context(), uid)
-	var sel string
-	switch provider {
-	case "claude":
-		sel = claudeModel
-	case "mistral":
-		sel = mistralModel
-	}
+	allModels := s.svc.ListAllModels(r.Context())
+	prefProvider, prefModel, _ := s.svc.GetModelPreference(r.Context(), uid)
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"models":   models,
-		"selected": sel,
+		"models":            allModels,
+		"selected_provider": prefProvider,
+		"selected_model":    prefModel,
 	})
 }
 
@@ -433,7 +413,7 @@ func (s *Server) handleGetModelPreferences(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	claude, mistral, err := s.svc.GetModelPreferences(r.Context(), uid)
+	provider, model, err := s.svc.GetModelPreference(r.Context(), uid)
 	if err != nil {
 		s.log.Error("get model preferences failed", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get model preferences"})
@@ -441,8 +421,8 @@ func (s *Server) handleGetModelPreferences(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{
-		"claude":  claude,
-		"mistral": mistral,
+		"provider": provider,
+		"model":    model,
 	})
 }
 
@@ -456,8 +436,8 @@ func (s *Server) handleSetModel(w http.ResponseWriter, r *http.Request) {
 		Provider string `json:"provider"`
 		Model    string `json:"model"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Provider == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provider is required"})
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
 		return
 	}
 

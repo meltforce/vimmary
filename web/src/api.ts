@@ -166,17 +166,20 @@ export function retryAllFailed(): Promise<{ retried: number }> {
 export interface ProvidersInfo {
   providers: string[];
   default: string;
-  models: Record<string, string>;
+  selected_provider: string;
+  selected_model: string;
 }
 
 export interface ModelInfo {
   id: string;
   display_name: string;
+  provider: string;
 }
 
 export interface ModelsResponse {
   models: ModelInfo[];
-  selected: string;
+  selected_provider: string;
+  selected_model: string;
 }
 
 export function fetchProviders(): Promise<ProvidersInfo> {
@@ -248,12 +251,8 @@ export function setSummaryPrompt(
   });
 }
 
-export function fetchModels(provider: string): Promise<ModelsResponse> {
-  return fetchJSON(`/api/v1/config/models?provider=${encodeURIComponent(provider)}`);
-}
-
-export function fetchModelPreferences(): Promise<Record<string, string>> {
-  return fetchJSON("/api/v1/settings/models");
+export function fetchModels(): Promise<ModelsResponse> {
+  return fetchJSON("/api/v1/config/models");
 }
 
 export function setModel(

@@ -11,7 +11,7 @@ import {
   fetchModels,
   setModel,
 } from "../api.ts";
-import type { ModelInfo } from "../api.ts";
+import type { ModelInfo, ModelsResponse } from "../api.ts";
 import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
 
 function CopyButton({ text }: { text: string }) {
@@ -113,38 +113,49 @@ function PromptEditor({
   );
 }
 
-function ModelSelector({ provider }: { provider: string }) {
+function ModelSelector() {
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["models", provider],
-    queryFn: () => fetchModels(provider),
+  const { data, isLoading } = useQuery<ModelsResponse>({
+    queryKey: ["models"],
+    queryFn: () => fetchModels(),
   });
 
   const [selected, setSelected] = useState<string | null>(null);
 
-  // Sync selected state when data loads
-  const currentSelected = data?.selected ?? "";
-  const displaySelected = selected ?? currentSelected;
+  // Current selection as "provider:model" or ""
+  const currentKey = data?.selected_provider && data?.selected_model
+    ? `${data.selected_provider}:${data.selected_model}`
+    : "";
+  const displaySelected = selected ?? currentKey;
 
   const save = useMutation({
-    mutationFn: (model: string) => setModel(provider, model),
+    mutationFn: (key: string) => {
+      if (!key) return setModel("", "");
+      const [provider, ...rest] = key.split(":");
+      return setModel(provider, rest.join(":"));
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["models", provider] });
+      queryClient.invalidateQueries({ queryKey: ["models"] });
       queryClient.invalidateQueries({ queryKey: ["providers"] });
     },
   });
 
-  const hasChanges = displaySelected !== currentSelected;
+  const hasChanges = displaySelected !== currentKey;
 
   if (isLoading) return <div className="text-sm text-zinc-500">Loading models...</div>;
   if (!data?.models?.length) return <div className="text-sm text-zinc-500">No models available</div>;
 
+  // Group models by provider
+  const byProvider = new Map<string, ModelInfo[]>();
+  for (const m of data.models as ModelInfo[]) {
+    const list = byProvider.get(m.provider) || [];
+    list.push(m);
+    byProvider.set(m.provider, list);
+  }
+
   return (
     <div className="space-y-2">
-      <label className="text-sm font-medium text-zinc-600 dark:text-zinc-400 capitalize">
-        {provider}
-      </label>
       <div className="flex gap-2">
         <select
           value={displaySelected}
@@ -152,10 +163,14 @@ function ModelSelector({ provider }: { provider: string }) {
           className="flex-1 px-3 py-2 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
         >
           <option value="">Provider default</option>
-          {(data.models as ModelInfo[]).map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.display_name || m.id}
-            </option>
+          {[...byProvider.entries()].map(([provider, models]) => (
+            <optgroup key={provider} label={provider.charAt(0).toUpperCase() + provider.slice(1)}>
+              {models.map((m) => (
+                <option key={`${provider}:${m.id}`} value={`${provider}:${m.id}`}>
+                  {m.display_name || m.id}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
         <button
@@ -333,16 +348,14 @@ export default function SettingsPage() {
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 space-y-4">
           <div>
             <h2 className="text-zinc-700 dark:text-zinc-300 font-medium">
-              Summary Models
+              Summary Model
             </h2>
             <p className="text-zinc-500 text-sm mt-1">
-              Choose which model each provider uses for generating summaries.
-              Leave empty for the provider's default model.
+              Choose which model to use for generating summaries.
+              Leave empty for the provider's default.
             </p>
           </div>
-          {providers.providers.map((p) => (
-            <ModelSelector key={p} provider={p} />
-          ))}
+          <ModelSelector />
         </div>
       )}
 

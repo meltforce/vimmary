@@ -293,32 +293,33 @@ func (s *Service) SetSummaryPrompt(ctx context.Context, userID int, level, promp
 	return s.db.SetSummaryPrompt(ctx, userID, level, prompt)
 }
 
-// ListModels returns available models for a provider.
-func (s *Service) ListModels(ctx context.Context, provider string) ([]models.Model, error) {
-	return s.registry.ListModels(ctx, provider)
+// ListAllModels returns available models from all configured providers.
+func (s *Service) ListAllModels(ctx context.Context) []models.Model {
+	return s.registry.ListAllModels(ctx)
 }
 
-// GetModelPreferences returns the user's preferred models for all providers.
-func (s *Service) GetModelPreferences(ctx context.Context, userID int) (claude, mistral string, err error) {
-	return s.db.GetModelPreferences(ctx, userID)
+// GetModelPreference returns the user's preferred summary model.
+func (s *Service) GetModelPreference(ctx context.Context, userID int) (provider, model string, err error) {
+	return s.db.GetModelPreference(ctx, userID)
 }
 
-// SetModelPreference sets the user's preferred model for a provider.
+// SetModelPreference sets the user's preferred summary model.
 func (s *Service) SetModelPreference(ctx context.Context, userID int, provider, model string) error {
-	if provider != "claude" && provider != "mistral" {
-		return fmt.Errorf("invalid provider: %q (must be claude or mistral)", provider)
+	if _, ok := s.summarizers[provider]; !ok && provider != "" {
+		return fmt.Errorf("invalid provider: %q", provider)
 	}
 	return s.db.SetModelPreference(ctx, userID, provider, model)
 }
 
 // getModelForProvider resolves the model to use: user preference → config fallback → empty (provider default).
 func (s *Service) getModelForProvider(ctx context.Context, userID int, provider string) string {
-	model, err := s.db.GetModelPreference(ctx, userID, provider)
+	prefProvider, prefModel, err := s.db.GetModelPreference(ctx, userID)
 	if err != nil {
 		s.log.Warn("failed to load model preference, using config fallback", "user_id", userID, "provider", provider, "error", err)
 	}
-	if model != "" {
-		return model
+	// Use stored preference if it matches the active provider
+	if prefProvider == provider && prefModel != "" {
+		return prefModel
 	}
 	// Config fallback
 	switch provider {
