@@ -96,8 +96,8 @@ func main() {
 	}
 	mistralKey, err := resolver.ResolveSecret("mistral_api_key")
 	if err != nil {
-		log.Error("failed to resolve mistral api key", "error", err)
-		os.Exit(1)
+		log.Warn("mistral api key not available", "error", err)
+		mistralKey = ""
 	}
 
 	dsn := cfg.Database.DSN(dbPassword)
@@ -145,7 +145,7 @@ func main() {
 	if err != nil {
 		log.Warn("claude api key not available, claude summarizer disabled", "error", err)
 	} else if claudeKey != "" {
-		summarizers["claude"] = summary.NewClaudeSummarizer(claudeKey)
+		summarizers["claude"] = summary.NewClaudeSummarizer(claudeKey, "")
 		log.Info("summarizer registered", "provider", "claude")
 	}
 
@@ -153,6 +153,12 @@ func main() {
 	if mistralKey != "" {
 		summarizers["mistral"] = summary.NewMistralSummarizer(mistralKey)
 		log.Info("summarizer registered", "provider", "mistral")
+	}
+
+	// Aperture summarizer (Tailscale LLM gateway, no API key needed)
+	if cfg.Aperture.BaseURL != "" {
+		summarizers["aperture"] = summary.NewClaudeSummarizer("-", cfg.Aperture.BaseURL)
+		log.Info("summarizer registered", "provider", "aperture")
 	}
 
 	if _, ok := summarizers[cfg.Summary.Provider]; !ok {
@@ -165,7 +171,7 @@ func main() {
 	}
 
 	// Init model registry
-	registry := models.NewRegistry(claudeKey, mistralKey, log)
+	registry := models.NewRegistry(claudeKey, mistralKey, cfg.Aperture.BaseURL, log)
 
 	svc := service.New(store, summarizers, cfg.Summary.Provider, registry, ytClient, cfg.Karakeep.BaseURL, cfg.ExternalURL, mc, cfg.Search, cfg.Summary, log)
 
