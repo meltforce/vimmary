@@ -126,6 +126,9 @@ func (c *Client) ListBookmarks(ctx context.Context) ([]Bookmark, error) {
 
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close() //nolint:errcheck
+		if err != nil {
+			return nil, fmt.Errorf("read response: %w", err)
+		}
 
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("list bookmarks: status %d: %s", resp.StatusCode, string(body))
