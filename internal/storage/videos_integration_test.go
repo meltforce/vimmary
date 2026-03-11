@@ -19,6 +19,9 @@ func setupTestDB(t *testing.T) *storage.DB {
 
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
+		if os.Getenv("CI") != "" {
+			t.Skip("skipping integration test in CI (no database)")
+		}
 		dsn = defaultDSN
 	}
 
