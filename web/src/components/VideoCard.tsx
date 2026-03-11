@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { retryVideo } from "../api.ts";
+import { retryVideo, transcribeVideo } from "../api.ts";
 import { formatDuration, stripMarkdown } from "../utils.ts";
 
 interface Props {
@@ -37,15 +37,22 @@ export default function VideoCard({
       queryClient.invalidateQueries({ queryKey: ["videos"] });
     },
   });
+  const transcribe = useMutation({
+    mutationFn: () => transcribeVideo(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["videos"] });
+    },
+  });
 
   const thumbnail = `https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`;
   const isFailed = status === "failed";
+  const isNoCaptions = status === "no_captions";
   const isProcessing = status === "processing" || status === "pending";
 
   const card = (
     <div
       className={`bg-white dark:bg-zinc-900 border rounded-lg overflow-hidden transition-colors ${
-        isFailed
+        isFailed || isNoCaptions
           ? "border-red-300 dark:border-red-900/50"
           : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600"
       }`}
@@ -71,6 +78,11 @@ export default function VideoCard({
             {isFailed && (
               <span className="px-1.5 py-0.5 rounded text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
                 failed
+              </span>
+            )}
+            {isNoCaptions && (
+              <span className="px-1.5 py-0.5 rounded text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">
+                no captions
               </span>
             )}
             {isProcessing && (
@@ -105,6 +117,11 @@ export default function VideoCard({
               {errorMessage}
             </p>
           )}
+          {isNoCaptions && (
+            <p className="mt-1 text-xs text-orange-600 dark:text-orange-400">
+              No captions available on YouTube
+            </p>
+          )}
           {isFailed && (
             <button
               onClick={(e) => {
@@ -116,6 +133,19 @@ export default function VideoCard({
               className="mt-2 px-3 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors disabled:opacity-50"
             >
               {retry.isPending ? "Retrying..." : "Retry"}
+            </button>
+          )}
+          {isNoCaptions && (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                transcribe.mutate();
+              }}
+              disabled={transcribe.isPending}
+              className="mt-2 px-3 py-1 text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 rounded hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors disabled:opacity-50"
+            >
+              {transcribe.isPending ? "Transcribing..." : "Transcribe with Voxtral"}
             </button>
           )}
           {!isFailed && summary && (
@@ -140,8 +170,8 @@ export default function VideoCard({
     </div>
   );
 
-  // Don't link failed videos to detail page
-  if (isFailed) return card;
+  // Don't link failed/no_captions videos to detail page
+  if (isFailed || isNoCaptions) return card;
 
   return (
     <Link to={`/video/${id}`} className="block">

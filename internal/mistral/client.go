@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 )
@@ -50,6 +53,67 @@ func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
 		return nil, fmt.Errorf("embed: empty response")
 	}
 	return result.Data[0].Embedding, nil
+}
+
+// Transcribe sends an audio file to the Mistral audio transcription API.
+func (c *Client) Transcribe(ctx context.Context, audioPath string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+
+	f, err := os.Open(audioPath)
+	if err != nil {
+		return "", fmt.Errorf("open audio file: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	if err := w.WriteField("model", "mistral-small-latest"); err != nil {
+		return "", fmt.Errorf("write model field: %w", err)
+	}
+	part, err := w.CreateFormFile("file", filepath.Base(audioPath))
+	if err != nil {
+		return "", fmt.Errorf("create form file: %w", err)
+	}
+	if _, err := io.Copy(part, f); err != nil {
+		return "", fmt.Errorf("copy audio data: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return "", fmt.Errorf("close multipart: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", baseURL+"/audio/transcriptions", &buf)
+	if err != nil {
+		return "", fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("transcribe request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("transcribe API error %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", fmt.Errorf("parse response: %w", err)
+	}
+	if result.Text == "" {
+		return "", fmt.Errorf("transcribe: empty response")
+	}
+	return result.Text, nil
 }
 
 func (c *Client) post(ctx context.Context, path string, body any, result any) error {

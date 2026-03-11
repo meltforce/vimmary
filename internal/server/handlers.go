@@ -193,6 +193,47 @@ func (s *Server) handleDeleteVideo(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) handleTranscribeVideo(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid video ID"})
+		return
+	}
+
+	if err := s.svc.TranscribeVideo(r.Context(), uid, id); err != nil {
+		if err == pgx.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "video not found"})
+			return
+		}
+		s.log.Error("transcribe failed", "error", err)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "transcribing"})
+}
+
+func (s *Server) handleTranscribeAll(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	count, err := s.svc.TranscribeAllNoCaptions(r.Context(), uid)
+	if err != nil {
+		s.log.Error("transcribe all failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "transcribe all failed"})
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, map[string]int{"transcribing": count})
+}
+
 func (s *Server) handleRetryAllFailed(w http.ResponseWriter, r *http.Request) {
 	uid, ok := mustUserID(w, r)
 	if !ok {

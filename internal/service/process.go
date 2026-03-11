@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/meltforce/vimmary/internal/karakeep"
 	"github.com/meltforce/vimmary/internal/storage"
+	"github.com/meltforce/vimmary/internal/youtube"
 )
 
 var (
@@ -42,9 +43,32 @@ func (s *Service) ProcessVideoAsync(userID int, youtubeID, bookmarkID string) {
 	}
 }
 
+// transcribeWithVoxtral extracts audio and transcribes via Mistral API.
+func (s *Service) transcribeWithVoxtral(ctx context.Context, youtubeID string) (string, error) {
+	if s.transcriber == nil {
+		return "", fmt.Errorf("no transcriber configured")
+	}
+
+	s.log.Info("extracting audio for Voxtral transcription", "youtube_id", youtubeID)
+	audioPath, cleanup, err := youtube.ExtractAudio(ctx, youtubeID)
+	if err != nil {
+		return "", fmt.Errorf("extract audio: %w", err)
+	}
+	defer cleanup()
+
+	s.log.Info("transcribing audio with Voxtral", "youtube_id", youtubeID, "audio_path", audioPath)
+	text, err := s.transcriber.Transcribe(ctx, audioPath)
+	if err != nil {
+		return "", fmt.Errorf("voxtral transcribe: %w", err)
+	}
+
+	return text, nil
+}
+
 // ProcessVideo fetches transcript, generates summary, creates embedding, stores in DB,
-// and writes back to Karakeep.
-func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookmarkID string) error {
+// and writes back to Karakeep. If forceVoxtral is true, it skips InnerTube captions and
+// goes straight to audio extraction + Voxtral transcription.
+func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookmarkID string, forceVoxtral ...bool) error {
 	s.log.Info("processing video", "youtube_id", youtubeID, "bookmark_id", bookmarkID)
 
 	// Check if already processed
@@ -94,17 +118,49 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 	}
 
 	// Fetch transcript
-	transcript, err := s.yt.FetchTranscript(ctx, youtubeID)
-	if err != nil {
-		errMsg := fmt.Sprintf("transcript fetch failed: %v", err)
-		_ = s.db.UpdateVideoStatus(ctx, video.ID, "failed", errMsg)
-		return fmt.Errorf("fetch transcript: %w", err)
+	useVoxtral := len(forceVoxtral) > 0 && forceVoxtral[0]
+	var transcriptText, transcriptSource, transcriptLang string
+
+	if useVoxtral {
+		// Skip InnerTube, go straight to Voxtral
+		text, err := s.transcribeWithVoxtral(ctx, youtubeID)
+		if err != nil {
+			errMsg := fmt.Sprintf("voxtral transcription failed: %v", err)
+			_ = s.db.UpdateVideoStatus(ctx, video.ID, "no_captions", errMsg)
+			return fmt.Errorf("voxtral transcription failed: %w", err)
+		}
+		transcriptText = text
+		transcriptSource = "voxtral"
+	} else {
+		transcript, err := s.yt.FetchTranscript(ctx, youtubeID)
+		if err != nil {
+			// Check if this is a no-captions error
+			if isNoCaptionsError(err) {
+				s.log.Info("no captions available, trying Voxtral audio transcription", "youtube_id", youtubeID)
+				text, voxtralErr := s.transcribeWithVoxtral(ctx, youtubeID)
+				if voxtralErr != nil {
+					errMsg := fmt.Sprintf("no captions available, voxtral fallback failed: %v", voxtralErr)
+					_ = s.db.UpdateVideoStatus(ctx, video.ID, "no_captions", errMsg)
+					return fmt.Errorf("no captions available, voxtral fallback failed: %w", voxtralErr)
+				}
+				transcriptText = text
+				transcriptSource = "voxtral"
+			} else {
+				errMsg := fmt.Sprintf("transcript fetch failed: %v", err)
+				_ = s.db.UpdateVideoStatus(ctx, video.ID, "failed", errMsg)
+				return fmt.Errorf("transcript fetch failed: %w", err)
+			}
+		} else {
+			transcriptText = transcript.Text
+			transcriptSource = transcript.Source
+			transcriptLang = transcript.Language
+		}
 	}
 
 	// Update video with transcript and metadata
 	title := ""
 	channel := ""
-	language := transcript.Language
+	language := transcriptLang
 	duration := 0
 	if meta != nil {
 		title = meta.Title
@@ -114,8 +170,9 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 			language = meta.Language
 		}
 	}
+	_ = transcriptSource // available for future use
 
-	if err := s.db.UpdateVideoTranscript(ctx, video.ID, transcript.Text, title, channel, language, duration); err != nil {
+	if err := s.db.UpdateVideoTranscript(ctx, video.ID, transcriptText, title, channel, language, duration); err != nil {
 		return fmt.Errorf("update transcript: %w", err)
 	}
 
@@ -128,7 +185,7 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 	}
 	model := s.getModelForProvider(ctx, userID, providerName)
 	customPrompt := s.getUserPrompt(ctx, userID, video.DetailLevel)
-	sum, err := summarizer.Summarize(ctx, title, transcript.Text, video.DetailLevel, language, customPrompt, model)
+	sum, err := summarizer.Summarize(ctx, title, transcriptText, video.DetailLevel, language, customPrompt, model)
 	if err != nil {
 		errMsg := fmt.Sprintf("summary generation failed: %v", err)
 		_ = s.db.UpdateVideoStatus(ctx, video.ID, "failed", errMsg)

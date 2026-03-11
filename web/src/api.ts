@@ -163,6 +163,16 @@ export function retryAllFailed(): Promise<{ retried: number }> {
   return fetchJSON("/api/v1/videos/retry-all", { method: "POST" });
 }
 
+export function transcribeVideo(
+  id: string
+): Promise<{ status: string }> {
+  return fetchJSON(`/api/v1/videos/${id}/transcribe`, { method: "POST" });
+}
+
+export function transcribeAllNoCaptions(): Promise<{ transcribing: number }> {
+  return fetchJSON("/api/v1/videos/transcribe-all", { method: "POST" });
+}
+
 export interface ProvidersInfo {
   providers: string[];
   default: string;

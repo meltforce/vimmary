@@ -18,7 +18,11 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o vimmary .
 
 # Stage 3: Runtime
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates
+ARG YTDLP_VERSION=2025.03.31
+RUN apk add --no-cache ca-certificates ffmpeg \
+    && wget -O /usr/local/bin/yt-dlp \
+       "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp_linux" \
+    && chmod +x /usr/local/bin/yt-dlp
 WORKDIR /app
 COPY --from=backend /app/vimmary .
 COPY --from=backend /app/migrations /migrations
