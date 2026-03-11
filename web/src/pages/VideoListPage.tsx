@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listVideos, searchVideos, submitVideo, retryAllFailed, transcribeAllNoCaptions } from "../api.ts";
+import { listVideos, searchVideos, submitVideo, retryAllFailed, transcribeAllNoCaptions, fetchStats } from "../api.ts";
 import VideoCard from "../components/VideoCard.tsx";
 import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
 
@@ -47,6 +47,7 @@ export default function VideoListPage() {
     mutationFn: () => retryAllFailed(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["videos"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
     },
   });
 
@@ -54,14 +55,22 @@ export default function VideoListPage() {
     mutationFn: () => transcribeAllNoCaptions(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["videos"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
     },
+  });
+
+  const statsResult = useQuery({
+    queryKey: ["stats"],
+    queryFn: () => fetchStats(),
+    enabled: query.length === 0,
+    refetchInterval: 10000,
   });
 
   const isSearching = query.length > 0;
   const isLoading = isSearching ? searchResult.isLoading : listResult.isLoading;
   const error = isSearching ? searchResult.error : listResult.error;
-  const failedCount = listResult.data?.videos.filter(v => v.status === "failed").length ?? 0;
-  const noCaptionsCount = listResult.data?.videos.filter(v => v.status === "no_captions").length ?? 0;
+  const failedCount = statsResult.data?.by_status?.failed ?? 0;
+  const noCaptionsCount = statsResult.data?.by_status?.no_captions ?? 0;
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
