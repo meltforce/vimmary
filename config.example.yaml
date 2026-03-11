@@ -19,13 +19,10 @@ search:
   score_cutoff_ratio: 0.5
 
 summary:
-  provider: "claude"        # "claude", "mistral", or "aperture"
+  provider: "claude"        # "claude" or "mistral"
   claude_model: "claude-sonnet-4-5-20250514"
   mistral_model: "mistral-large-latest"
   default_level: "medium"   # "medium" or "deep"
-
-aperture:
-  base_url: ""  # e.g. "http://ai.leo-royal.ts.net"
 
 karakeep:
   base_url: "https://karakeep.leo-royal.ts.net"
