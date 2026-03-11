@@ -28,12 +28,18 @@ type Embedder interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
+// Transcriber transcribes audio files to text.
+type Transcriber interface {
+	Transcribe(ctx context.Context, audioPath string) (string, error)
+}
+
 // processJob represents a video processing request queued for rate-limited execution.
 type processJob struct {
-	userID     int
-	youtubeID  string
-	bookmarkID string
-	retryCount int
+	userID       int
+	youtubeID    string
+	bookmarkID   string
+	retryCount   int
+	forceVoxtral bool
 }
 
 // Service contains all business logic for vimmary.
@@ -46,6 +52,7 @@ type Service struct {
 	karakeepBaseURL string
 	externalURL     string
 	embedder        Embedder
+	transcriber     Transcriber
 	searchCfg       config.SearchConfig
 	summaryCfg      config.SummaryConfig
 	log             *slog.Logger
@@ -62,6 +69,7 @@ func New(
 	karakeepBaseURL string,
 	externalURL string,
 	embedder Embedder,
+	transcriber Transcriber,
 	searchCfg config.SearchConfig,
 	summaryCfg config.SummaryConfig,
 	log *slog.Logger,
@@ -75,6 +83,7 @@ func New(
 		karakeepBaseURL: karakeepBaseURL,
 		externalURL:     externalURL,
 		embedder:        embedder,
+		transcriber:     transcriber,
 		searchCfg:       searchCfg,
 		summaryCfg:      summaryCfg,
 		log:             log,
@@ -113,6 +122,24 @@ func retryBackoff(retry int) time.Duration {
 
 const maxRetries = 3
 
+// noCaptionsPatterns are error substrings indicating a video has no captions available.
+var noCaptionsPatterns = []string{
+	"no transcripts available",
+	"error getting transcript from track",
+	"no transcript found",
+}
+
+// isNoCaptionsError returns true if the error indicates a permanent no-captions condition.
+func isNoCaptionsError(err error) bool {
+	msg := strings.ToLower(err.Error())
+	for _, pattern := range noCaptionsPatterns {
+		if strings.Contains(msg, strings.ToLower(pattern)) {
+			return true
+		}
+	}
+	return false
+}
+
 // processWorker drains the queue sequentially with adaptive rate limiting to avoid YouTube 429s.
 func (s *Service) processWorker() {
 	var last time.Time
@@ -121,8 +148,13 @@ func (s *Service) processWorker() {
 		if since := time.Since(last); since < delay {
 			time.Sleep(delay - since)
 		}
-		if err := s.ProcessVideo(context.Background(), job.userID, job.youtubeID, job.bookmarkID); err != nil {
+		if err := s.ProcessVideo(context.Background(), job.userID, job.youtubeID, job.bookmarkID, job.forceVoxtral); err != nil {
 			s.log.Error("video processing failed", "youtube_id", job.youtubeID, "retry", job.retryCount, "error", err)
+
+			// Don't retry no-captions errors — they're permanent
+			if isNoCaptionsError(err) {
+				continue
+			}
 
 			// Auto-retry transcript fetch failures with backoff
 			if job.retryCount < maxRetries && strings.Contains(err.Error(), "transcript fetch failed") {
@@ -196,7 +228,7 @@ func (s *Service) RetryVideo(ctx context.Context, userID int, id uuid.UUID) erro
 	if err != nil {
 		return err
 	}
-	if video.Status != "failed" {
+	if video.Status != "failed" && video.Status != "no_captions" {
 		return fmt.Errorf("video is not in failed state (status: %s)", video.Status)
 	}
 	if err := s.db.UpdateVideoStatus(ctx, id, "pending", ""); err != nil {
@@ -204,6 +236,46 @@ func (s *Service) RetryVideo(ctx context.Context, userID int, id uuid.UUID) erro
 	}
 	s.ProcessVideoAsync(userID, video.YouTubeID, video.KarakeepBookmarkID)
 	return nil
+}
+
+// TranscribeVideo queues a no_captions video for Voxtral audio transcription.
+func (s *Service) TranscribeVideo(ctx context.Context, userID int, id uuid.UUID) error {
+	video, err := s.db.GetVideo(ctx, userID, id)
+	if err != nil {
+		return err
+	}
+	if video.Status != "no_captions" && video.Status != "failed" {
+		return fmt.Errorf("video is not in no_captions or failed state (status: %s)", video.Status)
+	}
+	if err := s.db.UpdateVideoStatus(ctx, id, "pending", ""); err != nil {
+		return fmt.Errorf("reset status: %w", err)
+	}
+	select {
+	case s.queue <- processJob{userID: userID, youtubeID: video.YouTubeID, bookmarkID: video.KarakeepBookmarkID, forceVoxtral: true}:
+	default:
+		s.log.Warn("processing queue full, dropping transcribe job", "youtube_id", video.YouTubeID)
+	}
+	return nil
+}
+
+// TranscribeAllNoCaptions queues all no_captions videos for Voxtral audio transcription.
+func (s *Service) TranscribeAllNoCaptions(ctx context.Context, userID int) (int, error) {
+	videos, err := s.db.ListNoCaptionsVideos(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("list no_captions videos: %w", err)
+	}
+	for _, v := range videos {
+		if err := s.db.UpdateVideoStatus(ctx, v.ID, "pending", ""); err != nil {
+			s.log.Warn("failed to reset video status", "video_id", v.ID, "error", err)
+			continue
+		}
+		select {
+		case s.queue <- processJob{userID: userID, youtubeID: v.YouTubeID, bookmarkID: v.KarakeepBookmarkID, forceVoxtral: true}:
+		default:
+			s.log.Warn("processing queue full, dropping transcribe job", "youtube_id", v.YouTubeID)
+		}
+	}
+	return len(videos), nil
 }
 
 // RetryAllFailed resets all failed videos for a user and re-enqueues them.

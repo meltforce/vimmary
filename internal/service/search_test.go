@@ -200,6 +200,7 @@ func TestNewService(t *testing.T) {
 		"https://karakeep.example.com",
 		"https://vimmary.example.com",
 		embedder,
+		nil, // transcriber
 		config.SearchConfig{DefaultThreshold: 0.3, DefaultLimit: 10, ScoreCutoffRatio: 0.5},
 		config.SummaryConfig{DefaultLevel: "medium"},
 		slog.Default(),

@@ -174,7 +174,7 @@ func main() {
 	// Init model registry
 	registry := models.NewRegistry(claudeKey, mistralKey, cfg.Aperture.BaseURL, tsnetHTTPClient, log)
 
-	svc := service.New(store, summarizers, cfg.Summary.Provider, registry, ytClient, cfg.Karakeep.BaseURL, cfg.ExternalURL, mc, cfg.Search, cfg.Summary, log)
+	svc := service.New(store, summarizers, cfg.Summary.Provider, registry, ytClient, cfg.Karakeep.BaseURL, cfg.ExternalURL, mc, mc, cfg.Search, cfg.Summary, log)
 
 	// MCP stdio mode
 	if *mcpMode {
