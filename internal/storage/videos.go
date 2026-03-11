@@ -154,6 +154,18 @@ func (db *DB) UpdateVideoSummary(ctx context.Context, id uuid.UUID, summary stri
 	return nil
 }
 
+func (db *DB) UpdateVideoMetadata(ctx context.Context, id uuid.UUID, title, channel, language string, durationSeconds int) error {
+	_, err := db.Pool.Exec(ctx, `
+		UPDATE videos SET title = $1, channel = $2, language = $3,
+			duration_seconds = $4, updated_at = NOW()
+		WHERE id = $5
+	`, title, channel, language, durationSeconds, id)
+	if err != nil {
+		return fmt.Errorf("update video metadata: %w", err)
+	}
+	return nil
+}
+
 func (db *DB) UpdateVideoTranscript(ctx context.Context, id uuid.UUID, transcript, title, channel, language string, durationSeconds int) error {
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE videos SET transcript = $1, title = $2, channel = $3, language = $4,

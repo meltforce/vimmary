@@ -117,6 +117,13 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 		s.log.Warn("metadata fetch failed, continuing", "youtube_id", youtubeID, "error", err)
 	}
 
+	// Persist metadata early so it's available even if transcript fetch fails
+	if meta != nil {
+		if err := s.db.UpdateVideoMetadata(ctx, video.ID, meta.Title, meta.Channel, meta.Language, meta.DurationSeconds); err != nil {
+			s.log.Warn("failed to save metadata early", "error", err)
+		}
+	}
+
 	// Fetch transcript
 	useVoxtral := len(forceVoxtral) > 0 && forceVoxtral[0]
 	var transcriptText, transcriptSource, transcriptLang string
