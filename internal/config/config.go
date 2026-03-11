@@ -15,7 +15,6 @@ type Config struct {
 	Secrets       map[string]string            `yaml:"secrets"`
 	Search        SearchConfig                 `yaml:"search"`
 	Summary       SummaryConfig                `yaml:"summary"`
-	Aperture      ApertureConfig               `yaml:"aperture"`
 	Karakeep      KarakeepConfig               `yaml:"karakeep"`
 	YouTube       YouTubeConfig                `yaml:"youtube"`
 }
@@ -27,14 +26,10 @@ type SearchConfig struct {
 }
 
 type SummaryConfig struct {
-	Provider     string `yaml:"provider"`      // "claude", "mistral", or "aperture"
+	Provider     string `yaml:"provider"`      // "claude" or "mistral"
 	ClaudeModel  string `yaml:"claude_model"`  // e.g. "claude-sonnet-4-6-latest"
 	MistralModel string `yaml:"mistral_model"` // e.g. "mistral-large-latest"
 	DefaultLevel string `yaml:"default_level"` // "medium" or "deep"
-}
-
-type ApertureConfig struct {
-	BaseURL string `yaml:"base_url"` // e.g. "http://ai.leo-royal.ts.net"
 }
 
 type KarakeepConfig struct {

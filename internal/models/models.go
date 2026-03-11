@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
@@ -26,19 +25,16 @@ type cachedModels struct {
 
 // Registry discovers and caches available models from provider APIs.
 type Registry struct {
-	mu        sync.Mutex
-	cache     map[string]*cachedModels
-	cacheTTL  time.Duration
-	apiKeys   map[string]string
-	http      *http.Client
-	tsHTTP    *http.Client // for Tailscale-internal requests (aperture)
-	log       *slog.Logger
+	mu       sync.Mutex
+	cache    map[string]*cachedModels
+	cacheTTL time.Duration
+	apiKeys  map[string]string
+	http     *http.Client
+	log      *slog.Logger
 }
 
 // NewRegistry creates a model registry with API keys for each provider.
-// For aperture, pass the base URL instead of an API key.
-// tsHTTPClient is used for Tailscale-internal requests (e.g. aperture); if nil, defaults to http.DefaultClient.
-func NewRegistry(claudeAPIKey, mistralAPIKey, apertureBaseURL string, tsHTTPClient *http.Client, log *slog.Logger) *Registry {
+func NewRegistry(claudeAPIKey, mistralAPIKey string, log *slog.Logger) *Registry {
 	keys := make(map[string]string)
 	if claudeAPIKey != "" {
 		keys["claude"] = claudeAPIKey
@@ -46,18 +42,11 @@ func NewRegistry(claudeAPIKey, mistralAPIKey, apertureBaseURL string, tsHTTPClie
 	if mistralAPIKey != "" {
 		keys["mistral"] = mistralAPIKey
 	}
-	if apertureBaseURL != "" {
-		keys["aperture"] = apertureBaseURL
-	}
-	if tsHTTPClient == nil {
-		tsHTTPClient = http.DefaultClient
-	}
 	return &Registry{
 		cache:    make(map[string]*cachedModels),
 		cacheTTL: 5 * time.Minute,
 		apiKeys:  keys,
 		http:     &http.Client{Timeout: 10 * time.Second},
-		tsHTTP:   tsHTTPClient,
 		log:      log,
 	}
 }
@@ -113,8 +102,6 @@ func (r *Registry) fetchModels(ctx context.Context, provider string) ([]Model, e
 		return r.fetchClaudeModels(ctx)
 	case "mistral":
 		return r.fetchMistralModels(ctx)
-	case "aperture":
-		return r.fetchApertureModels(ctx)
 	default:
 		return nil, fmt.Errorf("unknown provider: %q", provider)
 	}
@@ -229,50 +216,3 @@ func (r *Registry) fetchMistralModels(ctx context.Context) ([]Model, error) {
 	return models, nil
 }
 
-func (r *Registry) fetchApertureModels(ctx context.Context) ([]Model, error) {
-	baseURL := r.apiKeys["aperture"]
-	req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/v1/models", nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := r.tsHTTP.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("aperture models API: %w", err)
-	}
-	defer resp.Body.Close() //nolint:errcheck
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("aperture models API %d: %s", resp.StatusCode, string(body))
-	}
-
-	// OpenAI-compatible model list response
-	var result struct {
-		Data []struct {
-			ID      string `json:"id"`
-			OwnedBy string `json:"owned_by"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("parse aperture models: %w", err)
-	}
-
-	var models []Model
-	for _, m := range result.Data {
-		lower := strings.ToLower(m.ID)
-		// Filter to chat models — skip embedding and moderation models
-		if strings.Contains(lower, "embed") || strings.Contains(lower, "moderation") {
-			continue
-		}
-		models = append(models, Model{
-			ID:          m.ID,
-			DisplayName: m.ID,
-			Provider:    "aperture",
-		})
-	}
-	return models, nil
-}
