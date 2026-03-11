@@ -145,7 +145,7 @@ func main() {
 	if err != nil {
 		log.Warn("claude api key not available, claude summarizer disabled", "error", err)
 	} else if claudeKey != "" {
-		summarizers["claude"] = summary.NewClaudeSummarizer(claudeKey, "")
+		summarizers["claude"] = summary.NewClaudeSummarizer(claudeKey, "", nil)
 		log.Info("summarizer registered", "provider", "claude")
 	}
 
@@ -157,7 +157,7 @@ func main() {
 
 	// Aperture summarizer (Tailscale LLM gateway, no API key needed)
 	if cfg.Aperture.BaseURL != "" {
-		summarizers["aperture"] = summary.NewClaudeSummarizer("-", cfg.Aperture.BaseURL)
+		summarizers["aperture"] = summary.NewClaudeSummarizer("-", cfg.Aperture.BaseURL, tsnetHTTPClient)
 		log.Info("summarizer registered", "provider", "aperture")
 	}
 
@@ -171,7 +171,7 @@ func main() {
 	}
 
 	// Init model registry
-	registry := models.NewRegistry(claudeKey, mistralKey, cfg.Aperture.BaseURL, log)
+	registry := models.NewRegistry(claudeKey, mistralKey, cfg.Aperture.BaseURL, tsnetHTTPClient, log)
 
 	svc := service.New(store, summarizers, cfg.Summary.Provider, registry, ytClient, cfg.Karakeep.BaseURL, cfg.ExternalURL, mc, cfg.Search, cfg.Summary, log)
 
