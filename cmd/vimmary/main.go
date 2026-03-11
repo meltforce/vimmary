@@ -68,6 +68,7 @@ func main() {
 		defer func() { _ = tsServer.Close() }()
 
 		tsnetHTTPClient = &http.Client{
+			Timeout: 15 * time.Second,
 			Transport: &http.Transport{
 				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 					return tsServer.Dial(ctx, network, addr)
