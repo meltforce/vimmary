@@ -236,6 +236,31 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 	return nil
 }
 
+// BackfillMetadata fetches and saves metadata for videos that have an empty title.
+func (s *Service) BackfillMetadata(ctx context.Context, userID int) (int, error) {
+	videos, err := s.db.ListVideosWithoutMetadata(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("list videos without metadata: %w", err)
+	}
+
+	updated := 0
+	for _, v := range videos {
+		meta, err := s.yt.FetchMetadata(ctx, v.YouTubeID)
+		if err != nil {
+			s.log.Warn("backfill metadata fetch failed", "youtube_id", v.YouTubeID, "error", err)
+			continue
+		}
+		if err := s.db.UpdateVideoMetadata(ctx, v.ID, meta.Title, meta.Channel, meta.Language, meta.DurationSeconds); err != nil {
+			s.log.Warn("backfill metadata save failed", "youtube_id", v.YouTubeID, "error", err)
+			continue
+		}
+		updated++
+		s.log.Info("backfilled metadata", "youtube_id", v.YouTubeID, "title", meta.Title)
+	}
+
+	return updated, nil
+}
+
 func (s *Service) writeBackToKarakeep(ctx context.Context, userID int, bookmarkID string, videoID uuid.UUID, title, summaryText string) {
 	if s.karakeepBaseURL == "" {
 		return

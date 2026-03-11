@@ -58,7 +58,7 @@ func TestUpdateVideoMetadata(t *testing.T) {
 		t.Fatalf("insert video: %v", err)
 	}
 	t.Cleanup(func() {
-		store.DeleteVideo(ctx, video.UserID, video.ID)
+		_ = store.DeleteVideo(ctx, video.UserID, video.ID)
 	})
 
 	// Verify initial state: no title/channel
@@ -117,7 +117,7 @@ func TestUpdateVideoMetadata_ThenTranscript(t *testing.T) {
 		t.Fatalf("insert video: %v", err)
 	}
 	t.Cleanup(func() {
-		store.DeleteVideo(ctx, video.UserID, video.ID)
+		_ = store.DeleteVideo(ctx, video.UserID, video.ID)
 	})
 
 	// Step 1: Save metadata early

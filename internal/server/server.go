@@ -40,6 +40,7 @@ func (s *Server) routes() {
 
 		r.Get("/api/v1/videos", s.handleListVideos)
 		r.Post("/api/v1/videos", s.handleSubmitVideo)
+		r.Post("/api/v1/videos/backfill-metadata", s.handleBackfillMetadata)
 		r.Post("/api/v1/videos/retry-all", s.handleRetryAllFailed)
 		r.Post("/api/v1/videos/transcribe-all", s.handleTranscribeAll)
 		r.Get("/api/v1/videos/{id}", s.handleGetVideo)
