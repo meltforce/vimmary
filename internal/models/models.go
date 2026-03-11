@@ -31,12 +31,14 @@ type Registry struct {
 	cacheTTL  time.Duration
 	apiKeys   map[string]string
 	http      *http.Client
+	tsHTTP    *http.Client // for Tailscale-internal requests (aperture)
 	log       *slog.Logger
 }
 
 // NewRegistry creates a model registry with API keys for each provider.
 // For aperture, pass the base URL instead of an API key.
-func NewRegistry(claudeAPIKey, mistralAPIKey, apertureBaseURL string, log *slog.Logger) *Registry {
+// tsHTTPClient is used for Tailscale-internal requests (e.g. aperture); if nil, defaults to http.DefaultClient.
+func NewRegistry(claudeAPIKey, mistralAPIKey, apertureBaseURL string, tsHTTPClient *http.Client, log *slog.Logger) *Registry {
 	keys := make(map[string]string)
 	if claudeAPIKey != "" {
 		keys["claude"] = claudeAPIKey
@@ -47,11 +49,15 @@ func NewRegistry(claudeAPIKey, mistralAPIKey, apertureBaseURL string, log *slog.
 	if apertureBaseURL != "" {
 		keys["aperture"] = apertureBaseURL
 	}
+	if tsHTTPClient == nil {
+		tsHTTPClient = http.DefaultClient
+	}
 	return &Registry{
 		cache:    make(map[string]*cachedModels),
 		cacheTTL: 5 * time.Minute,
 		apiKeys:  keys,
 		http:     &http.Client{Timeout: 10 * time.Second},
+		tsHTTP:   tsHTTPClient,
 		log:      log,
 	}
 }
@@ -230,7 +236,7 @@ func (r *Registry) fetchApertureModels(ctx context.Context) ([]Model, error) {
 		return nil, err
 	}
 
-	resp, err := r.http.Do(req)
+	resp, err := r.tsHTTP.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("aperture models API: %w", err)
 	}

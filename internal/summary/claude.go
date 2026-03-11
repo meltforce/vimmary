@@ -19,14 +19,18 @@ type ClaudeSummarizer struct {
 
 // NewClaudeSummarizer creates a Claude-based summarizer.
 // If baseURL is empty, defaults to the Anthropic API.
-func NewClaudeSummarizer(apiKey, baseURL string) *ClaudeSummarizer {
+// An optional httpClient can be provided (e.g. for Tailscale-internal requests); if nil, a default client is used.
+func NewClaudeSummarizer(apiKey, baseURL string, httpClient *http.Client) *ClaudeSummarizer {
 	if baseURL == "" {
 		baseURL = "https://api.anthropic.com"
+	}
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 5 * time.Minute}
 	}
 	return &ClaudeSummarizer{
 		apiKey:  apiKey,
 		baseURL: baseURL,
-		http:    &http.Client{Timeout: 5 * time.Minute},
+		http:    httpClient,
 	}
 }
 
