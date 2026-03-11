@@ -234,6 +234,22 @@ func (s *Server) handleTranscribeAll(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]int{"transcribing": count})
 }
 
+func (s *Server) handleBackfillMetadata(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	count, err := s.svc.BackfillMetadata(r.Context(), uid)
+	if err != nil {
+		s.log.Error("backfill metadata failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "backfill metadata failed"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]int{"updated": count})
+}
+
 func (s *Server) handleRetryAllFailed(w http.ResponseWriter, r *http.Request) {
 	uid, ok := mustUserID(w, r)
 	if !ok {
