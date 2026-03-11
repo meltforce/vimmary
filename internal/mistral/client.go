@@ -68,7 +68,7 @@ func (c *Client) Transcribe(ctx context.Context, audioPath string) (string, erro
 
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
-	if err := w.WriteField("model", "mistral-small-latest"); err != nil {
+	if err := w.WriteField("model", "voxtral-mini-latest"); err != nil {
 		return "", fmt.Errorf("write model field: %w", err)
 	}
 	part, err := w.CreateFormFile("file", filepath.Base(audioPath))
@@ -89,7 +89,9 @@ func (c *Client) Transcribe(ctx context.Context, audioPath string) (string, erro
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 
-	resp, err := c.http.Do(req)
+	// Use a separate client with longer timeout for large audio uploads.
+	httpClient := &http.Client{Timeout: 10 * time.Minute}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("transcribe request: %w", err)
 	}

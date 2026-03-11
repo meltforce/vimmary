@@ -12,7 +12,12 @@ import (
 // ExtractAudio downloads audio from a YouTube video using yt-dlp.
 // Returns the path to the downloaded MP3 file and a cleanup function.
 func ExtractAudio(ctx context.Context, youtubeID string) (string, func(), error) {
-	dir, err := os.MkdirTemp("", "vimmary-audio-*")
+	// Use a persistent temp base dir to avoid Docker's small /tmp tmpfs (64MB).
+	tmpBase := os.Getenv("VIMMARY_TMPDIR")
+	if tmpBase != "" {
+		_ = os.MkdirAll(tmpBase, 0o755)
+	}
+	dir, err := os.MkdirTemp(tmpBase, "vimmary-audio-*")
 	if err != nil {
 		return "", nil, fmt.Errorf("create temp dir: %w", err)
 	}
