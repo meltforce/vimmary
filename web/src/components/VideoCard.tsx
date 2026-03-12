@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { retryVideo, transcribeVideo } from "../api.ts";
+import { deleteVideo, retryVideo, transcribeVideo } from "../api.ts";
 import { formatDuration, stripMarkdown } from "../utils.ts";
 
 interface Props {
@@ -31,6 +32,7 @@ export default function VideoCard({
   matchType,
 }: Props) {
   const queryClient = useQueryClient();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const retry = useMutation({
     mutationFn: () => retryVideo(id),
     onSuccess: () => {
@@ -39,6 +41,12 @@ export default function VideoCard({
   });
   const transcribe = useMutation({
     mutationFn: () => transcribeVideo(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["videos"] });
+    },
+  });
+  const deleteMut = useMutation({
+    mutationFn: () => deleteVideo(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["videos"] });
     },
@@ -153,9 +161,9 @@ export default function VideoCard({
               {stripMarkdown(summary)}
             </p>
           )}
-          {topics && topics.length > 0 && (
-            <div className="flex gap-1.5 mt-2 flex-wrap">
-              {topics.slice(0, 5).map((topic) => (
+          <div className="flex justify-between items-center mt-2">
+            <div className="flex gap-1.5 flex-wrap">
+              {topics?.slice(0, 5).map((topic) => (
                 <span
                   key={topic}
                   className="px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded text-xs"
@@ -164,7 +172,44 @@ export default function VideoCard({
                 </span>
               ))}
             </div>
-          )}
+            {confirmDelete ? (
+              <div
+                className="flex items-center gap-2 shrink-0"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+              >
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Are you sure?
+                </span>
+                <button
+                  onClick={() => deleteMut.mutate()}
+                  disabled={deleteMut.isPending}
+                  className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition-colors disabled:opacity-50"
+                >
+                  {deleteMut.isPending ? "Deleting..." : "Yes, delete"}
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  className="px-3 py-1 text-xs bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setConfirmDelete(true);
+                }}
+                className="px-3 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors shrink-0"
+              >
+                Delete
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
