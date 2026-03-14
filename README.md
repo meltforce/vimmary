@@ -2,28 +2,30 @@
 
 # vimmary
 
-YouTube video summary service. Receives [Karakeep](https://karakeep.app) webhooks for new bookmarks, fetches transcripts via YouTube's InnerTube API, generates LLM summaries, and stores everything in Postgres + pgvector for semantic search.
+YouTube video summary service. Fetches transcripts via YouTube's InnerTube API, generates LLM summaries, and stores everything in Postgres + pgvector for semantic search. Videos can be added manually via the web UI or automatically through [Karakeep](https://karakeep.app) webhooks.
 
 ## How it works
 
 ```
 Karakeep ──webhook──▶ vimmary ──▶ fetch transcript ──▶ generate summary
-                                                            │
-                                              ┌─────────────┼──────────────┐
-                                              ▼             ▼              ▼
-                                          pgvector      Karakeep        Web UI
-                                          + search      writeback       display
+Web UI ──manual URL──▶    │                                   │
+                          │                     ┌─────────────┼──────────────┐
+                          │                     ▼             ▼              ▼
+                          │                 pgvector      Karakeep        Web UI
+                          │                 + search      writeback       display
+                          │                                                 │
+                          ◀──── MCP tools ──────────────────────────────────┘
 ```
 
-1. A YouTube video is bookmarked in Karakeep
-2. Karakeep sends a webhook to vimmary
-3. vimmary fetches the transcript via YouTube's InnerTube API
-4. An LLM (Claude or Mistral) generates a structured summary
-5. The summary is stored with embeddings for semantic search
-6. Results are written back to Karakeep and displayed in the web UI
+1. A YouTube video is bookmarked in Karakeep (webhook) or submitted manually via the web UI
+2. vimmary fetches the transcript via YouTube's InnerTube API
+3. An LLM (Claude or Mistral) generates a structured summary
+4. The summary is stored with embeddings for semantic search
+5. Results are written back to Karakeep (if applicable) and displayed in the web UI
 
 ## Features
 
+- **Manual URL submission** — paste any YouTube URL in the web UI to process it immediately
 - **Automatic summaries** — triggered by Karakeep webhooks, no manual action needed
 - **Bulk import** — import all existing YouTube bookmarks from Karakeep via Settings page
 - **Two detail levels** — medium (automatic) and deep (on-demand via MCP or web UI)
@@ -54,18 +56,47 @@ Karakeep ──webhook──▶ vimmary ──▶ fetch transcript ──▶ gen
 | MCP         | mcp-go, HTTP + stdio transports       |
 | Frontend    | React + Vite (embedded in Go binary)  |
 
-## Quick start
+## Installation
+
+### Docker Compose (recommended)
+
+1. Clone the repository and create your config:
+
+   ```bash
+   git clone https://github.com/meltforce/vimmary.git
+   cd vimmary
+   cp config.example.yaml config.yaml
+   ```
+
+2. Edit `config.yaml` with your settings:
+
+   - **`secrets.mistral_api_key`** — required for embeddings (get one at [console.mistral.ai](https://console.mistral.ai))
+   - **`secrets.claude_api_key`** or **`secrets.mistral_api_key`** — at least one is needed for summaries (set `summary.provider` to `"claude"` or `"mistral"`)
+   - **`external_url`** — the URL where vimmary is reachable (used for links in Karakeep writebacks)
+   - **`youtube.sub_langs`** — preferred transcript languages (default: `en`, `de`)
+   - **`tailscale.enabled`** — set to `true` to enable Tailscale authentication (recommended); when `false`, the app runs without auth in dev mode
+
+3. Start the stack:
+
+   ```bash
+   docker compose up -d
+   ```
+
+   This starts both the app (port 8080) and a PostgreSQL database with pgvector. Migrations run automatically on startup.
+
+4. Open `http://localhost:8080` (or your Tailscale hostname) and start adding videos.
+
+### Local development
 
 ```bash
-# Start PostgreSQL with pgvector
+# Start only the database
 docker compose up db
 
-# Copy and edit config
-cp config.example.yaml config.yaml
-# Edit config.yaml with your API keys
-
-# Run the server
+# Run the backend (requires Go 1.23+)
 go run ./cmd/vimmary --config config.yaml
+
+# Run the frontend with hot-reload (separate terminal)
+cd web && npm install && npm run dev
 ```
 
 ## Setup Karakeep integration
@@ -96,15 +127,6 @@ docker buildx build --platform linux/amd64 -t meltforce/vimmary:edge .
 | `resummarize`     | Regenerate summary with different detail level   |
 | `stats`           | Aggregate statistics                             |
 | `delete_video`    | Delete a video and its data                      |
-
-## Deployment
-
-Deployed via Docker Compose on a Tailscale-connected host. Config is mounted externally, secrets resolved via setec.
-
-```bash
-# Production deploy (via Ansible)
-cd configuration/docker-stacks && ./run.sh --limit vimmary-lxc
-```
 
 ## Related projects
 
