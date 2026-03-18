@@ -206,9 +206,6 @@ func TestNewService(t *testing.T) {
 		slog.Default(),
 	)
 
-	if svc == nil {
-		t.Fatal("New() returned nil")
-	}
 	if svc.karakeepBaseURL != "https://karakeep.example.com" {
 		t.Errorf("karakeepBaseURL = %q, want %q", svc.karakeepBaseURL, "https://karakeep.example.com")
 	}
