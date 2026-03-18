@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>vimmary — YouTube Video Summaries</title>
+  <meta name="description" content="Self-hosted YouTube video summary service. Fetch transcripts, generate LLM summaries, and search your video library with semantic search.">
+  <meta property="og:title" content="vimmary — YouTube Video Summaries">
+  <meta property="og:description" content="Self-hosted YouTube video summary service with LLM-powered summaries and semantic search.">
+  <meta property="og:url" content="https://vimmary.meltforce.org">
+  <meta property="og:type" content="website">
+  <link rel="canonical" href="https://vimmary.meltforce.org">
+  <style>
+    :root {
+      --bg: #0a0a0b;
+      --surface: #141416;
+      --border: #2a2a2e;
+      --text: #e4e4e7;
+      --text-muted: #8b8b94;
+      --accent: #6d5dfc;
+      --accent-soft: #6d5dfc22;
+      --gradient-start: #6d5dfc;
+      --gradient-end: #c084fc;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Nav */
+    nav {
+      padding: 20px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    nav .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .nav-links {
+      display: flex;
+      gap: 24px;
+      list-style: none;
+    }
+    .nav-links a {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--text); text-decoration: none; }
+
+    /* Hero */
+    .hero {
+      padding: 100px 0 80px;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: 3.2rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.1;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p {
+      font-size: 1.2rem;
+      color: var(--text-muted);
+      max-width: 600px;
+      margin: 0 auto 36px;
+    }
+    .hero-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { opacity: 0.9; text-decoration: none; }
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { border-color: var(--text-muted); text-decoration: none; }
+
+    /* Flow diagram */
+    .flow {
+      padding: 40px 0 80px;
+      text-align: center;
+    }
+    .flow-diagram {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 0 auto;
+    }
+    .flow-step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .flow-arrow {
+      color: var(--text-muted);
+      font-size: 1.2rem;
+    }
+
+    /* Features */
+    .features {
+      padding: 80px 0;
+    }
+    .features h2 {
+      text-align: center;
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 48px;
+    }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+    }
+    .feature-icon {
+      width: 36px;
+      height: 36px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .feature-icon svg {
+      width: 20px;
+      height: 20px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.75;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .feature-card h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .feature-card p {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    /* Stack */
+    .stack {
+      padding: 80px 0;
+      border-top: 1px solid var(--border);
+    }
+    .stack h2 {
+      text-align: center;
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 48px;
+    }
+    .stack-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+    }
+    .stack-item {
+      text-align: center;
+      padding: 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .stack-item strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 0.95rem;
+    }
+    .stack-item span {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    /* Quickstart */
+    .quickstart {
+      padding: 80px 0;
+      border-top: 1px solid var(--border);
+    }
+    .quickstart h2 {
+      text-align: center;
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 48px;
+    }
+    .steps {
+      display: grid;
+      gap: 24px;
+      max-width: 640px;
+      margin: 0 auto;
+    }
+    .step {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .step-number {
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.85rem;
+    }
+    .step-content h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .step-content p {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+    code {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 0.85em;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    }
+    pre {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      overflow-x: auto;
+      margin-top: 12px;
+    }
+    pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    /* MCP */
+    .mcp {
+      padding: 80px 0;
+      border-top: 1px solid var(--border);
+    }
+    .mcp h2 {
+      text-align: center;
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 16px;
+    }
+    .mcp > .container > p {
+      text-align: center;
+      color: var(--text-muted);
+      margin-bottom: 36px;
+      font-size: 0.95rem;
+    }
+    .mcp-tools {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    .mcp-tool {
+      display: flex;
+      gap: 12px;
+      align-items: baseline;
+      padding: 14px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .mcp-tool code {
+      flex-shrink: 0;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .mcp-tool span {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    /* Footer */
+    footer {
+      padding: 40px 0;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+    footer a { color: var(--text-muted); }
+    footer a:hover { color: var(--text); }
+
+    /* Screenshots */
+    .screenshots {
+      margin: 48px auto 0;
+      max-width: 800px;
+      position: relative;
+    }
+    .screenshots img {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .screenshot-tabs {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .screenshot-tab {
+      padding: 6px 16px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-muted);
+      transition: all 0.15s;
+    }
+    .screenshot-tab:hover { border-color: var(--text-muted); color: var(--text); }
+    .screenshot-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .screenshot-frame { display: none; }
+    .screenshot-frame.active { display: block; }
+
+    @media (max-width: 640px) {
+      .hero h1 { font-size: 2.2rem; }
+      .hero { padding: 60px 0 40px; }
+      .features, .stack, .quickstart, .mcp { padding: 48px 0; }
+      .flow-diagram { flex-direction: column; }
+      .flow-arrow { transform: rotate(90deg); }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <div class="logo">vimmary</div>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#quickstart">Quick Start</a></li>
+      <li><a href="#mcp">MCP</a></li>
+      <li><a href="https://github.com/meltforce/vimmary">GitHub</a></li>
+    </ul>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="container">
+    <h1>YouTube summaries,<br>on your terms</h1>
+    <p>Self-hosted service that fetches transcripts, generates LLM summaries, and lets you search your video library with semantic search. Integrates with Karakeep and MCP.</p>
+    <div class="hero-buttons">
+      <a href="#quickstart" class="btn btn-primary">Get Started</a>
+      <a href="https://github.com/meltforce/vimmary" class="btn btn-secondary">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        View on GitHub
+      </a>
+    </div>
+    <div class="screenshots">
+      <div class="screenshot-tabs">
+        <button class="screenshot-tab active" onclick="showScreenshot('list')">Video List</button>
+        <button class="screenshot-tab" onclick="showScreenshot('detail')">Video Detail</button>
+        <button class="screenshot-tab" onclick="showScreenshot('stats')">Stats</button>
+        <button class="screenshot-tab" onclick="showScreenshot('settings')">Settings</button>
+      </div>
+      <div id="ss-list" class="screenshot-frame active">
+        <img src="screenshots/video-list.png" alt="vimmary video list view">
+      </div>
+      <div id="ss-detail" class="screenshot-frame">
+        <img src="screenshots/video-detail.png" alt="vimmary video detail view">
+      </div>
+      <div id="ss-stats" class="screenshot-frame">
+        <img src="screenshots/stats.png" alt="vimmary stats view">
+      </div>
+      <div id="ss-settings" class="screenshot-frame">
+        <img src="screenshots/settings.png" alt="vimmary settings view">
+      </div>
+    </div>
+    <script>
+    function showScreenshot(name) {
+      document.querySelectorAll('.screenshot-frame').forEach(f => f.classList.remove('active'));
+      document.querySelectorAll('.screenshot-tab').forEach(t => t.classList.remove('active'));
+      document.getElementById('ss-' + name).classList.add('active');
+      event.target.classList.add('active');
+    }
+    </script>
+  </div>
+</section>
+
+<section class="flow">
+  <div class="container">
+    <div class="flow-diagram">
+      <div class="flow-step">YouTube URL</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step">Fetch Transcript</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step">LLM Summary</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step">Search &amp; Browse</div>
+    </div>
+  </div>
+</section>
+
+<section class="features" id="features">
+  <div class="container">
+    <h2>Features</h2>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>
+        <h3>LLM-Powered Summaries</h3>
+        <p>Generate structured summaries with key points, topics, and action items using Claude or Mistral. Choose between medium and deep detail levels.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+        <h3>Hybrid Search</h3>
+        <p>Find videos by meaning, not just keywords. Combines semantic vector search with full-text search using Reciprocal Rank Fusion.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
+        <h3>Karakeep Integration</h3>
+        <p>Bookmark a YouTube video in Karakeep, get a summary back automatically. Bidirectional sync with webhook support.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.5" fill="currentColor" stroke="none"/><path d="M8 16s1.5 2 4 2 4-2 4-2"/></svg></div>
+        <h3>MCP Server</h3>
+        <p>6 tools for AI assistants to search, browse, and manage your video summaries. Works with Claude and any MCP-compatible client.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+        <h3>Web UI</h3>
+        <p>Clean React frontend embedded in a single Go binary. Browse videos, view summaries, manage settings, and submit URLs manually.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+        <h3>Tailscale Auth</h3>
+        <p>Zero-config authentication via tsnet. Multi-user support with per-user video libraries and independent Karakeep configurations.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="stack">
+  <div class="container">
+    <h2>Tech Stack</h2>
+    <div class="stack-grid">
+      <div class="stack-item">
+        <strong>Go</strong>
+        <span>Backend + single binary</span>
+      </div>
+      <div class="stack-item">
+        <strong>React + Vite</strong>
+        <span>Embedded frontend</span>
+      </div>
+      <div class="stack-item">
+        <strong>PostgreSQL + pgvector</strong>
+        <span>Storage + vector search</span>
+      </div>
+      <div class="stack-item">
+        <strong>Claude / Mistral</strong>
+        <span>Summaries + embeddings</span>
+      </div>
+      <div class="stack-item">
+        <strong>Tailscale</strong>
+        <span>Auth + networking</span>
+      </div>
+      <div class="stack-item">
+        <strong>Docker Compose</strong>
+        <span>One-command deploy</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="quickstart" id="quickstart">
+  <div class="container">
+    <h2>Quick Start</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <h3>Clone and configure</h3>
+          <pre><code>git clone https://github.com/meltforce/vimmary.git
+cd vimmary
+cp config.example.yaml config.yaml</code></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <h3>Add your API keys</h3>
+          <p>Edit <code>config.yaml</code> with your Mistral API key (required for embeddings) and optionally a Claude API key for summaries.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <h3>Start the stack</h3>
+          <pre><code>docker compose up -d</code></pre>
+          <p>This starts the app and PostgreSQL with pgvector. Migrations run automatically.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">4</div>
+        <div class="step-content">
+          <h3>Open the UI</h3>
+          <p>Go to <code>http://localhost:8080</code> and paste a YouTube URL to get your first summary.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mcp" id="mcp">
+  <div class="container">
+    <h2>MCP Tools</h2>
+    <p>Expose your video library to AI assistants via the Model Context Protocol.</p>
+    <div class="mcp-tools">
+      <div class="mcp-tool">
+        <code>search_videos</code>
+        <span>Hybrid keyword + semantic search</span>
+      </div>
+      <div class="mcp-tool">
+        <code>get_video</code>
+        <span>Retrieve full video details</span>
+      </div>
+      <div class="mcp-tool">
+        <code>list_recent</code>
+        <span>Browse recent videos</span>
+      </div>
+      <div class="mcp-tool">
+        <code>resummarize</code>
+        <span>Regenerate with different detail</span>
+      </div>
+      <div class="mcp-tool">
+        <code>stats</code>
+        <span>Aggregate statistics</span>
+      </div>
+      <div class="mcp-tool">
+        <code>delete_video</code>
+        <span>Remove a video and its data</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <p>
+      MIT License &middot;
+      <a href="https://github.com/meltforce/vimmary">GitHub</a> &middot;
+      Built by <a href="https://github.com/meltforce">meltforce</a>
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>
