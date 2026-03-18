@@ -15,7 +15,16 @@ var (
 )
 
 func New(svc *service.Service, version string, log *slog.Logger) *server.MCPServer {
-	s := mkmcp.NewServer("vimmary", version, `Vimmary is a YouTube video summary service.
+	s := mkmcp.NewServer("vimmary", version, `Vimmary is the user's personal YouTube video library with AI-generated summaries.
+
+It contains summaries and transcripts of YouTube videos the user has watched, bookmarked, or saved. Use this whenever the user asks about videos they've seen, topics from YouTube content, or wants to recall something from a video.
+
+ALWAYS use this when the user:
+- Asks what they watched, bookmarked, or saved ("what did I watch about X", "videos about X")
+- Wants to find or recall a video ("that video about Docker", "the one from Lex Fridman")
+- Asks about topics covered in their videos ("what do I know about self-hosting")
+- Wants statistics about their viewing habits ("how many videos", "top channels")
+- References YouTube content in any way
 
 Search and browse summaries of bookmarked YouTube videos. Summaries are automatically generated when videos are bookmarked in Karakeep.
 
@@ -44,7 +53,7 @@ type handlers struct {
 }
 
 var toolSearchVideos = mcp.NewTool("search_videos",
-	mcp.WithDescription("Search video summaries and transcripts by semantic similarity. Returns the most relevant videos ranked by a hybrid keyword + semantic score."),
+	mcp.WithDescription("Search the user's YouTube video library by topic, keyword, or meaning. Finds videos the user has watched or bookmarked. Use for questions like 'videos about Docker', 'that talk about productivity', 'what did I watch about AI'."),
 	mcp.WithString("query",
 		mcp.Required(),
 		mcp.Description("Natural language search query."),
@@ -55,7 +64,7 @@ var toolSearchVideos = mcp.NewTool("search_videos",
 )
 
 var toolGetVideo = mcp.NewTool("get_video",
-	mcp.WithDescription("Get a specific video with its full summary, transcript, and metadata."),
+	mcp.WithDescription("Get the full summary, transcript, and metadata of a specific video from the user's library. Use after finding a video via search or list to get complete details."),
 	mcp.WithString("id",
 		mcp.Required(),
 		mcp.Description("UUID of the video."),
@@ -80,7 +89,7 @@ var toolResummarize = mcp.NewTool("resummarize",
 )
 
 var toolListRecent = mcp.NewTool("list_recent",
-	mcp.WithDescription("Browse recently processed videos with optional filters."),
+	mcp.WithDescription("Browse the user's recently watched or bookmarked YouTube videos. Use for 'what did I watch recently', 'latest videos', 'show me my videos'. Supports filtering by channel, language, or topic."),
 	mcp.WithString("channel",
 		mcp.Description("Filter by channel name (partial match)."),
 	),
@@ -99,6 +108,6 @@ var toolListRecent = mcp.NewTool("list_recent",
 )
 
 var toolStats = mcp.NewTool("stats",
-	mcp.WithDescription("Get aggregate statistics: total video count, status distribution, top channels, top topics, and daily activity."),
+	mcp.WithDescription("Get statistics about the user's video library: total count, top channels, top topics, and daily activity. Use for 'how many videos do I have', 'what channels do I watch most', 'my top topics'."),
 )
 
