@@ -152,7 +152,7 @@ func buildContent(md goldmark.Markdown, v storage.Video) (string, error) {
 		buf.WriteString("<h2>Key Points</h2>\n<ul>\n")
 		for _, kp := range meta.KeyPoints {
 			buf.WriteString("  <li>")
-			buf.WriteString(html.EscapeString(kp))
+			renderInlineMarkdown(md, &buf, kp)
 			buf.WriteString("</li>\n")
 		}
 		buf.WriteString("</ul>\n")
@@ -162,7 +162,7 @@ func buildContent(md goldmark.Markdown, v storage.Video) (string, error) {
 		buf.WriteString("<h2>Action Items</h2>\n<ul>\n")
 		for _, ai := range meta.ActionItems {
 			buf.WriteString("  <li>")
-			buf.WriteString(html.EscapeString(ai))
+			renderInlineMarkdown(md, &buf, ai)
 			buf.WriteString("</li>\n")
 		}
 		buf.WriteString("</ul>\n")
@@ -171,4 +171,19 @@ func buildContent(md goldmark.Markdown, v storage.Video) (string, error) {
 	fmt.Fprintf(&buf, `<p><a href="https://youtube.com/watch?v=%s">Watch on YouTube</a></p>`, v.YouTubeID)
 
 	return buf.String(), nil
+}
+
+// renderInlineMarkdown converts a Markdown string to HTML and strips the wrapping <p> tags
+// so it can be used inline (e.g. inside <li> elements).
+func renderInlineMarkdown(md goldmark.Markdown, buf *bytes.Buffer, text string) {
+	var tmp bytes.Buffer
+	if err := md.Convert([]byte(text), &tmp); err != nil {
+		buf.WriteString(html.EscapeString(text))
+		return
+	}
+	// goldmark wraps output in <p>...</p>\n — strip it for inline use
+	out := tmp.Bytes()
+	out = bytes.TrimPrefix(out, []byte("<p>"))
+	out = bytes.TrimSuffix(out, []byte("</p>\n"))
+	buf.Write(out)
 }
