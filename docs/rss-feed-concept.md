@@ -2,44 +2,42 @@
 
 ## Ziel
 
-Fulltext-RSS-Feed bereitstellen, über den ein RSS-Reader (z.B. Miniflux, Reeder, Feedly) die vimmary-Summaries und Transkripte als Artikel darstellen kann. Kein Extra-Aufwand mehr nötig — neues Video verarbeitet, Feed aktualisiert sich automatisch.
+RSS-Feed bereitstellen, über den ein RSS-Reader (z.B. Miniflux, Reeder, Feedly) die vimmary-Summaries als Artikel darstellen kann. Kein Extra-Aufwand mehr nötig — neues Video verarbeitet, Feed aktualisiert sich automatisch.
 
-## Herausforderung: Authentifizierung
+## Zugriffschutz: Unratbares Token in der URL
 
-vimmary nutzt Tailscale tsnet für Auth. RSS-Reader können aber kein Tailscale-Auth. Lösung: **Token-basierter Zugriff** — das gleiche Pattern wie der Karakeep-Webhook.
+Kein Auth im klassischen Sinne. Stattdessen enthält die Feed-URL ein **zufällig generiertes, kryptographisch sicheres Token** (`feed_token`), das als einziger Zugriffschutz dient. Wer die URL kennt, hat Zugriff — wer sie nicht kennt, kann sie nicht erraten.
 
-Jeder User hat bereits ein `webhook_token` in der DB. Dieses Token wird auch für den RSS-Feed verwendet (oder optional ein separates `feed_token`).
+### Token-Anforderungen
 
-### Variante A: Webhook-Token wiederverwenden (empfohlen)
+- **32 Byte Zufall** (64 Hex-Zeichen) via `crypto/rand` — nicht erratbar
+- **Unveränderlich:** Einmal generiert, wird das Token nie geändert (damit RSS-Reader-URLs stabil bleiben)
+- **Unique Constraint** in der DB — garantiert, dass kein Token je doppelt vergeben wird
+- **Lazy-generiert:** Wird beim ersten Zugriff auf die Settings-Seite erzeugt (wie `webhook_token`)
+- **Separates Feld** `feed_token` in der `users`-Tabelle — unabhängig vom Webhook-Token
 
-- Kein DB-Schema-Change nötig
-- Einfach: ein Token für Webhook + Feed
-- URL: `/feed/rss?token=<webhook_token>`
+### Warum separates Token statt Webhook-Token?
 
-### Variante B: Separates Feed-Token
-
-- Neues Feld `feed_token` in `users`-Tabelle
-- Pro: Feed unabhängig vom Webhook widerrufbar
-- Contra: Mehr Komplexität, Migration nötig
-
-**Empfehlung:** Variante A — bei Bedarf später auf Variante B erweitern.
+- Feed-URL wird in Drittanbieter-Apps (RSS-Reader) hinterlegt — anderer Vertrauenskontext
+- Webhook-Token hat Schreibzugriff (löst Verarbeitung aus), Feed-Token nur Lesezugriff
+- Unabhängig widerrufbar falls nötig
 
 ## Feed-Format
 
 **Atom 1.0** (statt RSS 2.0):
 - Bessere Spezifikation, sauberer XML
-- Breitere UTF-8-Unterstützung (relevant für mehrsprachige Transkripte)
+- Breitere UTF-8-Unterstützung (relevant für mehrsprachige Summaries)
 - Jeder gängige RSS-Reader unterstützt Atom
 
 ## Endpoint
 
 ```
-GET /feed/atom?token=<webhook_token>
+GET /feed/atom/<feed_token>
 ```
 
-- Außerhalb der Tailscale-Auth-Middleware (wie `/webhook/karakeep`)
-- Token als Query-Parameter (RSS-Reader unterstützen keine Header-Auth)
-- Kein Rate-Limiting nötig (read-only, persönlicher Gebrauch)
+- Außerhalb der Tailscale-Auth-Middleware (öffentlich erreichbar, Token ist der Schutz)
+- Token als Pfad-Segment (sauberer als Query-Parameter, kein Risiko von URL-Trunkierung)
+- Read-only, kein Rate-Limiting nötig (persönlicher Gebrauch, max ~10 Videos/Tag)
 
 ## Feed-Inhalt
 
@@ -49,7 +47,6 @@ GET /feed/atom?token=<webhook_token>
 |------------|-------------------------------------------|
 | Title      | `vimmary — Video Summaries`               |
 | Subtitle   | `AI-generated summaries of YouTube videos`|
-| Author     | User-Login (Tailscale)                    |
 | Link       | vimmary Base-URL                          |
 | Updated    | Timestamp des neuesten Videos             |
 | ID         | vimmary Base-URL + `/feed/atom`           |
@@ -69,6 +66,8 @@ GET /feed/atom?token=<webhook_token>
 
 ### Fulltext-Content (HTML)
 
+Der Content enthält die Summary und strukturierte Metadaten — **kein Transkript**.
+
 ```html
 <h2>Summary</h2>
 <div><!-- Summary als HTML (Markdown → HTML konvertiert) --></div>
@@ -83,16 +82,10 @@ GET /feed/atom?token=<webhook_token>
   <li><!-- aus metadata.action_items --></li>
 </ul>
 
-<h2>Transcript</h2>
-<details>
-  <summary>Full transcript (click to expand)</summary>
-  <p><!-- transcript als plain text, whitespace-preserving --></p>
-</details>
-
 <p><a href="https://youtube.com/watch?v=...">Watch on YouTube</a></p>
 ```
 
-> **Hinweis:** Ob das `<details>`-Tag im RSS-Reader gerendert wird, hängt vom Reader ab. Als Fallback wird das Transkript einfach als Block angezeigt — auch akzeptabel.
+Key Points und Action Items werden nur gerendert, wenn sie in der Metadata vorhanden und nicht leer sind.
 
 ## Pagination / Limits
 
@@ -101,6 +94,14 @@ GET /feed/atom?token=<webhook_token>
 - Kein Paging via `rel="next"` — bei max. 10 Videos/Tag reichen 50 Einträge für ~1 Woche
 
 ## Implementierung
+
+### DB-Migration
+
+Neues Feld in `users`-Tabelle:
+
+```sql
+ALTER TABLE users ADD COLUMN feed_token TEXT UNIQUE;
+```
 
 ### Backend (Go)
 
@@ -113,28 +114,36 @@ internal/feed/
 ```
 
 **`atom.go`:**
-- Struct-Definitionen für Atom-Feed (oder `encoding/xml` direkt)
+- Struct-Definitionen für Atom-Feed via `encoding/xml`
 - Funktion `BuildFeed(videos []storage.Video, baseURL string) ([]byte, error)`
-- Markdown → HTML-Konvertierung der Summary (z.B. via `gomarkdown/markdown` oder `goldmark`)
+- Markdown → HTML-Konvertierung der Summary via `goldmark`
 
 **`handler.go`:**
 - `HandleAtomFeed(store *storage.DB, svc *service.Service) http.HandlerFunc`
-- Token aus Query validieren → User-ID ermitteln
+- Token aus URL-Pfad extrahieren → User-ID ermitteln via `store.GetUserByFeedToken()`
 - Videos laden via bestehende `ListRecent()` (Filter: `status=completed`)
 - Feed generieren und als `application/atom+xml` zurückgeben
+- 404 bei ungültigem Token (kein Unterschied zu "nicht gefunden" — kein Info-Leak)
 
-#### 2. Route registrieren
+#### 2. Storage-Erweiterung
+
+In `internal/storage/users.go`:
+
+```go
+func (db *DB) GetOrCreateFeedToken(ctx context.Context, userID int) (string, error)
+func (db *DB) GetUserByFeedToken(ctx context.Context, token string) (int, error)
+```
+
+Gleiches Pattern wie `GetOrCreateWebhookToken` / `GetUserByWebhookToken`.
+
+#### 3. Route registrieren
 
 In `internal/server/server.go`:
 
 ```go
-// Feed route — no Tailscale auth, uses per-user token (like webhook)
-r.Get("/feed/atom", feed.HandleAtomFeed(s.store, s.svc))
+// Feed route — no Tailscale auth, token in URL path is the access control
+r.Get("/feed/atom/{token}", feed.HandleAtomFeed(s.store, s.svc))
 ```
-
-#### 3. Keine DB-Migration nötig
-
-Alles basiert auf bestehenden Daten (videos + users.webhook_token).
 
 ### Frontend (React)
 
@@ -148,18 +157,17 @@ Neben dem bestehenden Webhook-URL-Bereich einen **RSS-Feed-Bereich** hinzufügen
 │                                         │
 │ Feed URL:                               │
 │ ┌─────────────────────────────────┐     │
-│ │ https://vimmary.../feed/atom?...│ 📋  │
+│ │ https://vimmary.../feed/atom/...│  📋 │
 │ └─────────────────────────────────┘     │
 │                                         │
-│ Copy this URL into your RSS reader      │
-│ to get fulltext summaries delivered     │
-│ automatically.                          │
+│ Copy this URL into your RSS reader to   │
+│ receive video summaries automatically.  │
 └─────────────────────────────────────────┘
 ```
 
-- Feed-URL dynamisch aus Webhook-Token + Base-URL zusammensetzen
+- Neuer API-Endpoint `GET /api/v1/settings/feed` liefert das Feed-Token (lazy-generiert)
+- Feed-URL aus Token + `window.location.origin` zusammensetzen
 - Copy-Button (wie bei Webhook-URL)
-- Kein neuer API-Endpoint nötig — Token ist bereits auf der Settings-Seite vorhanden
 
 ## Abhängigkeiten
 
@@ -172,16 +180,12 @@ Neben dem bestehenden Webhook-URL-Bereich einen **RSS-Feed-Bereich** hinzufügen
 
 ## Nicht im Scope
 
-- **Feed-Discovery** (`<link rel="alternate" type="application/atom+xml">` im HTML-Head): Wäre nett, aber nicht nötig bei persönlichem Gebrauch
-- **Conditional GET** (`If-Modified-Since`, `ETag`): Overkill für persönliches Volumen
-- **Webhook/Push-Notification** an RSS-Reader (WebSub): Unnötig, Reader pollen sowieso
-- **Mehrere Feeds** (z.B. pro Channel, pro Topic): Kann später ergänzt werden via Query-Filter
-
-## Offene Fragen
-
-1. **Transkript im Feed?** Das Transkript kann sehr lang sein (10.000+ Wörter). Soll es standardmäßig enthalten sein oder optional (`?transcript=true`)? Empfehlung: Standardmäßig ja, da "Fulltext-RSS" das Ziel ist.
-
-2. **Separates Feed-Token?** Aktuell reicht das Webhook-Token. Falls der Feed jemals öffentlich/geteilt werden soll, wäre ein separates Token sicherer.
+- **Transkript im Feed:** Bewusst ausgeschlossen — Summary + Metadaten reichen
+- **Feed-Discovery** (`<link rel="alternate">`): Nicht nötig bei persönlichem Gebrauch
+- **Conditional GET** (`ETag`, `If-Modified-Since`): Overkill für persönliches Volumen
+- **WebSub/Push:** Unnötig, Reader pollen sowieso
+- **Mehrere Feeds** (pro Channel/Topic): Kann später via Query-Filter ergänzt werden
+- **Token-Rotation:** Aktuell nicht vorgesehen — Token ist unveränderlich
 
 ## CONCEPT.md-Ergänzung
 
@@ -190,8 +194,10 @@ Nach Implementierung den folgenden Abschnitt in CONCEPT.md ergänzen:
 ```markdown
 ## RSS Feed
 
-- Atom 1.0 Feed unter `/feed/atom?token=<webhook_token>`
-- Fulltext: Summary (HTML) + Key Points + Action Items + Transkript
-- Außerhalb Tailscale-Auth (Token-basiert, wie Webhook)
+- Atom 1.0 Feed unter `/feed/atom/<feed_token>`
+- Fulltext: Summary (HTML) + Key Points + Action Items
+- Kein Transkript im Feed
+- Zugriff über kryptographisches Token in der URL (kein Auth nötig)
+- Separates `feed_token` pro User (unabhängig vom Webhook-Token)
 - 50 neueste completed Videos, konfigurierbar via `?limit=N`
 ```
