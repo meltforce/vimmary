@@ -303,6 +303,15 @@ func (s *Service) GetWebhookInfo(ctx context.Context, userID int) (token string,
 	return token, nil
 }
 
+// GetFeedInfo returns the feed token for a user, generating one if needed.
+func (s *Service) GetFeedInfo(ctx context.Context, userID int) (string, error) {
+	token, err := s.db.GetOrCreateFeedToken(ctx, userID)
+	if err != nil {
+		return "", fmt.Errorf("get feed token: %w", err)
+	}
+	return token, nil
+}
+
 // SetKarakeepAPIKey stores a Karakeep API key for a user.
 func (s *Service) SetKarakeepAPIKey(ctx context.Context, userID int, apiKey string) error {
 	return s.db.SetKarakeepAPIKey(ctx, userID, apiKey)

@@ -217,6 +217,14 @@ export interface ImportResult {
   skipped: number;
 }
 
+export interface FeedInfo {
+  token: string;
+}
+
+export function fetchFeedInfo(): Promise<FeedInfo> {
+  return fetchJSON("/api/v1/settings/feed");
+}
+
 export function fetchWebhookInfo(): Promise<WebhookInfo> {
   return fetchJSON("/api/v1/settings/webhook");
 }

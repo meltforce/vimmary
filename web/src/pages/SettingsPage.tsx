@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchWebhookInfo,
+  fetchFeedInfo,
   fetchKarakeepStatus,
   setKarakeepAPIKey,
   importKarakeepBookmarks,
@@ -207,6 +208,15 @@ export default function SettingsPage() {
   });
 
   const {
+    data: feedInfo,
+    isLoading: feedLoading,
+    error: feedError,
+  } = useQuery({
+    queryKey: ["settings", "feed"],
+    queryFn: fetchFeedInfo,
+  });
+
+  const {
     data: karakeepStatus,
     isLoading: karakeepLoading,
     error: karakeepError,
@@ -244,8 +254,8 @@ export default function SettingsPage() {
     },
   });
 
-  const isLoading = webhookLoading || karakeepLoading || promptsLoading;
-  const error = webhookError || karakeepError || promptsError;
+  const isLoading = webhookLoading || feedLoading || karakeepLoading || promptsLoading;
+  const error = webhookError || feedError || karakeepError || promptsError;
 
   if (isLoading) return <LoadingSkeleton count={3} />;
   if (error) {
@@ -396,6 +406,32 @@ export default function SettingsPage() {
               defaultPrompt={prompts.default_deep}
             />
           </>
+        )}
+      </div>
+
+      {/* RSS Feed */}
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 space-y-4">
+        <h2 className="text-zinc-700 dark:text-zinc-300 font-medium">
+          RSS Feed
+        </h2>
+        <p className="text-zinc-500 text-sm">
+          Copy this URL into your RSS reader to receive video summaries
+          automatically.
+        </p>
+        {feedInfo?.token && (
+          <div>
+            <label className="text-xs text-zinc-500 block mb-1">
+              Feed URL
+            </label>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-3 py-2 text-zinc-700 dark:text-zinc-300 break-all">
+                {`${window.location.origin}/feed/atom/${feedInfo.token}`}
+              </code>
+              <CopyButton
+                text={`${window.location.origin}/feed/atom/${feedInfo.token}`}
+              />
+            </div>
+          </div>
         )}
       </div>
 
