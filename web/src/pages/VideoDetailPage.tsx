@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
@@ -38,6 +38,13 @@ export default function VideoDetailPage() {
       return false;
     },
   });
+
+  useEffect(() => {
+    if (video?.title) {
+      document.title = video.title;
+    }
+    return () => { document.title = "Vimmary"; };
+  }, [video?.title]);
 
   const resummarize = useMutation({
     mutationFn: (level: string) => resummarizeVideo(id!, level, resumLang || undefined, resumProvider || undefined),
