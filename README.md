@@ -25,7 +25,6 @@ Web UI ──manual URL──▶    │                                   │
 
 ## Features
 
-- **RSS feed** — subscribe to your video summaries via Atom feed in any RSS reader, with per-user feed tokens for authentication
 - **Manual URL submission** — paste any YouTube URL in the web UI to process it immediately
 - **Automatic summaries** — triggered by Karakeep webhooks, no manual action needed
 - **Bulk import** — import all existing YouTube bookmarks from Karakeep via Settings page
@@ -35,6 +34,7 @@ Web UI ──manual URL──▶    │                                   │
 - **Auto-retry** — transcript fetch failures are automatically retried with exponential backoff (2m/5m/10m, max 3 retries)
 - **Retry all failed** — batch-retry all failed videos from the web UI
 - **MCP server** — 6 tools for searching, browsing, and managing video summaries
+- **RSS feed** — subscribe to your video summaries via Atom feed in any RSS reader, with per-user feed tokens for authentication
 - **Web UI** — React frontend embedded in the Go binary (Videos, Stats, Settings pages)
 - **Tailscale auth** — zero-config authentication via tsnet
 - **Multi-user support** — per-user video libraries (same YouTube video can be bookmarked by multiple users independently)
