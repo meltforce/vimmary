@@ -25,6 +25,7 @@ Web UI ──manual URL──▶    │                                   │
 
 ## Features
 
+- **RSS feed** — subscribe to your video summaries via Atom feed in any RSS reader, with per-user feed tokens for authentication
 - **Manual URL submission** — paste any YouTube URL in the web UI to process it immediately
 - **Automatic summaries** — triggered by Karakeep webhooks, no manual action needed
 - **Bulk import** — import all existing YouTube bookmarks from Karakeep via Settings page
