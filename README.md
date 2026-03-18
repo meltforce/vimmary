@@ -160,6 +160,51 @@ cd web && npm install && npm run dev
 4. In Karakeep Settings → Webhooks, create webhooks for `created` and `deleted` events
 5. If Karakeep runs in Docker and vimmary is on Tailscale, add `CRAWLER_ALLOWED_INTERNAL_HOSTNAMES=.your-tailnet.ts.net` to Karakeep's env to allow webhook delivery
 
+## RSS feed
+
+vimmary provides an Atom feed of your video summaries, including full summaries, key points, and action items. Each entry links back to the vimmary summary page and the original YouTube video.
+
+1. Open vimmary's **Settings** page
+2. Copy your **Feed Token** (generated automatically on first access)
+3. Subscribe in your RSS reader:
+   ```
+   https://<your-vimmary-host>/feed/atom/<feed-token>
+   ```
+4. Optional: append `?limit=100` to fetch more than the default 50 entries (max 200)
+
+Each user has their own feed token. The token is the only authentication — no Tailscale auth is needed for the feed URL, so it works with any RSS reader.
+
+## MCP configuration
+
+The MCP server is always available at `/mcp` (HTTP + SSE transport) and can also be started in stdio mode via `--mcp` flag for local use.
+
+**HTTP (production):** Add vimmary as an MCP server in your client using the SSE endpoint:
+
+```json
+{
+  "mcpServers": {
+    "vimmary": {
+      "url": "https://<your-vimmary-host>/mcp"
+    }
+  }
+}
+```
+
+**Stdio (local development):**
+
+```json
+{
+  "mcpServers": {
+    "vimmary": {
+      "command": "go",
+      "args": ["run", "./cmd/vimmary", "--mcp", "--config", "config.yaml"]
+    }
+  }
+}
+```
+
+Authentication is handled via Tailscale (HTTP mode) or defaults to user ID 1 (stdio mode).
+
 ## Build
 
 ```bash

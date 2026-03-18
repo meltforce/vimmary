@@ -33,7 +33,7 @@ type atomLink struct {
 
 type atomEntry struct {
 	Title      string         `xml:"title"`
-	Link       atomLink       `xml:"link"`
+	Links      []atomLink     `xml:"link"`
 	ID         string         `xml:"id"`
 	Published  string         `xml:"published"`
 	Updated    string         `xml:"updated"`
@@ -76,11 +76,12 @@ func BuildFeed(videos []storage.Video, baseURL string) ([]byte, error) {
 			continue
 		}
 
+		vimmaryURL := fmt.Sprintf("%s/videos/%s", baseURL, v.ID)
 		entry := atomEntry{
 			Title: fmt.Sprintf("[%s] %s", v.Channel, v.Title),
-			Link: atomLink{
-				Href: fmt.Sprintf("https://youtube.com/watch?v=%s", v.YouTubeID),
-				Rel:  "alternate",
+			Links: []atomLink{
+				{Href: vimmaryURL, Rel: "alternate", Type: "text/html"},
+				{Href: fmt.Sprintf("https://youtube.com/watch?v=%s", v.YouTubeID), Rel: "related"},
 			},
 			ID:        fmt.Sprintf("urn:uuid:%s", v.ID),
 			Published: v.CreatedAt.Format(time.RFC3339),
@@ -95,7 +96,7 @@ func BuildFeed(videos []storage.Video, baseURL string) ([]byte, error) {
 		entry.Summary = summaryText
 
 		// Content: full HTML
-		content, err := buildContent(md, v)
+		content, err := buildContent(md, v, baseURL)
 		if err != nil {
 			return nil, fmt.Errorf("build content for %s: %w", v.ID, err)
 		}
@@ -127,7 +128,7 @@ func BuildFeed(videos []storage.Video, baseURL string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func buildContent(md goldmark.Markdown, v storage.Video) (string, error) {
+func buildContent(md goldmark.Markdown, v storage.Video, baseURL string) (string, error) {
 	var buf bytes.Buffer
 
 	// Summary as HTML
@@ -168,7 +169,7 @@ func buildContent(md goldmark.Markdown, v storage.Video) (string, error) {
 		buf.WriteString("</ul>\n")
 	}
 
-	fmt.Fprintf(&buf, `<p><a href="https://youtube.com/watch?v=%s">Watch on YouTube</a></p>`, v.YouTubeID)
+	fmt.Fprintf(&buf, `<p><a href="%s/videos/%s">View summary in vimmary</a> · <a href="https://youtube.com/watch?v=%s">Watch on YouTube</a></p>`, baseURL, v.ID, v.YouTubeID)
 
 	return buf.String(), nil
 }
