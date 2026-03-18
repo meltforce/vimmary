@@ -7,6 +7,7 @@
   <meta name="description" content="Self-hosted YouTube video summary service. Fetch transcripts, generate LLM summaries, and search your video library with semantic search.">
   <meta property="og:title" content="vimmary — YouTube Video Summaries">
   <meta property="og:description" content="Self-hosted YouTube video summary service with LLM-powered summaries and semantic search.">
+  <meta property="og:image" content="https://vimmary.meltforce.org/screenshots/video-list.png">
   <meta property="og:url" content="https://vimmary.meltforce.org">
   <meta property="og:type" content="website">
   <link rel="canonical" href="https://vimmary.meltforce.org">
@@ -315,6 +316,13 @@
     .prereq strong {
       color: var(--accent);
     }
+    .prereq ul {
+      margin: 8px 0 0 20px;
+      list-style: disc;
+    }
+    .prereq li {
+      margin-bottom: 4px;
+    }
 
     /* MCP */
     .mcp {
@@ -556,7 +564,12 @@
   <div class="container">
     <h2>Quick Start</h2>
     <div class="prereq">
-      <strong>Prerequisites:</strong> <a href="https://tailscale.com">Tailscale</a> must be installed and running on the host machine. vimmary uses Tailscale for networking and authentication — there is no standalone mode.
+      <strong>Prerequisites:</strong>
+      <ul>
+        <li><a href="https://tailscale.com">Tailscale</a> — must be installed and running. vimmary uses Tailscale for networking and authentication, there is no standalone mode.</li>
+        <li><a href="https://console.mistral.ai/">Mistral API key</a> — required for embeddings (<code>mistral-embed</code>).</li>
+        <li><a href="https://console.anthropic.com/">Claude API key</a> — optional, for higher-quality summaries. Falls back to Mistral if not set.</li>
+      </ul>
     </div>
     <div class="steps">
       <div class="step">
@@ -573,7 +586,7 @@ cp config.example.yaml config.yaml</code></pre>
         <div class="step-number">2</div>
         <div class="step-content">
           <h3>Configure</h3>
-          <p>Edit <code>config.yaml</code> with your Tailscale auth key, Mistral API key (required for embeddings), and optionally a Claude API key for summaries.</p>
+          <p>Edit <code>config.yaml</code> and fill in your API keys under the <code>secrets</code> section.</p>
         </div>
       </div>
       <div class="step">
