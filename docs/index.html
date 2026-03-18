@@ -562,32 +562,26 @@
       <div class="step">
         <div class="step-number">1</div>
         <div class="step-content">
-          <h3>Clone and configure</h3>
-          <pre><code>git clone https://github.com/meltforce/vimmary.git
-cd vimmary
+          <h3>Download the config files</h3>
+          <pre><code>mkdir vimmary && cd vimmary
+curl -LO https://raw.githubusercontent.com/meltforce/vimmary/main/docker-compose.yml
+curl -LO https://raw.githubusercontent.com/meltforce/vimmary/main/config.example.yaml
 cp config.example.yaml config.yaml</code></pre>
         </div>
       </div>
       <div class="step">
         <div class="step-number">2</div>
         <div class="step-content">
-          <h3>Add your API keys</h3>
+          <h3>Configure</h3>
           <p>Edit <code>config.yaml</code> with your Tailscale auth key, Mistral API key (required for embeddings), and optionally a Claude API key for summaries.</p>
         </div>
       </div>
       <div class="step">
         <div class="step-number">3</div>
         <div class="step-content">
-          <h3>Start the stack</h3>
+          <h3>Start</h3>
           <pre><code>docker compose up -d</code></pre>
-          <p>This starts the app and PostgreSQL with pgvector. Migrations run automatically.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-number">4</div>
-        <div class="step-content">
-          <h3>Open the UI</h3>
-          <p>Go to <code>http://localhost:8080</code> and paste a YouTube URL to get your first summary.</p>
+          <p>Pulls the image from Docker Hub and starts the app with PostgreSQL + pgvector. Migrations run automatically.</p>
         </div>
       </div>
     </div>

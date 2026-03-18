@@ -1,6 +1,6 @@
 services:
   app:
-    build: .
+    image: meltforce/vimmary:edge
     ports:
       - "8080:8080"
     volumes:
