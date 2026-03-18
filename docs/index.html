@@ -301,6 +301,20 @@
       font-size: 0.85rem;
       color: var(--text-muted);
     }
+    .prereq {
+      max-width: 640px;
+      margin: 0 auto 32px;
+      padding: 14px 18px;
+      background: var(--accent-soft);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      font-size: 0.9rem;
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .prereq strong {
+      color: var(--accent);
+    }
 
     /* MCP */
     .mcp {
@@ -427,8 +441,8 @@
       <div class="screenshot-tabs">
         <button class="screenshot-tab active" onclick="showScreenshot('list')">Video List</button>
         <button class="screenshot-tab" onclick="showScreenshot('detail')">Video Detail</button>
-        <button class="screenshot-tab" onclick="showScreenshot('stats')">Stats</button>
         <button class="screenshot-tab" onclick="showScreenshot('settings')">Settings</button>
+        <button class="screenshot-tab" onclick="showScreenshot('mcp')">MCP in Action</button>
       </div>
       <div id="ss-list" class="screenshot-frame active">
         <img src="screenshots/video-list.png" alt="vimmary video list view">
@@ -436,11 +450,11 @@
       <div id="ss-detail" class="screenshot-frame">
         <img src="screenshots/video-detail.png" alt="vimmary video detail view">
       </div>
-      <div id="ss-stats" class="screenshot-frame">
-        <img src="screenshots/stats.png" alt="vimmary stats view">
-      </div>
       <div id="ss-settings" class="screenshot-frame">
         <img src="screenshots/settings.png" alt="vimmary settings view">
+      </div>
+      <div id="ss-mcp" class="screenshot-frame">
+        <img src="screenshots/mcp.png" alt="vimmary MCP integration with Claude">
       </div>
     </div>
     <script>
@@ -541,6 +555,9 @@
 <section class="quickstart" id="quickstart">
   <div class="container">
     <h2>Quick Start</h2>
+    <div class="prereq">
+      <strong>Prerequisites:</strong> <a href="https://tailscale.com">Tailscale</a> must be installed and running on the host machine. vimmary uses Tailscale for networking and authentication — there is no standalone mode.
+    </div>
     <div class="steps">
       <div class="step">
         <div class="step-number">1</div>
@@ -555,7 +572,7 @@ cp config.example.yaml config.yaml</code></pre>
         <div class="step-number">2</div>
         <div class="step-content">
           <h3>Add your API keys</h3>
-          <p>Edit <code>config.yaml</code> with your Mistral API key (required for embeddings) and optionally a Claude API key for summaries.</p>
+          <p>Edit <code>config.yaml</code> with your Tailscale auth key, Mistral API key (required for embeddings), and optionally a Claude API key for summaries.</p>
         </div>
       </div>
       <div class="step">
