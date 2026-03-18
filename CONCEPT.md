@@ -196,6 +196,15 @@ github.com/meltforce/totalrecall   ← Personal Knowledge System (importiert mel
 github.com/meltforce/vimmary       ← YouTube Summary Service (importiert meltkit)
 ```
 
+## RSS Feed
+
+- Atom 1.0 Feed unter `/feed/atom/<feed_token>`
+- Fulltext: Summary (HTML) + Key Points + Action Items
+- Kein Transkript im Feed
+- Zugriff über kryptographisches Token in der URL (kein Auth nötig)
+- Separates `feed_token` pro User (unabhängig vom Webhook-Token)
+- 50 neueste completed Videos, konfigurierbar via `?limit=N`
+
 ## Volumen & Sprachen
 
 - Max. 10 Videos pro Tag, typischerweise weniger

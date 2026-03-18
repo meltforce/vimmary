@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN feed_token TEXT UNIQUE;

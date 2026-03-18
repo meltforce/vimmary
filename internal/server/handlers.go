@@ -316,6 +316,24 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, stats)
 }
 
+func (s *Server) handleGetFeed(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	token, err := s.svc.GetFeedInfo(r.Context(), uid)
+	if err != nil {
+		s.log.Error("get feed info failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get feed info"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"token": token,
+	})
+}
+
 func (s *Server) handleGetWebhook(w http.ResponseWriter, r *http.Request) {
 	uid, ok := mustUserID(w, r)
 	if !ok {

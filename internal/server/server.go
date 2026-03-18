@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/meltforce/vimmary/internal/feed"
 	"github.com/meltforce/vimmary/internal/karakeep"
 	"github.com/meltforce/vimmary/internal/service"
 	"github.com/meltforce/vimmary/internal/storage"
@@ -35,6 +36,9 @@ func (s *Server) routes() {
 	// Webhook route — no Tailscale auth, uses per-user Bearer token
 	r.Post("/webhook/karakeep", karakeep.WebhookHandler(s.svc, s.store.GetUserByWebhookToken))
 
+	// Feed route — no Tailscale auth, token in URL path is the access control
+	r.Get("/feed/atom/{token}", feed.HandleAtomFeed(s.svc, s.store))
+
 	r.Group(func(r chi.Router) {
 		r.Use(s.IdentityMiddleware())
 
@@ -54,6 +58,7 @@ func (s *Server) routes() {
 		r.Get("/api/v1/stats", s.handleStats)
 
 		// Settings
+		r.Get("/api/v1/settings/feed", s.handleGetFeed)
 		r.Get("/api/v1/settings/webhook", s.handleGetWebhook)
 		r.Get("/api/v1/settings/karakeep", s.handleGetKarakeepStatus)
 		r.Put("/api/v1/settings/karakeep", s.handleSetKarakeepKey)
