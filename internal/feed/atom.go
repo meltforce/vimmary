@@ -76,7 +76,7 @@ func BuildFeed(videos []storage.Video, baseURL string) ([]byte, error) {
 			continue
 		}
 
-		vimmaryURL := fmt.Sprintf("%s/videos/%s", baseURL, v.ID)
+		vimmaryURL := fmt.Sprintf("%s/video/%s", baseURL, v.ID)
 		entry := atomEntry{
 			Title: fmt.Sprintf("[%s] %s", v.Channel, v.Title),
 			Links: []atomLink{
@@ -169,7 +169,7 @@ func buildContent(md goldmark.Markdown, v storage.Video, baseURL string) (string
 		buf.WriteString("</ul>\n")
 	}
 
-	fmt.Fprintf(&buf, `<p><a href="%s/videos/%s">View summary in vimmary</a> · <a href="https://youtube.com/watch?v=%s">Watch on YouTube</a></p>`, baseURL, v.ID, v.YouTubeID)
+	fmt.Fprintf(&buf, `<p><a href="%s/video/%s">View summary in vimmary</a> · <a href="https://youtube.com/watch?v=%s">Watch on YouTube</a></p>`, baseURL, v.ID, v.YouTubeID)
 
 	return buf.String(), nil
 }
