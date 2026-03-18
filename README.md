@@ -56,35 +56,87 @@ Web UI ──manual URL──▶    │                                   │
 | MCP         | mcp-go, HTTP + stdio transports       |
 | Frontend    | React + Vite (embedded in Go binary)  |
 
-## Installation
+## Quick start
 
-### Docker Compose (recommended)
+### Prerequisites
 
-1. Clone the repository and create your config:
+- Docker and Docker Compose
+- A **Mistral API key** for embeddings ([console.mistral.ai](https://console.mistral.ai))
+- A **Claude API key** or **Mistral API key** for summaries
 
-   ```bash
-   git clone https://github.com/meltforce/vimmary.git
-   cd vimmary
-   cp config.example.yaml config.yaml
-   ```
+### 1. Create a project directory
 
-2. Edit `config.yaml` with your settings:
+```bash
+mkdir vimmary && cd vimmary
+```
 
-   - **`secrets.mistral_api_key`** — required for embeddings (get one at [console.mistral.ai](https://console.mistral.ai))
-   - **`secrets.claude_api_key`** or **`secrets.mistral_api_key`** — at least one is needed for summaries (set `summary.provider` to `"claude"` or `"mistral"`)
-   - **`external_url`** — the URL where vimmary is reachable (used for links in Karakeep writebacks)
-   - **`youtube.sub_langs`** — preferred transcript languages (default: `en`, `de`)
-   - **`tailscale.enabled`** — set to `true` to enable Tailscale authentication (recommended); when `false`, the app runs without auth in dev mode
+### 2. Create `docker-compose.yml`
 
-3. Start the stack:
+```yaml
+services:
+  app:
+    image: meltforce/vimmary:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.yaml:/app/config.yaml
+    depends_on:
+      db:
+        condition: service_healthy
 
-   ```bash
-   docker compose up -d
-   ```
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: vimmary
+      POSTGRES_USER: vimmary
+      POSTGRES_PASSWORD: vimmary
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: pg_isready -U vimmary
+      interval: 5s
+      retries: 5
 
-   This starts both the app (port 8080) and a PostgreSQL database with pgvector. Migrations run automatically on startup.
+volumes:
+  pgdata:
+```
 
-4. Open `http://localhost:8080` (or your Tailscale hostname) and start adding videos.
+### 3. Create `config.yaml`
+
+```yaml
+external_url: "http://localhost:8080"
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+database:
+  host: db
+  port: 5432
+  name: vimmary
+  user: vimmary
+
+summary:
+  provider: "claude"          # "claude" or "mistral"
+
+youtube:
+  sub_langs: [en]             # preferred transcript languages
+
+secrets:
+  postgres_password: "vimmary"
+  mistral_api_key: "your-mistral-key"   # required (embeddings)
+  claude_api_key: "your-claude-key"     # required if provider is "claude"
+```
+
+All config values can also be set via `VIMMARY_*` environment variables (e.g. `VIMMARY_SECRETS_CLAUDE_API_KEY`).
+
+### 4. Start
+
+```bash
+docker compose up -d
+```
+
+Open `http://localhost:8080` and start adding videos. Migrations run automatically on startup.
 
 ### Local development
 
