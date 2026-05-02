@@ -70,6 +70,7 @@ export interface DailyCount {
 
 export interface VideoStats {
   total_count: number;
+  total_duration_seconds: number;
   by_status: Record<string, number>;
   by_channel: ChannelCount[];
   top_topics: TopicCount[];

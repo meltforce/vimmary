@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchWebhookInfo,
@@ -15,9 +15,8 @@ import {
 import type { ModelInfo, ModelsResponse } from "../api.ts";
 import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
-
   return (
     <button
       onClick={() => {
@@ -25,91 +24,118 @@ function CopyButton({ text }: { text: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}
-      className="px-2 py-1 text-xs bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors shrink-0"
+      className="vim-btn ghost"
+      style={{ padding: "6px 12px", fontSize: 12 }}
     >
-      {copied ? "Copied" : "Copy"}
+      {copied ? "Copied ✓" : label}
     </button>
   );
 }
 
-function PromptEditor({
-  level,
-  label,
-  currentPrompt,
-  defaultPrompt,
+function Section({
+  title,
+  subtitle,
+  children,
 }: {
-  level: string;
-  label: string;
-  currentPrompt: string;
-  defaultPrompt: string;
+  title: string;
+  subtitle: string;
+  children: ReactNode;
 }) {
-  const queryClient = useQueryClient();
-  const [value, setValue] = useState(currentPrompt);
-  const isCustom = currentPrompt !== defaultPrompt;
-
-  const save = useMutation({
-    mutationFn: (prompt: string) => setSummaryPrompt(level, prompt),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["settings", "prompts"] });
-    },
-  });
-
-  const reset = useMutation({
-    mutationFn: () => setSummaryPrompt(level, ""),
-    onSuccess: () => {
-      setValue(defaultPrompt);
-      queryClient.invalidateQueries({ queryKey: ["settings", "prompts"] });
-    },
-  });
-
-  const hasChanges = value !== currentPrompt;
-
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
-          {label}
-          {isCustom && (
-            <span className="ml-2 text-xs text-cyan-600 dark:text-cyan-400">
-              (custom)
-            </span>
-          )}
-        </h3>
-        <div className="flex gap-2">
-          {isCustom && (
-            <button
-              onClick={() => reset.mutate()}
-              disabled={reset.isPending}
-              className="px-3 py-1 text-xs text-zinc-600 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50"
-            >
-              {reset.isPending ? "Resetting..." : "Reset to Default"}
-            </button>
-          )}
-          <button
-            onClick={() => save.mutate(value)}
-            disabled={!hasChanges || save.isPending}
-            className="px-3 py-1 text-xs bg-cyan-600 text-white rounded hover:bg-cyan-700 transition-colors disabled:opacity-50"
+    <section style={{ marginBottom: 40 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "200px 1fr",
+          gap: 32,
+          alignItems: "start",
+        }}
+      >
+        <div>
+          <h3
+            style={{
+              fontFamily: "var(--font-serif)",
+              fontSize: 20,
+              fontWeight: 500,
+              margin: "0 0 6px",
+              letterSpacing: "-0.01em",
+              color: "var(--vim-ink)",
+            }}
           >
-            {save.isPending ? "Saving..." : "Save"}
-          </button>
+            {title}
+          </h3>
+          <p
+            style={{
+              fontSize: 12.5,
+              color: "var(--vim-ink-3)",
+              margin: 0,
+              lineHeight: 1.5,
+            }}
+          >
+            {subtitle}
+          </p>
+        </div>
+        <div
+          style={{
+            background: "var(--vim-surface)",
+            borderRadius: 12,
+            border: "1px solid var(--vim-line-soft)",
+            padding: "4px 20px",
+          }}
+        >
+          {children}
         </div>
       </div>
-      <textarea
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        rows={12}
-        className="w-full px-3 py-2 text-sm font-mono rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 resize-y"
-      />
-      {save.isSuccess && (
-        <p className="text-xs text-green-600 dark:text-green-400">
-          Prompt saved.
-        </p>
-      )}
-      {save.isError && (
-        <p className="text-xs text-red-600 dark:text-red-400">
-          {(save.error as Error).message}
-        </p>
-      )}
+    </section>
+  );
+}
+
+function Row({
+  label,
+  value,
+  mono = false,
+  truncate = true,
+  isLast = false,
+  children,
+}: {
+  label: string;
+  value?: ReactNode;
+  mono?: boolean;
+  truncate?: boolean;
+  isLast?: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "16px 0",
+        borderBottom: isLast ? "none" : "1px solid var(--vim-line-soft)",
+        gap: 16,
+      }}
+    >
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 13, color: "var(--vim-ink-3)", marginBottom: 3 }}>
+          {label}
+        </div>
+        {value && (
+          <div
+            style={{
+              fontFamily: mono ? "var(--font-mono)" : undefined,
+              fontSize: mono ? 12.5 : 14,
+              color: "var(--vim-ink)",
+              overflow: truncate ? "hidden" : undefined,
+              textOverflow: truncate ? "ellipsis" : undefined,
+              whiteSpace: truncate ? "nowrap" : undefined,
+            }}
+          >
+            {value}
+          </div>
+        )}
+      </div>
+      {children && <div style={{ flexShrink: 0 }}>{children}</div>}
     </div>
   );
 }
@@ -124,10 +150,10 @@ function ModelSelector() {
 
   const [selected, setSelected] = useState<string | null>(null);
 
-  // Current selection as "provider:model" or ""
-  const currentKey = data?.selected_provider && data?.selected_model
-    ? `${data.selected_provider}:${data.selected_model}`
-    : "";
+  const currentKey =
+    data?.selected_provider && data?.selected_model
+      ? `${data.selected_provider}:${data.selected_model}`
+      : "";
   const displaySelected = selected ?? currentKey;
 
   const save = useMutation({
@@ -144,28 +170,37 @@ function ModelSelector() {
 
   const hasChanges = displaySelected !== currentKey;
 
-  if (isLoading) return <div className="text-sm text-zinc-500">Loading models...</div>;
-  if (!data?.models?.length) return <div className="text-sm text-zinc-500">No models available</div>;
+  if (isLoading)
+    return <div style={{ fontSize: 13, color: "var(--vim-ink-3)" }}>Loading models…</div>;
+  if (!data?.models?.length)
+    return <div style={{ fontSize: 13, color: "var(--vim-ink-3)" }}>No models available</div>;
 
-  // Group models by provider
   const byProvider = new Map<string, ModelInfo[]>();
+  const seen = new Set<string>();
   for (const m of data.models as ModelInfo[]) {
+    const k = `${m.provider}:${m.id}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
     const list = byProvider.get(m.provider) || [];
     list.push(m);
     byProvider.set(m.provider, list);
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex gap-2">
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8 }}>
         <select
           value={displaySelected}
           onChange={(e) => setSelected(e.target.value)}
-          className="flex-1 px-3 py-2 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
+          className="vim-input"
+          style={{ flex: 1, fontSize: 13 }}
         >
           <option value="">Provider default</option>
           {[...byProvider.entries()].map(([provider, models]) => (
-            <optgroup key={provider} label={provider.charAt(0).toUpperCase() + provider.slice(1)}>
+            <optgroup
+              key={provider}
+              label={provider.charAt(0).toUpperCase() + provider.slice(1)}
+            >
               {models.map((m) => (
                 <option key={`${provider}:${m.id}`} value={`${provider}:${m.id}`}>
                   {m.display_name || m.id}
@@ -177,18 +212,133 @@ function ModelSelector() {
         <button
           onClick={() => save.mutate(displaySelected)}
           disabled={!hasChanges || save.isPending}
-          className="px-4 py-2 text-sm bg-cyan-600 text-white rounded-md hover:bg-cyan-700 transition-colors disabled:opacity-50"
+          className="vim-btn primary"
+          style={{ padding: "8px 14px", fontSize: 12 }}
         >
-          {save.isPending ? "Saving..." : "Save"}
+          {save.isPending ? "Saving…" : "Save"}
         </button>
       </div>
-      {save.isSuccess && (
-        <p className="text-xs text-green-600 dark:text-green-400">Model saved.</p>
-      )}
       {save.isError && (
-        <p className="text-xs text-red-600 dark:text-red-400">
+        <p style={{ fontSize: 12, color: "var(--vim-err)", margin: 0 }}>
           {(save.error as Error).message}
         </p>
+      )}
+    </div>
+  );
+}
+
+function PromptEditor({
+  level,
+  label,
+  currentPrompt,
+  defaultPrompt,
+}: {
+  level: string;
+  label: string;
+  currentPrompt: string;
+  defaultPrompt: string;
+}) {
+  const queryClient = useQueryClient();
+  const [value, setValue] = useState(currentPrompt);
+  const [open, setOpen] = useState(false);
+  const isCustom = currentPrompt !== defaultPrompt;
+
+  const save = useMutation({
+    mutationFn: (prompt: string) => setSummaryPrompt(level, prompt),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["settings", "prompts"] }),
+  });
+
+  const reset = useMutation({
+    mutationFn: () => setSummaryPrompt(level, ""),
+    onSuccess: () => {
+      setValue(defaultPrompt);
+      queryClient.invalidateQueries({ queryKey: ["settings", "prompts"] });
+    },
+  });
+
+  const hasChanges = value !== currentPrompt;
+
+  return (
+    <div style={{ padding: "16px 0", borderBottom: "1px solid var(--vim-line-soft)" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
+          marginBottom: open ? 12 : 0,
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 13, color: "var(--vim-ink-3)", marginBottom: 3 }}>
+            {label}
+          </div>
+          <div style={{ fontSize: 14, color: "var(--vim-ink)" }}>
+            {isCustom ? (
+              <>
+                Custom prompt{" "}
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 11,
+                    color: "var(--vim-accent-ink)",
+                    marginLeft: 4,
+                  }}
+                >
+                  edited
+                </span>
+              </>
+            ) : (
+              "Default prompt"
+            )}
+          </div>
+        </div>
+        <button
+          onClick={() => setOpen(!open)}
+          className="vim-btn ghost"
+          style={{ padding: "6px 12px", fontSize: 12 }}
+        >
+          {open ? "Hide ↑" : "Edit ↓"}
+        </button>
+      </div>
+      {open && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <textarea
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            rows={12}
+            className="vim-input"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, resize: "vertical" }}
+          />
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            {isCustom && (
+              <button
+                onClick={() => reset.mutate()}
+                disabled={reset.isPending}
+                className="vim-btn outline danger"
+                style={{ padding: "6px 12px", fontSize: 12 }}
+              >
+                {reset.isPending ? "Resetting…" : "Reset to default"}
+              </button>
+            )}
+            <button
+              onClick={() => save.mutate(value)}
+              disabled={!hasChanges || save.isPending}
+              className="vim-btn primary"
+              style={{ padding: "6px 12px", fontSize: 12 }}
+            >
+              {save.isPending ? "Saving…" : "Save"}
+            </button>
+          </div>
+          {save.isSuccess && (
+            <p style={{ fontSize: 12, color: "var(--vim-ok)", margin: 0 }}>Prompt saved.</p>
+          )}
+          {save.isError && (
+            <p style={{ fontSize: 12, color: "var(--vim-err)", margin: 0 }}>
+              {(save.error as Error).message}
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -197,43 +347,24 @@ function ModelSelector() {
 export default function SettingsPage() {
   const queryClient = useQueryClient();
   const [apiKey, setApiKey] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
 
-  const {
-    data: webhook,
-    isLoading: webhookLoading,
-    error: webhookError,
-  } = useQuery({
+  const { data: webhook, isLoading: webhookLoading, error: webhookError } = useQuery({
     queryKey: ["settings", "webhook"],
     queryFn: fetchWebhookInfo,
   });
-
-  const {
-    data: feedInfo,
-    isLoading: feedLoading,
-    error: feedError,
-  } = useQuery({
+  const { data: feedInfo, isLoading: feedLoading, error: feedError } = useQuery({
     queryKey: ["settings", "feed"],
     queryFn: fetchFeedInfo,
   });
-
-  const {
-    data: karakeepStatus,
-    isLoading: karakeepLoading,
-    error: karakeepError,
-  } = useQuery({
+  const { data: karakeepStatus, isLoading: karakeepLoading, error: karakeepError } = useQuery({
     queryKey: ["settings", "karakeep"],
     queryFn: fetchKarakeepStatus,
   });
-
-  const {
-    data: prompts,
-    isLoading: promptsLoading,
-    error: promptsError,
-  } = useQuery({
+  const { data: prompts, isLoading: promptsLoading, error: promptsError } = useQuery({
     queryKey: ["settings", "prompts"],
     queryFn: fetchSummaryPrompts,
   });
-
   const { data: providers } = useQuery({
     queryKey: ["providers"],
     queryFn: fetchProviders,
@@ -244,233 +375,270 @@ export default function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["settings", "karakeep"] });
       setApiKey("");
+      setShowApiKey(false);
     },
   });
 
   const importBookmarks = useMutation({
     mutationFn: importKarakeepBookmarks,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["videos"] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["videos"] }),
   });
 
   const isLoading = webhookLoading || feedLoading || karakeepLoading || promptsLoading;
-  const error = webhookError || feedError || karakeepError || promptsError;
+  const errorObj = webhookError || feedError || karakeepError || promptsError;
 
-  if (isLoading) return <LoadingSkeleton count={3} />;
-  if (error) {
+  if (isLoading)
     return (
-      <div className="text-red-600 dark:text-red-400 text-sm bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-lg p-3">
-        {(error as Error).message}
+      <div style={{ maxWidth: 820, margin: "0 auto", padding: "32px 40px 64px" }}>
+        <LoadingSkeleton count={3} />
       </div>
     );
-  }
+
+  if (errorObj)
+    return (
+      <div style={{ maxWidth: 820, margin: "0 auto", padding: "32px 40px 64px" }}>
+        <div
+          style={{
+            padding: "12px 16px",
+            borderRadius: "var(--vim-radius)",
+            background: "color-mix(in oklch, var(--vim-err) 10%, transparent)",
+            border: "1px solid color-mix(in oklch, var(--vim-err) 28%, transparent)",
+            color: "var(--vim-err)",
+            fontSize: 13,
+          }}
+        >
+          {(errorObj as Error).message}
+        </div>
+      </div>
+    );
 
   const webhookURL = `${window.location.origin}/webhook/karakeep`;
+  const feedURL = feedInfo ? `${window.location.origin}/feed/atom/${feedInfo.token}` : "";
+  const truncatedFeedToken = feedInfo
+    ? `${feedInfo.token.slice(0, 8)}…`
+    : "—";
 
   return (
-    <div className="space-y-8">
-      {/* Karakeep API Key */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 space-y-4">
-        <h2 className="text-zinc-700 dark:text-zinc-300 font-medium">
-          Karakeep API Key
-        </h2>
-        <p className="text-zinc-500 text-sm">
-          Your Karakeep API key is used to write summaries back to your
-          bookmarks. Get it from Karakeep Settings &rarr; API Keys.
-        </p>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-zinc-500">Status:</span>
-          {karakeepStatus?.configured ? (
-            <span className="text-sm text-green-600 dark:text-green-400">
-              Configured
-            </span>
+    <div style={{ maxWidth: 820, margin: "0 auto", padding: "32px 40px 64px" }}>
+      <div className="vim-kicker" style={{ marginBottom: 10 }}>
+        — Preferences
+      </div>
+      <h1
+        style={{
+          fontFamily: "var(--font-serif)",
+          fontSize: 40,
+          fontWeight: 400,
+          margin: "0 0 36px",
+          letterSpacing: "-0.02em",
+          color: "var(--vim-ink)",
+        }}
+      >
+        Settings
+      </h1>
+
+      {/* Karakeep */}
+      <Section title="Karakeep" subtitle="Keep Vimmary and Karakeep in sync.">
+        <Row
+          label="API key"
+          value={
+            karakeepStatus?.configured ? (
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 12.5 }}>
+                ••••••••••••
+              </span>
+            ) : (
+              <span style={{ color: "var(--vim-ink-3)" }}>Not configured</span>
+            )
+          }
+        >
+          {showApiKey ? (
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Paste key"
+                className="vim-input"
+                style={{ width: 200, padding: "7px 10px", fontSize: 12 }}
+                autoFocus
+              />
+              <button
+                onClick={() => saveKey.mutate(apiKey)}
+                disabled={!apiKey || saveKey.isPending}
+                className="vim-btn primary"
+                style={{ padding: "6px 12px", fontSize: 12 }}
+              >
+                {saveKey.isPending ? "Saving…" : "Save"}
+              </button>
+              <button
+                onClick={() => {
+                  setShowApiKey(false);
+                  setApiKey("");
+                }}
+                className="vim-btn ghost"
+                style={{ padding: "6px 12px", fontSize: 12 }}
+              >
+                Cancel
+              </button>
+            </div>
           ) : (
-            <span className="text-sm text-amber-600 dark:text-amber-400">
-              Not set
-            </span>
+            <button
+              onClick={() => setShowApiKey(true)}
+              className="vim-btn ghost"
+              style={{ padding: "6px 12px", fontSize: 12 }}
+            >
+              {karakeepStatus?.configured ? "Change" : "Set"}
+            </button>
           )}
-        </div>
-        <div className="flex gap-2">
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={
-              karakeepStatus?.configured
-                ? "Enter new key to replace"
-                : "Paste your Karakeep API key"
-            }
-            className="flex-1 px-3 py-2 text-sm rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400"
-          />
-          <button
-            onClick={() => saveKey.mutate(apiKey)}
-            disabled={!apiKey || saveKey.isPending}
-            className="px-4 py-2 text-sm bg-cyan-600 text-white rounded-md hover:bg-cyan-700 transition-colors disabled:opacity-50"
-          >
-            {saveKey.isPending ? "Saving..." : "Save"}
-          </button>
-        </div>
-        {saveKey.isSuccess && (
-          <p className="text-sm text-green-600 dark:text-green-400">
-            API key saved.
-          </p>
-        )}
+        </Row>
         {saveKey.isError && (
-          <p className="text-sm text-red-600 dark:text-red-400">
+          <p style={{ fontSize: 12, color: "var(--vim-err)", margin: "0 0 8px" }}>
             {(saveKey.error as Error).message}
           </p>
         )}
+        <Row label="Webhook URL" value={webhookURL} mono>
+          <CopyButton text={webhookURL} />
+        </Row>
+        <Row label="Bearer token" value={webhook?.token ?? ""} mono>
+          <CopyButton text={webhook?.token ?? ""} />
+        </Row>
         {karakeepStatus?.configured && (
-          <div className="border-t border-zinc-200 dark:border-zinc-800 pt-4 space-y-2">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => importBookmarks.mutate()}
-                disabled={importBookmarks.isPending}
-                className="px-4 py-2 text-sm bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-md hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50"
-              >
-                {importBookmarks.isPending
-                  ? "Importing..."
-                  : "Import existing bookmarks"}
-              </button>
-              <span className="text-xs text-zinc-500">
-                Import all YouTube bookmarks from Karakeep
-              </span>
+          <Row
+            label="Bulk import"
+            value="Pull every YouTube bookmark you've ever starred."
+            truncate={false}
+            isLast
+          >
+            <button
+              onClick={() => importBookmarks.mutate()}
+              disabled={importBookmarks.isPending}
+              className="vim-btn primary"
+              style={{ padding: "8px 14px", fontSize: 12 }}
+            >
+              {importBookmarks.isPending ? "Importing…" : "Import"}
+            </button>
+          </Row>
+        )}
+        {!karakeepStatus?.configured && <Row label="Bulk import" value="Configure API key to enable." isLast />}
+        {importBookmarks.isSuccess && importBookmarks.data && (
+          <p
+            style={{
+              fontSize: 12,
+              color: "var(--vim-ok)",
+              padding: "0 0 12px",
+              margin: 0,
+            }}
+          >
+            Found {importBookmarks.data.total} videos · imported{" "}
+            {importBookmarks.data.imported} · skipped {importBookmarks.data.skipped}
+          </p>
+        )}
+        {importBookmarks.isError && (
+          <p
+            style={{
+              fontSize: 12,
+              color: "var(--vim-err)",
+              padding: "0 0 12px",
+              margin: 0,
+            }}
+          >
+            {(importBookmarks.error as Error).message}
+          </p>
+        )}
+      </Section>
+
+      {/* Summaries */}
+      <Section title="Summaries" subtitle="Model and prompt configuration.">
+        {providers && providers.providers.length > 0 && (
+          <div style={{ padding: "16px 0", borderBottom: "1px solid var(--vim-line-soft)" }}>
+            <div style={{ fontSize: 13, color: "var(--vim-ink-3)", marginBottom: 8 }}>
+              Model
             </div>
-            {importBookmarks.isSuccess && importBookmarks.data && (
-              <p className="text-sm text-green-600 dark:text-green-400">
-                Found {importBookmarks.data.total} videos, imported{" "}
-                {importBookmarks.data.imported}, skipped{" "}
-                {importBookmarks.data.skipped}
-              </p>
-            )}
-            {importBookmarks.isError && (
-              <p className="text-sm text-red-600 dark:text-red-400">
-                {(importBookmarks.error as Error).message}
-              </p>
-            )}
+            <ModelSelector />
           </div>
         )}
-      </div>
-
-      {/* Model Selection */}
-      {providers && providers.providers.length > 0 && (
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 space-y-4">
-          <div>
-            <h2 className="text-zinc-700 dark:text-zinc-300 font-medium">
-              Summary Model
-            </h2>
-            <p className="text-zinc-500 text-sm mt-1">
-              Choose which model to use for generating summaries.
-              Leave empty for the provider's default.
-            </p>
-          </div>
-          <ModelSelector />
-        </div>
-      )}
-
-      {/* Summary Prompts */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 space-y-5">
-        <div>
-          <h2 className="text-zinc-700 dark:text-zinc-300 font-medium">
-            Summary Prompts
-          </h2>
-          <p className="text-zinc-500 text-sm mt-1">
-            Customize the prompts used when generating summaries. Available
-            placeholders:{" "}
-            <code className="text-xs bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 rounded">
-              {"{{TITLE}}"}
-            </code>
-            ,{" "}
-            <code className="text-xs bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 rounded">
-              {"{{LANGUAGE}}"}
-            </code>
-            ,{" "}
-            <code className="text-xs bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 rounded">
-              {"{{TRANSCRIPT}}"}
-            </code>
-          </p>
-        </div>
         {prompts && (
           <>
             <PromptEditor
               level="medium"
-              label="Medium Summary"
+              label="Medium summary prompt"
               currentPrompt={prompts.medium}
               defaultPrompt={prompts.default_medium}
             />
             <PromptEditor
               level="deep"
-              label="Deep Summary"
+              label="Deep summary prompt"
               currentPrompt={prompts.deep}
               defaultPrompt={prompts.default_deep}
             />
+            <div style={{ padding: "12px 0 16px", fontSize: 11.5, color: "var(--vim-ink-4)" }}>
+              Placeholders:{" "}
+              <code
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  background: "var(--vim-surface-2)",
+                  padding: "1px 5px",
+                  borderRadius: 3,
+                }}
+              >
+                {"{{TITLE}}"}
+              </code>
+              ,{" "}
+              <code
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  background: "var(--vim-surface-2)",
+                  padding: "1px 5px",
+                  borderRadius: 3,
+                }}
+              >
+                {"{{LANGUAGE}}"}
+              </code>
+              ,{" "}
+              <code
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  background: "var(--vim-surface-2)",
+                  padding: "1px 5px",
+                  borderRadius: 3,
+                }}
+              >
+                {"{{TRANSCRIPT}}"}
+              </code>
+            </div>
           </>
         )}
-      </div>
+      </Section>
 
-      {/* RSS Feed */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 space-y-4">
-        <h2 className="text-zinc-700 dark:text-zinc-300 font-medium">
-          RSS Feed
-        </h2>
-        <p className="text-zinc-500 text-sm">
-          Copy this URL into your RSS reader to receive video summaries
-          automatically.
-        </p>
-        {feedInfo?.token && (
-          <div>
-            <label className="text-xs text-zinc-500 block mb-1">
-              Feed URL
-            </label>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-3 py-2 text-zinc-700 dark:text-zinc-300 break-all">
-                {`${window.location.origin}/feed/atom/${feedInfo.token}`}
-              </code>
-              <CopyButton
-                text={`${window.location.origin}/feed/atom/${feedInfo.token}`}
-              />
+      {/* RSS */}
+      <Section title="RSS" subtitle="Subscribe to your own feed of summaries.">
+        {feedInfo && (
+          <div style={{ padding: "16px 0" }}>
+            <div style={{ fontSize: 13, color: "var(--vim-ink-3)", marginBottom: 8 }}>
+              Your personal feed URL
+            </div>
+            <div
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 12.5,
+                padding: "12px 14px",
+                background: "var(--vim-surface-2)",
+                borderRadius: 6,
+                color: "var(--vim-ink-2)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {window.location.origin}/feed/atom/
+                <span style={{ color: "var(--vim-accent-ink)" }}>{truncatedFeedToken}</span>
+              </span>
+              <CopyButton text={feedURL} />
             </div>
           </div>
         )}
-      </div>
-
-      {/* Webhook Configuration */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 space-y-4">
-        <h2 className="text-zinc-700 dark:text-zinc-300 font-medium">
-          Karakeep Webhook
-        </h2>
-        <p className="text-zinc-500 text-sm">
-          Add this webhook in Karakeep Settings &rarr; Webhooks &rarr; Create.
-          Set the event to <code className="text-xs bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 rounded">created</code>.
-        </p>
-
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs text-zinc-500 block mb-1">
-              Webhook URL
-            </label>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-3 py-2 text-zinc-700 dark:text-zinc-300 break-all">
-                {webhookURL}
-              </code>
-              <CopyButton text={webhookURL} />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs text-zinc-500 block mb-1">
-              Bearer Token
-            </label>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-3 py-2 text-zinc-700 dark:text-zinc-300 break-all font-mono">
-                {webhook?.token}
-              </code>
-              <CopyButton text={webhook?.token ?? ""} />
-            </div>
-          </div>
-        </div>
-      </div>
+      </Section>
     </div>
   );
 }

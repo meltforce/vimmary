@@ -10,8 +10,10 @@ const SettingsPage = lazy(() => import("./pages/SettingsPage.tsx"));
 
 function Loading() {
   return (
-    <div className="flex items-center justify-center py-20">
-      <div className="text-zinc-500">Loading...</div>
+    <div className="flex items-center justify-center" style={{ padding: "80px 0" }}>
+      <div style={{ color: "var(--vim-ink-3)", fontFamily: "var(--font-mono)", fontSize: 12, letterSpacing: "0.04em" }}>
+        Loading…
+      </div>
     </div>
   );
 }

@@ -46,11 +46,12 @@ type VideoMatch struct {
 }
 
 type VideoStats struct {
-	TotalCount    int            `json:"total_count"`
-	ByStatus      map[string]int `json:"by_status"`
-	ByChannel     []ChannelCount `json:"by_channel"`
-	TopTopics     []TopicCount   `json:"top_topics"`
-	DailyActivity []DailyCount  `json:"daily_activity"`
+	TotalCount             int            `json:"total_count"`
+	TotalDurationSeconds   int64          `json:"total_duration_seconds"`
+	ByStatus               map[string]int `json:"by_status"`
+	ByChannel              []ChannelCount `json:"by_channel"`
+	TopTopics              []TopicCount   `json:"top_topics"`
+	DailyActivity          []DailyCount   `json:"daily_activity"`
 }
 
 type ChannelCount struct {
@@ -423,6 +424,14 @@ func (db *DB) GetStats(ctx context.Context, userID int) (*VideoStats, error) {
 
 	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM videos WHERE user_id = $1`, userID).Scan(&stats.TotalCount); err != nil {
 		return nil, fmt.Errorf("count videos: %w", err)
+	}
+
+	if err := db.Pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(duration_seconds), 0)
+		FROM videos
+		WHERE user_id = $1 AND status = 'completed' AND duration_seconds IS NOT NULL
+	`, userID).Scan(&stats.TotalDurationSeconds); err != nil {
+		return nil, fmt.Errorf("sum durations: %w", err)
 	}
 
 	// By status
