@@ -72,17 +72,13 @@ export default function VideoCard({
 
   const inner = (
     <div
-      className="vim-card"
+      className="vim-card vim-grid-list-row"
       style={{
-        display: "grid",
-        gridTemplateColumns: "176px 1fr auto",
-        gap: 24,
         padding: "22px 0",
         borderBottom: isLast ? "none" : "1px solid var(--vim-line-soft)",
-        alignItems: "start",
       }}
     >
-      <div className="vim-thumb" style={{ width: 176, height: 99 }}>
+      <div className="vim-thumb vim-thumb-list-row" style={{ width: 176, height: 99 }}>
         <img src={thumbnail} alt="" />
         {durationSeconds ? <span className="dur">{formatDuration(durationSeconds)}</span> : null}
         {isLinked && (

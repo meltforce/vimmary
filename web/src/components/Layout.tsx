@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
+import ThemeToggle from "./ThemeToggle.tsx";
 
 const navItems = [
   { to: "/", label: "Videos" },
@@ -18,16 +19,16 @@ export default function Layout({ children }: { children: ReactNode }) {
           borderBottom: "1px solid var(--vim-line-soft)",
         }}
       >
-        <div
-          className="flex items-center justify-between"
-          style={{ padding: "18px 40px" }}
-        >
-          <div className="flex items-center" style={{ gap: 36 }}>
+        <div className="vim-topbar-inner">
+          <div className="vim-topbar-left">
             <NavLink to="/" className="vim-brand-mark flex items-baseline" style={{ gap: 10 }}>
               <span>
                 vimma<span className="r">r</span>y
               </span>
-              <span className="vim-kicker" style={{ fontSize: 10.5 }}>
+              <span
+                className="vim-kicker vim-brand-tag-mobile-hide"
+                style={{ fontSize: 10.5 }}
+              >
                 youtube · read
               </span>
             </NavLink>
@@ -37,9 +38,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                   key={item.to}
                   to={item.to}
                   end={item.to === "/"}
-                  className={({ isActive }) =>
-                    `transition-colors ${isActive ? "vim-nav-active" : "vim-nav-link"}`
-                  }
+                  className="transition-colors"
                   style={({ isActive }) => ({
                     padding: "8px 14px",
                     borderRadius: 999,
@@ -53,8 +52,9 @@ export default function Layout({ children }: { children: ReactNode }) {
               ))}
             </nav>
           </div>
-          <div className="flex items-center" style={{ gap: 10 }}>
-            <span className="vim-kbd">⌘ K</span>
+          <div className="vim-topbar-right">
+            <ThemeToggle />
+            <span className="vim-kbd vim-brand-tag-mobile-hide">⌘ K</span>
           </div>
         </div>
       </header>

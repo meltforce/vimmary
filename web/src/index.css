@@ -7,7 +7,8 @@
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
 }
 
-:root {
+:root,
+:root.dark {
   /* Surfaces — warm dark */
   --vim-bg:         oklch(0.16 0.006 60);
   --vim-surface:    oklch(0.195 0.007 60);
@@ -34,6 +35,33 @@
   --vim-radius: 10px;
 
   color-scheme: dark;
+}
+
+:root.light {
+  /* Surfaces — warm cream paper */
+  --vim-bg:         oklch(0.98 0.005 80);
+  --vim-surface:    oklch(0.96 0.006 80);
+  --vim-surface-2:  oklch(0.93 0.008 75);
+  --vim-line:       oklch(0.83 0.010 75);
+  --vim-line-soft:  oklch(0.90 0.008 75);
+
+  /* Ink — dark warm grays */
+  --vim-ink:        oklch(0.18 0.012 60);
+  --vim-ink-2:      oklch(0.36 0.012 60);
+  --vim-ink-3:      oklch(0.50 0.014 60);
+  --vim-ink-4:      oklch(0.62 0.014 60);
+
+  /* Accent — same YouTube red, but the readable version is darker for light bg */
+  --vim-accent:     oklch(0.58 0.22 27);
+  --vim-accent-ink: oklch(0.52 0.22 27);
+  --vim-accent-soft: oklch(0.58 0.22 27 / 0.10);
+
+  /* Status — darker for light bg readability */
+  --vim-ok:    oklch(0.50 0.16 155);
+  --vim-warn:  oklch(0.55 0.14 70);
+  --vim-err:   oklch(0.55 0.21 27);
+
+  color-scheme: light;
 }
 
 html, body {
@@ -367,7 +395,8 @@ a:hover .vim-thumb .play { opacity: 1; }
 }
 
 /* ─── Drop cap (used inside summary p) ─── */
-.vim-dropcap::first-letter {
+.vim-dropcap::first-letter,
+.vim-dropcap-letter {
   font-family: var(--font-serif);
   font-weight: 400;
   font-size: 62px;
@@ -375,4 +404,223 @@ a:hover .vim-thumb .play { opacity: 1; }
   line-height: 0.9;
   margin: 7px 10px 0 0;
   color: var(--vim-accent-ink);
+}
+@media (max-width: 560px) {
+  .vim-dropcap::first-letter,
+  .vim-dropcap-letter {
+    font-size: 46px;
+    margin: 5px 8px 0 0;
+  }
+}
+
+/* ─── Page wrappers ─── */
+.vim-page,
+.vim-page-narrow,
+.vim-page-narrower {
+  margin-left: auto;
+  margin-right: auto;
+  padding: 32px 40px 64px;
+  width: 100%;
+}
+.vim-page          { max-width: 1040px; }
+.vim-page-narrow   { max-width:  960px; }
+.vim-page-narrower { max-width:  820px; }
+.vim-page-detail   { padding-top: 24px; }
+
+/* ─── Topbar ─── */
+.vim-topbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 40px;
+}
+.vim-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+  min-width: 0;
+}
+.vim-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.vim-brand-tag-mobile-hide {
+  display: inline;
+}
+
+/* ─── Responsive grids ─── */
+.vim-grid-hero {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 32px;
+  align-items: start;
+}
+.vim-grid-detail-actions {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+.vim-grid-list-row {
+  display: grid;
+  grid-template-columns: 176px 1fr auto;
+  gap: 24px;
+  align-items: start;
+}
+.vim-grid-stats-headline {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+}
+.vim-grid-stats-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.vim-grid-settings {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 32px;
+  align-items: start;
+}
+.vim-grid-input-row {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 12px;
+}
+
+/* ─── Responsive headings ─── */
+.vim-h1-page {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--vim-ink);
+  margin: 0;
+  font-size: 42px;
+  line-height: 1.05;
+}
+.vim-h1-detail {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: -0.022em;
+  color: var(--vim-ink);
+  margin: 0 0 18px;
+  font-size: 48px;
+  line-height: 1.05;
+}
+.vim-h1-stats-settings {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--vim-ink);
+  margin: 0 0 28px;
+  font-size: 40px;
+}
+.vim-h1-empty {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: -0.022em;
+  color: var(--vim-ink);
+  margin: 0 0 18px;
+  font-size: 46px;
+  line-height: 1.08;
+}
+.vim-h2-hero {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  margin: 0 0 16px;
+  letter-spacing: -0.02em;
+  color: var(--vim-ink);
+  font-size: 32px;
+  line-height: 1.12;
+}
+
+/* Hero thumbnail in list page (XL responsive) */
+.vim-thumb-hero {
+  width: 360px;
+  height: 202px;
+}
+
+/* ─── Tablet (≤880px) ─── */
+@media (max-width: 880px) {
+  .vim-page,
+  .vim-page-narrow,
+  .vim-page-narrower {
+    padding: 24px 24px 48px;
+  }
+  .vim-topbar-inner { padding: 14px 24px; }
+  .vim-topbar-left { gap: 20px; }
+
+  .vim-grid-stats-headline { grid-template-columns: repeat(2, 1fr); }
+  .vim-grid-stats-2col     { grid-template-columns: 1fr; }
+  .vim-grid-settings       { grid-template-columns: 1fr; gap: 16px; }
+  .vim-grid-input-row      { grid-template-columns: 1fr; }
+
+  .vim-grid-hero {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .vim-thumb-hero {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+  }
+
+  .vim-grid-detail-actions {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .vim-h1-page  { font-size: 32px; }
+  .vim-h1-detail { font-size: 36px; }
+  .vim-h1-stats-settings { font-size: 32px; }
+  .vim-h1-empty { font-size: 36px; }
+  .vim-h2-hero { font-size: 26px; }
+}
+
+/* ─── Phone (≤560px) ─── */
+@media (max-width: 560px) {
+  .vim-page,
+  .vim-page-narrow,
+  .vim-page-narrower {
+    padding: 20px 16px 40px;
+  }
+  .vim-topbar-inner { padding: 12px 16px; }
+  .vim-topbar-left { gap: 12px; flex-wrap: wrap; }
+
+  .vim-brand-tag-mobile-hide { display: none; }
+
+  .vim-grid-stats-headline { grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .vim-grid-list-row {
+    grid-template-columns: 120px 1fr;
+    grid-template-areas: "thumb body" "footer footer";
+    gap: 14px;
+  }
+  .vim-grid-list-row > :nth-child(1) { grid-area: thumb; }
+  .vim-grid-list-row > :nth-child(2) { grid-area: body; }
+  .vim-grid-list-row > :nth-child(3) {
+    grid-area: footer;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between;
+  }
+
+  .vim-thumb-list-row {
+    width: 120px !important;
+    height: 68px !important;
+  }
+
+  .vim-h1-page  { font-size: 26px; }
+  .vim-h1-detail { font-size: 30px; }
+  .vim-h1-stats-settings { font-size: 28px; }
+  .vim-h1-empty { font-size: 30px; }
+  .vim-h2-hero { font-size: 22px; }
+
+  /* Drop cap less monstrous on small screens */
+  .vim-md-summary {
+    font-size: 17px !important;
+  }
 }

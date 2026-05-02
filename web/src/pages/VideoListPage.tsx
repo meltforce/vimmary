@@ -69,10 +69,11 @@ function EmptyState({
   const [url, setUrl] = useState("");
   return (
     <div
+      className="vim-empty"
       style={{
         maxWidth: 720,
         margin: "0 auto",
-        padding: "120px 40px",
+        padding: "clamp(60px, 14vw, 120px) clamp(16px, 4vw, 40px)",
         textAlign: "center",
       }}
     >
@@ -127,17 +128,7 @@ function EmptyState({
       <div className="vim-kicker" style={{ marginBottom: 18 }}>
         — A quiet beginning
       </div>
-      <h1
-        style={{
-          fontFamily: "var(--font-serif)",
-          fontSize: 46,
-          fontWeight: 400,
-          margin: "0 0 18px",
-          letterSpacing: "-0.022em",
-          lineHeight: 1.08,
-          color: "var(--vim-ink)",
-        }}
-      >
+      <h1 className="vim-h1-empty">
         Nothing here yet.
         <br />
         <em
@@ -350,7 +341,7 @@ export default function VideoListPage() {
 
   if (isEmpty) {
     return (
-      <div style={{ maxWidth: 1040, margin: "0 auto", padding: "0 40px" }}>
+      <div className="vim-page" style={{ paddingTop: 0, paddingBottom: 0 }}>
         <EmptyState
           onSubmit={(u) => submit.mutate(u)}
           pending={submit.isPending}
@@ -369,24 +360,14 @@ export default function VideoListPage() {
     : videos;
 
   return (
-    <div style={{ maxWidth: 1040, margin: "0 auto", padding: "32px 40px 64px" }}>
+    <div className="vim-page">
       {/* Editorial header */}
       {onFirstPage && (
         <div style={{ marginBottom: 28 }}>
           <div className="vim-kicker" style={{ marginBottom: 10 }}>
             Your reading list · {totalForIntro} video{totalForIntro === 1 ? "" : "s"}
           </div>
-          <h1
-            style={{
-              fontFamily: "var(--font-serif)",
-              fontSize: 42,
-              fontWeight: 400,
-              margin: 0,
-              letterSpacing: "-0.02em",
-              lineHeight: 1.05,
-              color: "var(--vim-ink)",
-            }}
-          >
+          <h1 className="vim-h1-page">
             Everything you've{" "}
             <em
               style={{
@@ -410,17 +391,7 @@ export default function VideoListPage() {
             Search · {searchResult.data?.results.length ?? 0} result
             {(searchResult.data?.results.length ?? 0) === 1 ? "" : "s"} for "{query}"
           </div>
-          <h1
-            style={{
-              fontFamily: "var(--font-serif)",
-              fontSize: 36,
-              fontWeight: 400,
-              margin: 0,
-              letterSpacing: "-0.02em",
-              lineHeight: 1.1,
-              color: "var(--vim-ink)",
-            }}
-          >
+          <h1 className="vim-h1-page" style={{ fontSize: 36 }}>
             <em style={{ fontStyle: "italic", color: "var(--vim-accent-ink)" }}>
               {query}
             </em>
@@ -429,14 +400,7 @@ export default function VideoListPage() {
       )}
 
       {/* Dual input row */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 320px",
-          gap: 12,
-          marginBottom: 36,
-        }}
-      >
+      <div className="vim-grid-input-row" style={{ marginBottom: 36 }}>
         <form onSubmit={handleAddSubmit} style={{ position: "relative" }}>
           <span style={{ position: "absolute", left: 16, top: 14, lineHeight: 0 }}>
             <PlayIcon />
@@ -648,15 +612,8 @@ export default function VideoListPage() {
             <div className="vim-kicker" style={{ marginBottom: 14 }}>
               — Latest summary · {formatDate(heroVideo.created_at)}
             </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "360px 1fr",
-                gap: 32,
-                alignItems: "start",
-              }}
-            >
-              <div className="vim-thumb" style={{ width: 360, height: 202 }}>
+            <div className="vim-grid-hero">
+              <div className="vim-thumb vim-thumb-hero">
                 <img
                   src={`https://img.youtube.com/vi/${heroVideo.youtube_id}/mqdefault.jpg`}
                   alt=""
@@ -699,17 +656,7 @@ export default function VideoListPage() {
                     </>
                   )}
                 </div>
-                <h2
-                  style={{
-                    fontFamily: "var(--font-serif)",
-                    fontSize: 32,
-                    fontWeight: 400,
-                    margin: "0 0 16px",
-                    lineHeight: 1.12,
-                    letterSpacing: "-0.02em",
-                    color: "var(--vim-ink)",
-                  }}
-                >
+                <h2 className="vim-h2-hero">
                   {heroVideo.title || heroVideo.youtube_id}
                 </h2>
                 <p
