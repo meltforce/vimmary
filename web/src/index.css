@@ -1,4 +1,378 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-@custom-variant dark (&:where(.dark, .dark *));
+@theme {
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Fraunces", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+}
+
+:root {
+  /* Surfaces — warm dark */
+  --vim-bg:         oklch(0.16 0.006 60);
+  --vim-surface:    oklch(0.195 0.007 60);
+  --vim-surface-2:  oklch(0.23 0.008 60);
+  --vim-line:       oklch(0.30 0.010 60);
+  --vim-line-soft:  oklch(0.25 0.008 60);
+
+  /* Ink */
+  --vim-ink:        oklch(0.96 0.006 80);
+  --vim-ink-2:      oklch(0.78 0.010 70);
+  --vim-ink-3:      oklch(0.58 0.012 70);
+  --vim-ink-4:      oklch(0.44 0.012 70);
+
+  /* Accent — YouTube red */
+  --vim-accent:     oklch(0.64 0.21 27);
+  --vim-accent-ink: oklch(0.78 0.18 27);
+  --vim-accent-soft: oklch(0.64 0.21 27 / 0.14);
+
+  /* Status */
+  --vim-ok:    oklch(0.76 0.15 155);
+  --vim-warn:  oklch(0.78 0.14 80);
+  --vim-err:   oklch(0.70 0.20 27);
+
+  --vim-radius: 10px;
+
+  color-scheme: dark;
+}
+
+html, body {
+  background: var(--vim-bg);
+  color: var(--vim-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
+}
+
+body {
+  min-height: 100vh;
+}
+
+/* ─── Brand mark (vimmary with red r) ─── */
+.vim-brand-mark {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 26px;
+  letter-spacing: -0.02em;
+  color: var(--vim-ink);
+  line-height: 1;
+}
+.vim-brand-mark .r { color: var(--vim-accent-ink); }
+
+/* ─── Kicker (mono caps label, often em-dash prefixed) ─── */
+.vim-kicker {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--vim-ink-3);
+}
+
+/* ─── Dot separator ─── */
+.vim-dot {
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+  vertical-align: middle;
+  margin: 0 7px;
+  flex-shrink: 0;
+}
+
+/* ─── Hairline ─── */
+.vim-hr {
+  height: 1px;
+  background: var(--vim-line-soft);
+  border: 0;
+  margin: 0;
+}
+
+/* ─── Buttons ─── */
+.vim-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--vim-radius);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  border: 0;
+  transition: background 0.15s, color 0.15s, filter 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.vim-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.vim-btn.primary { background: var(--vim-accent); color: #fff; }
+.vim-btn.primary:hover:not(:disabled) { filter: brightness(1.08); }
+.vim-btn.ghost { background: var(--vim-surface-2); color: var(--vim-ink-2); }
+.vim-btn.ghost:hover:not(:disabled) { background: var(--vim-line-soft); color: var(--vim-ink); }
+.vim-btn.outline { border: 1px solid var(--vim-line); color: var(--vim-ink-2); background: transparent; }
+.vim-btn.outline:hover:not(:disabled) { color: var(--vim-ink); border-color: var(--vim-ink-3); }
+.vim-btn.danger { color: var(--vim-err); }
+.vim-btn.danger:hover:not(:disabled) { color: var(--vim-err); filter: brightness(1.15); }
+
+/* ─── Inputs ─── */
+.vim-input {
+  background: var(--vim-surface);
+  border: 1px solid var(--vim-line-soft);
+  border-radius: var(--vim-radius);
+  padding: 12px 14px;
+  color: var(--vim-ink);
+  font-family: inherit;
+  font-size: 14px;
+  width: 100%;
+  transition: border-color 0.15s, background 0.15s;
+}
+.vim-input:focus {
+  outline: none;
+  border-color: var(--vim-accent);
+  background: var(--vim-surface-2);
+}
+.vim-input::placeholder { color: var(--vim-ink-4); }
+
+/* ─── Tag pill (neutral) ─── */
+.vim-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--vim-ink-2);
+  background: var(--vim-surface-2);
+  border: 1px solid var(--vim-line-soft);
+  white-space: nowrap;
+}
+.vim-tag.dot::before {
+  content: "";
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--vim-accent);
+  flex-shrink: 0;
+}
+.vim-tag.bare {
+  background: transparent;
+  border: 0;
+  padding: 3px 0;
+  color: var(--vim-ink-3);
+}
+
+/* ─── Status pills ─── */
+.vim-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.vim-status.done {
+  color: var(--vim-ok);
+  background: color-mix(in oklch, var(--vim-ok) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--vim-ok) 28%, transparent);
+}
+.vim-status.proc {
+  color: var(--vim-warn);
+  background: color-mix(in oklch, var(--vim-warn) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--vim-warn) 26%, transparent);
+}
+.vim-status.fail {
+  color: var(--vim-err);
+  background: color-mix(in oklch, var(--vim-err) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--vim-err) 30%, transparent);
+}
+.vim-status .pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  position: relative;
+}
+.vim-status .pulse::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  opacity: 0.5;
+  animation: vim-pulse 1.4s ease-out infinite;
+}
+@keyframes vim-pulse {
+  0%   { transform: scale(0.8); opacity: 0.6; }
+  100% { transform: scale(2); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vim-status .pulse::after { animation: none; }
+}
+
+/* ─── Thumbnail ─── */
+.vim-thumb {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--vim-surface-2);
+  outline: 1px solid color-mix(in oklch, var(--vim-ink) 6%, transparent);
+  outline-offset: -1px;
+  flex-shrink: 0;
+  display: block;
+}
+.vim-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.vim-thumb .dur {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.02em;
+}
+.vim-thumb .play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+.vim-card:hover .vim-thumb .play,
+a:hover .vim-thumb .play { opacity: 1; }
+
+/* ─── Chapter rows ─── */
+.vim-chapter {
+  display: grid;
+  grid-template-columns: 60px 1fr;
+  gap: 14px;
+  align-items: start;
+  padding: 14px 16px;
+  transition: background 0.12s;
+  border-bottom: 1px solid var(--vim-line-soft);
+}
+.vim-chapter:last-child { border-bottom: 0; }
+.vim-chapter:hover { background: var(--vim-surface-2); }
+.vim-chapter .ts {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--vim-accent-ink);
+  letter-spacing: 0.02em;
+  padding-top: 3px;
+}
+.vim-chapter .body {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--vim-ink-2);
+}
+.vim-chapter .body strong { color: var(--vim-ink); font-weight: 500; }
+.vim-chapter .body p { margin: 0; }
+
+/* ─── Stats bar (horizontal progress bar) ─── */
+.vim-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--vim-line-soft);
+  overflow: hidden;
+  position: relative;
+}
+.vim-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--vim-ink-3);
+  border-radius: 999px;
+}
+.vim-bar.accent > span { background: var(--vim-accent); }
+
+/* ─── Sparkline (daily activity bars) ─── */
+.vim-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 90px;
+}
+.vim-spark .bar {
+  flex: 1;
+  background: color-mix(in oklch, var(--vim-accent) 70%, transparent);
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+  transition: background 0.12s;
+}
+.vim-spark .bar.cur { background: var(--vim-accent); }
+
+/* ─── Kbd hint ─── */
+.vim-kbd {
+  border: 1px solid var(--vim-line);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--vim-ink-2);
+  line-height: 1.4;
+}
+
+/* ─── Markdown surfaces inside summary/key-points ─── */
+.vim-md p { margin: 0; }
+.vim-md p + p { margin-top: 0.6em; }
+.vim-md em { font-style: italic; color: var(--vim-ink-2); }
+.vim-md strong { font-weight: 500; color: var(--vim-ink); }
+.vim-md a { color: var(--vim-accent-ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--vim-line); }
+.vim-md code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--vim-surface-2);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--vim-ink);
+}
+.vim-md ul, .vim-md ol { margin: 0.5em 0; padding-left: 1.4em; }
+.vim-md li { margin: 0.2em 0; }
+.vim-md h1, .vim-md h2, .vim-md h3 {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  letter-spacing: -0.018em;
+  color: var(--vim-ink);
+  line-height: 1.2;
+  margin: 1em 0 0.5em;
+}
+.vim-md h1 { font-size: 1.5em; }
+.vim-md h2 { font-size: 1.3em; }
+.vim-md h3 { font-size: 1.1em; }
+.vim-md blockquote {
+  border-left: 2px solid var(--vim-line);
+  padding-left: 1em;
+  color: var(--vim-ink-2);
+  font-style: italic;
+}
+
+/* ─── Drop cap (used inside summary p) ─── */
+.vim-dropcap::first-letter {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 62px;
+  float: left;
+  line-height: 0.9;
+  margin: 7px 10px 0 0;
+  color: var(--vim-accent-ink);
+}

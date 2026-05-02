@@ -2,9 +2,36 @@ import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
-import { getVideo, resummarizeVideo, deleteVideo, fetchProviders, fetchKarakeepStatus } from "../api.ts";
+import {
+  getVideo,
+  resummarizeVideo,
+  deleteVideo,
+  fetchProviders,
+  fetchKarakeepStatus,
+} from "../api.ts";
 import { formatDuration, formatTokens, videoToMarkdown } from "../utils.ts";
 import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
+
+function formatDate(iso?: string): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function parseChapter(raw: string, index: number): { ts: string; body: string } {
+  const m = raw.match(/^\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*[—–-]?\s*(.+)/s);
+  if (m) {
+    return { ts: m[1], body: m[2].trim() };
+  }
+  return { ts: String(index + 1).padStart(2, "0"), body: raw.trim() };
+}
+
+function wordCount(s: string): number {
+  return s.trim() ? s.trim().split(/\s+/).length : 0;
+}
 
 export default function VideoDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -15,6 +42,7 @@ export default function VideoDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [resumLang, setResumLang] = useState("");
   const [resumProvider, setResumProvider] = useState("");
+  const [copiedMd, setCopiedMd] = useState(false);
 
   const { data: providers } = useQuery({
     queryKey: ["providers"],
@@ -26,31 +54,32 @@ export default function VideoDetailPage() {
     queryFn: fetchKarakeepStatus,
   });
 
-  const { data: video, isLoading, error } = useQuery({
+  const {
+    data: video,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ["video", id],
     queryFn: () => getVideo(id!),
     enabled: !!id,
-    refetchInterval: (query) => {
-      const v = query.state.data;
-      if (v && (v.status === "pending" || v.status === "processing")) {
-        return 2000;
-      }
+    refetchInterval: (q) => {
+      const v = q.state.data;
+      if (v && (v.status === "pending" || v.status === "processing")) return 2000;
       return false;
     },
   });
 
   useEffect(() => {
-    if (video?.title) {
-      document.title = video.title;
-    }
-    return () => { document.title = "Vimmary"; };
+    if (video?.title) document.title = video.title;
+    return () => {
+      document.title = "Vimmary";
+    };
   }, [video?.title]);
 
   const resummarize = useMutation({
-    mutationFn: (level: string) => resummarizeVideo(id!, level, resumLang || undefined, resumProvider || undefined),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["video", id] });
-    },
+    mutationFn: (level: string) =>
+      resummarizeVideo(id!, level, resumLang || undefined, resumProvider || undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["video", id] }),
   });
 
   const del = useMutation({
@@ -61,113 +90,212 @@ export default function VideoDetailPage() {
     },
   });
 
-  if (isLoading) return <LoadingSkeleton count={2} />;
-  if (error) {
+  if (isLoading)
     return (
-      <div className="text-red-600 dark:text-red-400 text-sm bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-lg p-3">
-        {(error as Error).message}
+      <div style={{ maxWidth: 960, margin: "0 auto", padding: "32px 40px 64px" }}>
+        <LoadingSkeleton count={2} />
       </div>
     );
-  }
+
+  if (error)
+    return (
+      <div style={{ maxWidth: 960, margin: "0 auto", padding: "32px 40px 64px" }}>
+        <div
+          style={{
+            padding: "12px 16px",
+            borderRadius: "var(--vim-radius)",
+            background: "color-mix(in oklch, var(--vim-err) 10%, transparent)",
+            border: "1px solid color-mix(in oklch, var(--vim-err) 28%, transparent)",
+            color: "var(--vim-err)",
+            fontSize: 13,
+          }}
+        >
+          {(error as Error).message}
+        </div>
+      </div>
+    );
+
   if (!video) return null;
 
   const thumbnail = `https://img.youtube.com/vi/${video.youtube_id}/mqdefault.jpg`;
   const youtubeUrl = `https://youtube.com/watch?v=${video.youtube_id}`;
   const isProcessing = video.status === "pending" || video.status === "processing";
+  const isFailed = video.status === "failed";
 
-  function handleCopy() {
-    if (!video) return;
+  const handleCopy = () => {
     navigator.clipboard.writeText(videoToMarkdown(video));
-  }
+    setCopiedMd(true);
+    setTimeout(() => setCopiedMd(false), 2000);
+  };
 
-  function handleDownload() {
-    if (!video) return;
-    const md = videoToMarkdown(video);
-    const blob = new Blob([md], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${video.title.replace(/[^a-zA-Z0-9 ]/g, "").trim()}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+  const summaryFirstLetter = video.summary?.trim().match(/^[A-Za-zÀ-ÿ]/)?.[0] ?? "";
+  const summaryRest = video.summary?.trim().replace(/^[A-Za-zÀ-ÿ]/, "") ?? "";
 
   return (
-    <div className="space-y-6">
+    <div style={{ maxWidth: 960, margin: "0 auto", padding: "24px 40px 64px" }}>
       <Link
         to="/"
-        className="text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+        className="vim-kicker"
+        style={{
+          display: "inline-block",
+          marginBottom: 28,
+          color: "var(--vim-ink-3)",
+          textDecoration: "none",
+        }}
       >
-        &larr; Back to videos
+        ← Back to videos
       </Link>
 
       {/* Header */}
-      <div className="flex gap-4">
-        <a href={youtubeUrl} target="_blank" rel="noopener noreferrer">
-          <img
-            src={thumbnail}
-            alt=""
-            className="w-48 h-[108px] object-cover rounded shrink-0 bg-zinc-200 dark:bg-zinc-800"
-          />
-        </a>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-            {video.title || video.youtube_id}
-          </h2>
-          <div className="flex items-center gap-2 mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            {video.channel && <span>{video.channel}</span>}
-            {video.duration_seconds ? (
-              <>
-                <span>·</span>
-                <span>{formatDuration(video.duration_seconds)}</span>
-              </>
-            ) : null}
-            {video.language && (
-              <>
-                <span>·</span>
-                <span>{video.language}</span>
-              </>
-            )}
-            <span>·</span>
-            <span>{new Date(video.created_at).toLocaleDateString()}</span>
+      <div className="vim-kicker" style={{ marginBottom: 14 }}>
+        Summary · {video.detail_level} · {formatDate(video.created_at)}
+      </div>
+      <h1
+        style={{
+          fontFamily: "var(--font-serif)",
+          fontSize: 48,
+          fontWeight: 400,
+          letterSpacing: "-0.022em",
+          margin: "0 0 18px",
+          lineHeight: 1.05,
+          color: "var(--vim-ink)",
+        }}
+      >
+        {video.title || video.youtube_id}
+      </h1>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 0,
+          fontSize: 13,
+          color: "var(--vim-ink-3)",
+          marginBottom: 28,
+          flexWrap: "wrap",
+        }}
+      >
+        {video.channel && <span style={{ color: "var(--vim-ink-2)" }}>{video.channel}</span>}
+        {video.duration_seconds ? (
+          <>
+            <span className="vim-dot" />
+            <span>{formatDuration(video.duration_seconds)}</span>
+          </>
+        ) : null}
+        {video.language && (
+          <>
+            <span className="vim-dot" />
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
+              {video.language.toUpperCase()}
+            </span>
+          </>
+        )}
+        {!isProcessing && !isFailed && video.summary && (
+          <>
+            <span className="vim-dot" />
+            <span className="vim-status done">summarized</span>
+          </>
+        )}
+        {isProcessing && (
+          <>
+            <span className="vim-dot" />
+            <span className="vim-status proc">
+              <span className="pulse" />
+              {video.status === "pending" ? "queued" : "transcribing"}
+            </span>
+          </>
+        )}
+        {isFailed && (
+          <>
+            <span className="vim-dot" />
+            <span className="vim-status fail">failed</span>
+          </>
+        )}
+      </div>
+
+      {/* Thumbnail + actions */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "2fr 1fr",
+          gap: 24,
+          marginBottom: 44,
+          alignItems: "start",
+        }}
+      >
+        <a
+          href={youtubeUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="vim-thumb"
+          style={{ aspectRatio: "16 / 9", width: "100%", height: "auto" }}
+        >
+          <img src={thumbnail} alt="" />
+          {video.duration_seconds ? (
+            <span className="dur">{formatDuration(video.duration_seconds)}</span>
+          ) : null}
+          <div className="play" style={{ opacity: 1 }}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="#fff">
+              <path d="M3 1.5v11L13 7z" />
+            </svg>
           </div>
-          <div className="flex items-center gap-2 mt-2">
+        </a>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <a
+            href={youtubeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="vim-btn primary"
+            style={{ padding: "13px 16px" }}
+          >
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="currentColor">
+              <path d="M3 1.5v11L13 7z" />
+            </svg>
+            Watch on YouTube
+          </a>
+          {video.karakeep_bookmark_id && karakeepStatus?.base_url && (
             <a
-              href={youtubeUrl}
+              href={`${karakeepStatus.base_url}/dashboard/preview/${video.karakeep_bookmark_id}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-md hover:bg-red-500 transition-colors"
+              className="vim-btn ghost"
+              style={{ padding: "11px 16px" }}
             >
-              Watch on YouTube
+              Open in Karakeep
             </a>
-            {video.karakeep_bookmark_id && karakeepStatus?.base_url && (
-              <a
-                href={`${karakeepStatus.base_url}/dashboard/preview/${video.karakeep_bookmark_id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3 py-1.5 text-xs bg-zinc-600 text-white rounded-md hover:bg-zinc-500 transition-colors"
-              >
-                View in Karakeep
-              </a>
-            )}
-            <span className="px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 rounded text-xs">
-              {video.detail_level}
-            </span>
+          )}
+          {video.summary && (
+            <button
+              onClick={handleCopy}
+              className="vim-btn outline"
+              style={{ padding: "11px 16px" }}
+            >
+              {copiedMd ? "Copied ✓" : "Copy Markdown"}
+            </button>
+          )}
+          <div
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10.5,
+              color: "var(--vim-ink-4)",
+              marginTop: 4,
+              letterSpacing: "0.06em",
+              lineHeight: 1.5,
+            }}
+          >
             {video.summary_provider && (
-              <span className="px-2 py-0.5 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 rounded text-xs">
+              <>
                 {video.summary_provider}
                 {video.summary_model && ` · ${video.summary_model}`}
-              </span>
+                <br />
+              </>
             )}
             {(video.summary_input_tokens ?? 0) > 0 && (
-              <span className="px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 rounded text-xs">
-                {formatTokens(video.summary_input_tokens!)} in · {formatTokens(video.summary_output_tokens!)} out
-              </span>
-            )}
-            {isProcessing && (
-              <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded text-xs">
-                {video.status}...
-              </span>
+              <>
+                {formatTokens(video.summary_input_tokens!)} in ·{" "}
+                {formatTokens(video.summary_output_tokens!)} out
+              </>
             )}
           </div>
         </div>
@@ -175,136 +303,278 @@ export default function VideoDetailPage() {
 
       {/* Processing indicator */}
       {isProcessing && (
-        <div className="text-amber-600 dark:text-amber-400 text-sm bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-lg p-3">
+        <div
+          style={{
+            marginBottom: 32,
+            padding: "12px 16px",
+            borderRadius: "var(--vim-radius)",
+            background: "color-mix(in oklch, var(--vim-warn) 8%, transparent)",
+            border: "1px solid color-mix(in oklch, var(--vim-warn) 22%, transparent)",
+            color: "var(--vim-warn)",
+            fontSize: 13,
+          }}
+        >
           Video is being processed. This page will update automatically.
         </div>
       )}
 
-      {/* Summary */}
-      {video.summary && (
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-medium text-zinc-900 dark:text-zinc-100">
-              Summary
-            </h3>
-            <div className="flex gap-2">
-              <button
-                onClick={handleCopy}
-                className="px-2.5 py-1 text-xs bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
-              >
-                Copy as Markdown
-              </button>
-              <button
-                onClick={handleDownload}
-                className="px-2.5 py-1 text-xs bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
-              >
-                Download .md
-              </button>
-            </div>
-          </div>
-          <div className="prose prose-zinc dark:prose-invert prose-sm max-w-none">
-            <ReactMarkdown>{video.summary}</ReactMarkdown>
-          </div>
+      {isFailed && video.error_message && (
+        <div
+          style={{
+            marginBottom: 32,
+            padding: "12px 16px",
+            borderRadius: "var(--vim-radius)",
+            background: "color-mix(in oklch, var(--vim-err) 10%, transparent)",
+            border: "1px solid color-mix(in oklch, var(--vim-err) 28%, transparent)",
+            color: "var(--vim-err)",
+            fontSize: 13,
+          }}
+        >
+          {video.error_message}
         </div>
       )}
 
-      {/* Key Points + Action Items */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {video.metadata?.key_points && video.metadata.key_points.length > 0 && (
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 space-y-3">
-            <h3 className="font-medium text-zinc-900 dark:text-zinc-100">
-              Key Points
-            </h3>
-            <ul className="space-y-2">
-              {video.metadata.key_points.map((kp, i) => (
-                <li
-                  key={i}
-                  className="text-sm text-zinc-600 dark:text-zinc-400 flex gap-2"
-                >
-                  <span className="text-cyan-500 shrink-0">-</span>
-                  <span className="prose prose-zinc dark:prose-invert prose-sm prose-p:m-0 max-w-none"><ReactMarkdown>{kp}</ReactMarkdown></span>
-                </li>
-              ))}
-            </ul>
+      {/* Drop-cap summary */}
+      {video.summary && (
+        <section style={{ marginBottom: 48 }}>
+          <div className="vim-kicker" style={{ marginBottom: 18 }}>
+            — The summary
           </div>
-        )}
-        {video.metadata?.action_items && video.metadata.action_items.length > 0 && (
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 space-y-3">
-            <h3 className="font-medium text-zinc-900 dark:text-zinc-100">
-              Action Items
-            </h3>
-            <ul className="space-y-2">
-              {video.metadata.action_items.map((ai, i) => (
-                <li
-                  key={i}
-                  className="text-sm text-zinc-600 dark:text-zinc-400 flex gap-2"
-                >
-                  <span className="text-emerald-500 shrink-0">-</span>
-                  <span className="prose prose-zinc dark:prose-invert prose-sm prose-p:m-0 max-w-none"><ReactMarkdown>{ai}</ReactMarkdown></span>
-                </li>
-              ))}
-            </ul>
+          <div
+            style={{
+              fontFamily: "var(--font-serif)",
+              fontSize: 19,
+              lineHeight: 1.55,
+              color: "var(--vim-ink)",
+              fontWeight: 300,
+              maxWidth: 640,
+            }}
+            className="vim-md"
+          >
+            {summaryFirstLetter && (
+              <span
+                style={{
+                  fontFamily: "var(--font-serif)",
+                  fontSize: 62,
+                  float: "left",
+                  lineHeight: 0.9,
+                  marginRight: 10,
+                  marginTop: 7,
+                  color: "var(--vim-accent-ink)",
+                  fontWeight: 400,
+                }}
+              >
+                {summaryFirstLetter}
+              </span>
+            )}
+            <ReactMarkdown
+              components={{
+                p: ({ children }) => (
+                  <p style={{ margin: 0, marginBottom: "0.7em" }}>{children}</p>
+                ),
+              }}
+            >
+              {summaryRest}
+            </ReactMarkdown>
           </div>
-        )}
-      </div>
+          <div style={{ clear: "both" }} />
+        </section>
+      )}
+
+      {/* Chapters */}
+      {video.metadata?.key_points && video.metadata.key_points.length > 0 && (
+        <section style={{ marginBottom: 48 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              justifyContent: "space-between",
+              marginBottom: 16,
+            }}
+          >
+            <div className="vim-kicker">
+              — Chapters · {video.metadata.key_points.length} key point
+              {video.metadata.key_points.length === 1 ? "" : "s"}
+            </div>
+          </div>
+          <div
+            style={{
+              border: "1px solid var(--vim-line-soft)",
+              borderRadius: 12,
+              overflow: "hidden",
+              background: "var(--vim-surface)",
+            }}
+          >
+            {video.metadata.key_points.map((kp, i) => {
+              const { ts, body } = parseChapter(kp, i);
+              return (
+                <div key={i} className="vim-chapter">
+                  <span className="ts">{ts}</span>
+                  <span className="body vim-md">
+                    <ReactMarkdown>{body}</ReactMarkdown>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Action Items */}
+      {video.metadata?.action_items && video.metadata.action_items.length > 0 && (
+        <section style={{ marginBottom: 48 }}>
+          <div className="vim-kicker" style={{ marginBottom: 16 }}>
+            — Things to try
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {video.metadata.action_items.map((ai, i) => (
+              <div
+                key={i}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "28px 1fr",
+                  gap: 12,
+                  padding: "14px 18px",
+                  background: "var(--vim-surface)",
+                  border: "1px solid var(--vim-line-soft)",
+                  borderRadius: 8,
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 11,
+                    color: "var(--vim-accent-ink)",
+                    paddingTop: 3,
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <span
+                  className="vim-md"
+                  style={{ fontSize: 14.5, lineHeight: 1.5, color: "var(--vim-ink)" }}
+                >
+                  <ReactMarkdown>{ai}</ReactMarkdown>
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Topics */}
       {video.metadata?.topics && video.metadata.topics.length > 0 && (
-        <div className="flex gap-2 flex-wrap">
-          {video.metadata.topics.map((topic) => (
-            <span
-              key={topic}
-              className="px-2.5 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-md text-sm"
-            >
-              {topic}
-            </span>
-          ))}
-        </div>
+        <section style={{ marginBottom: 36 }}>
+          <div className="vim-kicker" style={{ marginBottom: 12 }}>
+            — Filed under
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {video.metadata.topics.map((t) => (
+              <span key={t} className="vim-tag dot">
+                {t}
+              </span>
+            ))}
+          </div>
+        </section>
       )}
 
-      {/* Transcript */}
+      {/* Transcript toggle */}
       {video.transcript && (
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg">
-          <button
-            onClick={() => setShowTranscript(!showTranscript)}
-            className="w-full px-6 py-4 flex items-center justify-between text-left"
+        <div style={{ marginBottom: 32 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "18px 20px",
+              border: "1px dashed var(--vim-line)",
+              borderRadius: 10,
+              color: "var(--vim-ink-3)",
+              fontSize: 13,
+            }}
           >
-            <h3 className="font-medium text-zinc-900 dark:text-zinc-100">
-              Transcript
-            </h3>
-            <span className="text-zinc-400 text-sm">
-              {showTranscript ? "Hide" : "Show"}
+            <span>
+              Transcript ·{" "}
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>
+                {wordCount(video.transcript).toLocaleString()} words
+              </span>
             </span>
-          </button>
+            <button
+              onClick={() => setShowTranscript(!showTranscript)}
+              className="vim-btn ghost"
+              style={{ padding: "7px 14px" }}
+            >
+              {showTranscript ? "Hide transcript ↑" : "Show transcript ↓"}
+            </button>
+          </div>
           {showTranscript && (
-            <div className="px-6 pb-6">
-              <div className="text-sm text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto">
-                {video.transcript}
-              </div>
+            <div
+              style={{
+                marginTop: 8,
+                padding: 20,
+                border: "1px solid var(--vim-line-soft)",
+                borderRadius: 10,
+                background: "var(--vim-surface)",
+                fontSize: 13.5,
+                lineHeight: 1.65,
+                color: "var(--vim-ink-2)",
+                whiteSpace: "pre-wrap",
+                maxHeight: 480,
+                overflowY: "auto",
+              }}
+            >
+              {video.transcript}
             </div>
           )}
         </div>
       )}
 
       {/* Actions */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg">
+      <div
+        style={{
+          border: "1px solid var(--vim-line-soft)",
+          borderRadius: 12,
+          background: "var(--vim-surface)",
+          marginBottom: 24,
+        }}
+      >
         <button
           onClick={() => setShowActions(!showActions)}
-          className="w-full px-6 py-4 flex items-center justify-between text-left"
+          className="vim-btn"
+          style={{
+            width: "100%",
+            justifyContent: "space-between",
+            padding: "14px 18px",
+            background: "transparent",
+            color: "var(--vim-ink-2)",
+            fontSize: 13,
+          }}
         >
-          <h3 className="font-medium text-zinc-900 dark:text-zinc-100">Actions</h3>
-          <span className="text-zinc-400 text-sm">{showActions ? "Hide" : "Show"}</span>
+          <span>Actions</span>
+          <span style={{ color: "var(--vim-ink-4)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
+            {showActions ? "Hide ↑" : "Show ↓"}
+          </span>
         </button>
         {showActions && (
-          <div className="px-6 pb-6 space-y-4">
-            {/* Resummarize */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-sm text-zinc-500">Resummarize:</span>
+          <div style={{ padding: "0 18px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+                fontSize: 13,
+                color: "var(--vim-ink-3)",
+              }}
+            >
+              <span>Resummarize:</span>
               {providers && providers.providers.length > 1 && (
                 <select
                   value={resumProvider}
                   onChange={(e) => setResumProvider(e.target.value)}
-                  className="px-2 py-1.5 text-sm bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md border-none focus:ring-2 focus:ring-cyan-500/50"
+                  className="vim-input"
+                  style={{ width: "auto", padding: "7px 10px", fontSize: 12 }}
                 >
                   <option value="">Default ({providers.default})</option>
                   {providers.providers.map((p) => (
@@ -317,7 +587,8 @@ export default function VideoDetailPage() {
               <select
                 value={resumLang}
                 onChange={(e) => setResumLang(e.target.value)}
-                className="px-2 py-1.5 text-sm bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md border-none focus:ring-2 focus:ring-cyan-500/50"
+                className="vim-input"
+                style={{ width: "auto", padding: "7px 10px", fontSize: 12 }}
               >
                 <option value="">Auto ({video.language || "?"})</option>
                 <option value="de">Deutsch</option>
@@ -330,55 +601,56 @@ export default function VideoDetailPage() {
                   key={level}
                   disabled={resummarize.isPending}
                   onClick={() => resummarize.mutate(level)}
-                  className="px-3 py-1.5 text-sm bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50"
+                  className="vim-btn ghost"
+                  style={{ padding: "7px 14px", fontSize: 12 }}
                 >
                   {level}
                 </button>
               ))}
               {resummarize.isPending && (
-                <span className="text-sm text-zinc-500">Processing...</span>
+                <span style={{ color: "var(--vim-ink-3)" }}>Processing…</span>
               )}
               {resummarize.isSuccess && (
-                <span className="text-sm text-emerald-500">Done!</span>
+                <span style={{ color: "var(--vim-ok)" }}>Done.</span>
               )}
               {resummarize.isError && (
-                <span className="text-sm text-red-500">
+                <span style={{ color: "var(--vim-err)" }}>
                   {(resummarize.error as Error).message}
                 </span>
               )}
             </div>
 
-            {/* Delete */}
-            <div className="flex items-center gap-3">
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               {!confirmDelete ? (
                 <button
                   onClick={() => setConfirmDelete(true)}
-                  className="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 border border-red-300 dark:border-red-900/50 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                  className="vim-btn outline danger"
+                  style={{ padding: "7px 14px", fontSize: 12 }}
                 >
                   Delete video
                 </button>
               ) : (
                 <>
-                  <span className="text-sm text-red-600 dark:text-red-400">
-                    Are you sure?
-                  </span>
+                  <span style={{ color: "var(--vim-err)", fontSize: 13 }}>Are you sure?</span>
                   <button
                     onClick={() => del.mutate()}
                     disabled={del.isPending}
-                    className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-500 transition-colors disabled:opacity-50"
+                    className="vim-btn primary"
+                    style={{ padding: "7px 14px", fontSize: 12 }}
                   >
-                    {del.isPending ? "Deleting..." : "Yes, delete"}
+                    {del.isPending ? "Deleting…" : "Yes, delete"}
                   </button>
                   <button
                     onClick={() => setConfirmDelete(false)}
-                    className="px-3 py-1.5 text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+                    className="vim-btn ghost"
+                    style={{ padding: "7px 14px", fontSize: 12 }}
                   >
                     Cancel
                   </button>
                 </>
               )}
               {del.isError && (
-                <span className="text-sm text-red-500">
+                <span style={{ color: "var(--vim-err)", fontSize: 13 }}>
                   {(del.error as Error).message}
                 </span>
               )}

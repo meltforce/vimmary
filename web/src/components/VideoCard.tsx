@@ -16,6 +16,15 @@ interface Props {
   errorMessage?: string;
   score?: number;
   matchType?: string;
+  index?: number;
+  isLast?: boolean;
+  createdAt?: string;
+}
+
+function formatDate(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 export default function VideoCard({
@@ -30,197 +39,266 @@ export default function VideoCard({
   errorMessage,
   score,
   matchType,
+  index,
+  isLast,
+  createdAt,
 }: Props) {
   const queryClient = useQueryClient();
   const [confirmDelete, setConfirmDelete] = useState(false);
+
   const retry = useMutation({
     mutationFn: () => retryVideo(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["videos"] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["videos"] }),
   });
   const transcribe = useMutation({
     mutationFn: () => transcribeVideo(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["videos"] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["videos"] }),
   });
   const deleteMut = useMutation({
     mutationFn: () => deleteVideo(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["videos"] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["videos"] }),
   });
 
   const thumbnail = `https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`;
   const isFailed = status === "failed";
   const isNoCaptions = status === "no_captions";
   const isProcessing = status === "processing" || status === "pending";
+  const isLinked = !isFailed && !isNoCaptions;
 
-  const card = (
+  const stop = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const inner = (
     <div
-      className={`bg-white dark:bg-zinc-900 border rounded-lg overflow-hidden transition-colors ${
-        isFailed || isNoCaptions
-          ? "border-red-300 dark:border-red-900/50"
-          : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600"
-      }`}
+      className="vim-card"
+      style={{
+        display: "grid",
+        gridTemplateColumns: "176px 1fr auto",
+        gap: 24,
+        padding: "22px 0",
+        borderBottom: isLast ? "none" : "1px solid var(--vim-line-soft)",
+        alignItems: "start",
+      }}
     >
-      <div className="flex gap-4 p-4">
-        <img
-          src={thumbnail}
-          alt=""
-          className="w-40 h-[90px] object-cover rounded shrink-0 bg-zinc-200 dark:bg-zinc-800"
-        />
-        <div className="flex-1 min-w-0">
-          <h3 className="font-medium text-zinc-900 dark:text-zinc-100 truncate">
-            {title || youtubeId}
-          </h3>
-          <div className="flex items-center gap-2 mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            {channel && <span>{channel}</span>}
-            {durationSeconds ? (
-              <>
-                <span>·</span>
-                <span>{formatDuration(durationSeconds)}</span>
-              </>
-            ) : null}
-            {isFailed && (
-              <span className="px-1.5 py-0.5 rounded text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
-                failed
-              </span>
-            )}
-            {isNoCaptions && (
-              <span className="px-1.5 py-0.5 rounded text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">
-                no captions
-              </span>
-            )}
-            {isProcessing && (
-              <span className="px-1.5 py-0.5 rounded text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
-                processing
-              </span>
-            )}
-            {score !== undefined && (
-              <>
-                <span>·</span>
-                <span className="text-cyan-600 dark:text-cyan-400">
-                  {score.toFixed(3)}
-                </span>
-              </>
-            )}
-            {matchType && (
-              <span
-                className={`px-1.5 py-0.5 rounded text-xs ${
-                  matchType === "both"
-                    ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
-                    : matchType === "semantic"
-                      ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400"
-                      : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
-                }`}
-              >
-                {matchType}
-              </span>
-            )}
+      <div className="vim-thumb" style={{ width: 176, height: 99 }}>
+        <img src={thumbnail} alt="" />
+        {durationSeconds ? <span className="dur">{formatDuration(durationSeconds)}</span> : null}
+        {isLinked && (
+          <div className="play">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="#fff">
+              <path d="M3 1.5v11L13 7z" />
+            </svg>
           </div>
-          {isFailed && errorMessage && (
-            <p className="mt-1 text-xs text-red-600 dark:text-red-400 truncate">
-              {errorMessage}
-            </p>
+        )}
+      </div>
+
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 11.5,
+            color: "var(--vim-ink-3)",
+            marginBottom: 6,
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          {channel && <span>{channel}</span>}
+          {createdAt && (
+            <>
+              <span className="vim-dot" />
+              <span>{formatDate(createdAt)}</span>
+            </>
+          )}
+          {isFailed && (
+            <>
+              <span className="vim-dot" />
+              <span className="vim-status fail">failed</span>
+            </>
           )}
           {isNoCaptions && (
-            <p className="mt-1 text-xs text-orange-600 dark:text-orange-400">
-              No captions available on YouTube
-            </p>
+            <>
+              <span className="vim-dot" />
+              <span className="vim-status fail">no captions</span>
+            </>
           )}
+          {isProcessing && (
+            <>
+              <span className="vim-dot" />
+              <span className="vim-status proc">
+                <span className="pulse" />
+                {status === "pending" ? "queued" : "transcribing"}
+              </span>
+            </>
+          )}
+          {score !== undefined && (
+            <>
+              <span className="vim-dot" />
+              <span className="vim-mono" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--vim-accent-ink)" }}>
+                {score.toFixed(3)}
+              </span>
+            </>
+          )}
+          {matchType && (
+            <>
+              <span className="vim-dot" />
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: "0.06em", color: "var(--vim-ink-3)", textTransform: "uppercase" }}>
+                {matchType}
+              </span>
+            </>
+          )}
+        </div>
+
+        <h3
+          style={{
+            fontFamily: "var(--font-serif)",
+            fontSize: 20,
+            fontWeight: 500,
+            margin: "0 0 8px",
+            lineHeight: 1.22,
+            letterSpacing: "-0.015em",
+            color: "var(--vim-ink)",
+          }}
+        >
+          {title || youtubeId}
+        </h3>
+
+        {isFailed && errorMessage && (
+          <p style={{ fontSize: 12.5, color: "var(--vim-err)", margin: "0 0 10px" }}>
+            {errorMessage}
+          </p>
+        )}
+        {isNoCaptions && (
+          <p style={{ fontSize: 12.5, color: "var(--vim-ink-3)", margin: "0 0 10px" }}>
+            No captions available on YouTube.
+          </p>
+        )}
+        {!isFailed && !isNoCaptions && summary && (
+          <p
+            style={{
+              fontSize: 13.5,
+              lineHeight: 1.55,
+              color: "var(--vim-ink-2)",
+              margin: "0 0 10px",
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {stripMarkdown(summary)}
+          </p>
+        )}
+
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {topics?.slice(0, 4).map((t) => (
+            <span key={t} className="vim-tag bare" style={{ fontSize: 11 }}>
+              #{t}
+            </span>
+          ))}
           {isFailed && (
             <button
               onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
+                stop(e);
                 retry.mutate();
               }}
               disabled={retry.isPending}
-              className="mt-2 px-3 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors disabled:opacity-50"
+              className="vim-btn ghost"
+              style={{ padding: "4px 10px", fontSize: 11 }}
             >
-              {retry.isPending ? "Retrying..." : "Retry"}
+              {retry.isPending ? "Retrying…" : "Retry"}
             </button>
           )}
           {isNoCaptions && (
             <button
               onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
+                stop(e);
                 transcribe.mutate();
               }}
               disabled={transcribe.isPending}
-              className="mt-2 px-3 py-1 text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 rounded hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors disabled:opacity-50"
+              className="vim-btn ghost"
+              style={{ padding: "4px 10px", fontSize: 11 }}
             >
-              {transcribe.isPending ? "Transcribing..." : "Transcribe with Voxtral"}
+              {transcribe.isPending ? "Transcribing…" : "Transcribe with Voxtral"}
             </button>
           )}
-          {!isFailed && summary && (
-            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2">
-              {stripMarkdown(summary)}
-            </p>
-          )}
-          <div className="flex justify-between items-center mt-2">
-            <div className="flex gap-1.5 flex-wrap">
-              {topics?.slice(0, 5).map((topic) => (
-                <span
-                  key={topic}
-                  className="px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded text-xs"
-                >
-                  {topic}
-                </span>
-              ))}
-            </div>
-            {confirmDelete ? (
-              <div
-                className="flex items-center gap-2 shrink-0"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-              >
-                <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Are you sure?
-                </span>
-                <button
-                  onClick={() => deleteMut.mutate()}
-                  disabled={deleteMut.isPending}
-                  className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition-colors disabled:opacity-50"
-                >
-                  {deleteMut.isPending ? "Deleting..." : "Yes, delete"}
-                </button>
-                <button
-                  onClick={() => setConfirmDelete(false)}
-                  className="px-3 py-1 text-xs bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setConfirmDelete(true);
-                }}
-                className="px-3 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors shrink-0"
-              >
-                Delete
-              </button>
-            )}
-          </div>
         </div>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-end",
+          gap: 8,
+          paddingTop: 4,
+        }}
+      >
+        {index !== undefined && (
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10.5,
+              color: "var(--vim-ink-4)",
+              textAlign: "right",
+              letterSpacing: "0.08em",
+              whiteSpace: "nowrap",
+            }}
+          >
+            №&nbsp;{String(index).padStart(3, "0")}
+          </span>
+        )}
+        {confirmDelete ? (
+          <div
+            className="flex items-center"
+            style={{ gap: 6 }}
+            onClick={stop}
+          >
+            <button
+              onClick={() => deleteMut.mutate()}
+              disabled={deleteMut.isPending}
+              className="vim-btn primary"
+              style={{ padding: "4px 10px", fontSize: 11 }}
+            >
+              {deleteMut.isPending ? "…" : "Yes"}
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="vim-btn ghost"
+              style={{ padding: "4px 10px", fontSize: 11 }}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={(e) => {
+              stop(e);
+              setConfirmDelete(true);
+            }}
+            className="vim-btn ghost"
+            style={{
+              padding: "4px 10px",
+              fontSize: 11,
+              color: "var(--vim-ink-4)",
+              opacity: 0.6,
+            }}
+            title="Delete video"
+          >
+            Delete
+          </button>
+        )}
       </div>
     </div>
   );
 
-  // Don't link failed/no_captions videos to detail page
-  if (isFailed || isNoCaptions) return card;
+  if (!isLinked) return inner;
 
   return (
-    <Link to={`/video/${id}`} className="block">
-      {card}
+    <Link to={`/video/${id}`} style={{ display: "block", color: "inherit", textDecoration: "none" }}>
+      {inner}
     </Link>
   );
 }

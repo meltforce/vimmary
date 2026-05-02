@@ -1,16 +1,52 @@
 export default function LoadingSkeleton({ count = 3 }: { count?: number }) {
   return (
-    <div className="space-y-4">
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {Array.from({ length: count }, (_, i) => (
         <div
           key={i}
-          className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 animate-pulse"
+          className="animate-pulse"
+          style={{
+            padding: 20,
+            background: "var(--vim-surface)",
+            border: "1px solid var(--vim-line-soft)",
+            borderRadius: 12,
+          }}
         >
-          <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-3/4 mb-3" />
-          <div className="h-3 bg-zinc-200 dark:bg-zinc-800 rounded w-1/2 mb-2" />
-          <div className="flex gap-2">
-            <div className="h-5 bg-zinc-200 dark:bg-zinc-800 rounded w-16" />
-            <div className="h-5 bg-zinc-200 dark:bg-zinc-800 rounded w-20" />
+          <div
+            style={{
+              height: 14,
+              width: "60%",
+              background: "var(--vim-surface-2)",
+              borderRadius: 4,
+              marginBottom: 10,
+            }}
+          />
+          <div
+            style={{
+              height: 10,
+              width: "40%",
+              background: "var(--vim-surface-2)",
+              borderRadius: 4,
+              marginBottom: 12,
+            }}
+          />
+          <div style={{ display: "flex", gap: 8 }}>
+            <div
+              style={{
+                height: 18,
+                width: 70,
+                background: "var(--vim-surface-2)",
+                borderRadius: 999,
+              }}
+            />
+            <div
+              style={{
+                height: 18,
+                width: 90,
+                background: "var(--vim-surface-2)",
+                borderRadius: 999,
+              }}
+            />
           </div>
         </div>
       ))}

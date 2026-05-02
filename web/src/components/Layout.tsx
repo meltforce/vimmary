@@ -1,6 +1,5 @@
 import { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
-import ThemeToggle from "./ThemeToggle.tsx";
 
 const navItems = [
   { to: "/", label: "Videos" },
@@ -11,37 +10,55 @@ const navItems = [
 export default function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <h1 className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
-              Vimmary
-            </h1>
-            <nav className="flex gap-1">
+      <header
+        className="sticky top-0 z-10 backdrop-blur-sm"
+        style={{
+          background:
+            "linear-gradient(to bottom, var(--vim-bg), color-mix(in oklch, var(--vim-bg) 92%, transparent))",
+          borderBottom: "1px solid var(--vim-line-soft)",
+        }}
+      >
+        <div
+          className="flex items-center justify-between"
+          style={{ padding: "18px 40px" }}
+        >
+          <div className="flex items-center" style={{ gap: 36 }}>
+            <NavLink to="/" className="vim-brand-mark flex items-baseline" style={{ gap: 10 }}>
+              <span>
+                vimma<span className="r">r</span>y
+              </span>
+              <span className="vim-kicker" style={{ fontSize: 10.5 }}>
+                youtube · read
+              </span>
+            </NavLink>
+            <nav className="flex items-center" style={{ gap: 4 }}>
               {navItems.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
                   end={item.to === "/"}
                   className={({ isActive }) =>
-                    `px-3 py-1.5 rounded-md text-sm transition-colors ${
-                      isActive
-                        ? "bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
-                        : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
-                    }`
+                    `transition-colors ${isActive ? "vim-nav-active" : "vim-nav-link"}`
                   }
+                  style={({ isActive }) => ({
+                    padding: "8px 14px",
+                    borderRadius: 999,
+                    fontSize: 13,
+                    color: isActive ? "var(--vim-ink)" : "var(--vim-ink-3)",
+                    background: isActive ? "var(--vim-surface-2)" : "transparent",
+                  })}
                 >
                   {item.label}
                 </NavLink>
               ))}
             </nav>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center" style={{ gap: 10 }}>
+            <span className="vim-kbd">⌘ K</span>
+          </div>
         </div>
       </header>
-      <main className="flex-1 max-w-5xl mx-auto px-4 py-6 w-full">
-        {children}
-      </main>
+      <main className="flex-1 w-full">{children}</main>
     </div>
   );
 }
