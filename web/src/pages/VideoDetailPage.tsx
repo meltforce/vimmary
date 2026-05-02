@@ -92,14 +92,14 @@ export default function VideoDetailPage() {
 
   if (isLoading)
     return (
-      <div style={{ maxWidth: 960, margin: "0 auto", padding: "32px 40px 64px" }}>
+      <div className="vim-page-narrow">
         <LoadingSkeleton count={2} />
       </div>
     );
 
   if (error)
     return (
-      <div style={{ maxWidth: 960, margin: "0 auto", padding: "32px 40px 64px" }}>
+      <div className="vim-page-narrow">
         <div
           style={{
             padding: "12px 16px",
@@ -132,7 +132,7 @@ export default function VideoDetailPage() {
   const summaryRest = video.summary?.trim().replace(/^[A-Za-zÀ-ÿ]/, "") ?? "";
 
   return (
-    <div style={{ maxWidth: 960, margin: "0 auto", padding: "24px 40px 64px" }}>
+    <div className="vim-page-narrow vim-page-detail">
       <Link
         to="/"
         className="vim-kicker"
@@ -150,19 +150,7 @@ export default function VideoDetailPage() {
       <div className="vim-kicker" style={{ marginBottom: 14 }}>
         Summary · {video.detail_level} · {formatDate(video.created_at)}
       </div>
-      <h1
-        style={{
-          fontFamily: "var(--font-serif)",
-          fontSize: 48,
-          fontWeight: 400,
-          letterSpacing: "-0.022em",
-          margin: "0 0 18px",
-          lineHeight: 1.05,
-          color: "var(--vim-ink)",
-        }}
-      >
-        {video.title || video.youtube_id}
-      </h1>
+      <h1 className="vim-h1-detail">{video.title || video.youtube_id}</h1>
 
       <div
         style={{
@@ -214,15 +202,7 @@ export default function VideoDetailPage() {
       </div>
 
       {/* Thumbnail + actions */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "2fr 1fr",
-          gap: 24,
-          marginBottom: 44,
-          alignItems: "start",
-        }}
-      >
+      <div className="vim-grid-detail-actions" style={{ marginBottom: 44 }}>
         <a
           href={youtubeUrl}
           target="_blank"
@@ -352,20 +332,7 @@ export default function VideoDetailPage() {
             className="vim-md"
           >
             {summaryFirstLetter && (
-              <span
-                style={{
-                  fontFamily: "var(--font-serif)",
-                  fontSize: 62,
-                  float: "left",
-                  lineHeight: 0.9,
-                  marginRight: 10,
-                  marginTop: 7,
-                  color: "var(--vim-accent-ink)",
-                  fontWeight: 400,
-                }}
-              >
-                {summaryFirstLetter}
-              </span>
+              <span className="vim-dropcap-letter">{summaryFirstLetter}</span>
             )}
             <ReactMarkdown
               components={{

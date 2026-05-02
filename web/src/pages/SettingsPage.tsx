@@ -43,14 +43,7 @@ function Section({
 }) {
   return (
     <section style={{ marginBottom: 40 }}>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "200px 1fr",
-          gap: 32,
-          alignItems: "start",
-        }}
-      >
+      <div className="vim-grid-settings">
         <div>
           <h3
             style={{
@@ -389,14 +382,14 @@ export default function SettingsPage() {
 
   if (isLoading)
     return (
-      <div style={{ maxWidth: 820, margin: "0 auto", padding: "32px 40px 64px" }}>
+      <div className="vim-page-narrower">
         <LoadingSkeleton count={3} />
       </div>
     );
 
   if (errorObj)
     return (
-      <div style={{ maxWidth: 820, margin: "0 auto", padding: "32px 40px 64px" }}>
+      <div className="vim-page-narrower">
         <div
           style={{
             padding: "12px 16px",
@@ -419,22 +412,11 @@ export default function SettingsPage() {
     : "—";
 
   return (
-    <div style={{ maxWidth: 820, margin: "0 auto", padding: "32px 40px 64px" }}>
+    <div className="vim-page-narrower">
       <div className="vim-kicker" style={{ marginBottom: 10 }}>
         — Preferences
       </div>
-      <h1
-        style={{
-          fontFamily: "var(--font-serif)",
-          fontSize: 40,
-          fontWeight: 400,
-          margin: "0 0 36px",
-          letterSpacing: "-0.02em",
-          color: "var(--vim-ink)",
-        }}
-      >
-        Settings
-      </h1>
+      <h1 className="vim-h1-stats-settings" style={{ marginBottom: 36 }}>Settings</h1>
 
       {/* Karakeep */}
       <Section title="Karakeep" subtitle="Keep Vimmary and Karakeep in sync.">

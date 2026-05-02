@@ -58,14 +58,14 @@ export default function StatsPage() {
 
   if (isLoading)
     return (
-      <div style={{ maxWidth: 1040, margin: "0 auto", padding: "32px 40px 64px" }}>
+      <div className="vim-page">
         <LoadingSkeleton count={3} />
       </div>
     );
 
   if (error)
     return (
-      <div style={{ maxWidth: 1040, margin: "0 auto", padding: "32px 40px 64px" }}>
+      <div className="vim-page">
         <div
           style={{
             padding: "12px 16px",
@@ -98,32 +98,14 @@ export default function StatsPage() {
   const topTopicMax = stats.top_topics[0]?.count ?? 1;
 
   return (
-    <div style={{ maxWidth: 1040, margin: "0 auto", padding: "32px 40px 64px" }}>
+    <div className="vim-page">
       <div className="vim-kicker" style={{ marginBottom: 10 }}>
         — Reading habits
       </div>
-      <h1
-        style={{
-          fontFamily: "var(--font-serif)",
-          fontSize: 40,
-          fontWeight: 400,
-          margin: "0 0 28px",
-          letterSpacing: "-0.02em",
-          color: "var(--vim-ink)",
-        }}
-      >
-        Stats
-      </h1>
+      <h1 className="vim-h1-stats-settings">Stats</h1>
 
       {/* Headline grid */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 18,
-          marginBottom: 30,
-        }}
-      >
+      <div className="vim-grid-stats-headline" style={{ marginBottom: 30 }}>
         {[
           { n: stats.total_count.toLocaleString(), l: "summaries" },
           {
@@ -279,7 +261,7 @@ export default function StatsPage() {
       )}
 
       {/* Top channels + topics */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 30 }}>
+      <div className="vim-grid-stats-2col" style={{ marginBottom: 30 }}>
         {stats.by_channel.length > 0 && (
           <div
             style={{
