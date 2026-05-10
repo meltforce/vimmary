@@ -1,0 +1,155 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags:    ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  go-build-test:
+    runs-on: docker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Stub web/dist for embed
+        run: mkdir -p web/dist && touch web/dist/.gitkeep
+      - run: CGO_ENABLED=0 go build -o vimmary ./cmd/vimmary
+      - run: go vet ./...
+      - run: go test -race ./...
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+      - name: Vulnerability check
+        continue-on-error: true
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  web-build:
+    runs-on: docker
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+
+  docker-edge:
+    needs: [go-build-test, web-build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: docker-buildx
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Forgejo registry login
+        uses: docker/login-action@v3
+        with:
+          registry: git.coydog-fence.ts.net
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
+      - name: Build & push :edge to Forgejo registry
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: git.coydog-fence.ts.net/meltforce.net/vimmary:edge
+          build-args: |
+            VERSION=edge-${{ github.sha }}
+          cache-from: type=registry,ref=git.coydog-fence.ts.net/meltforce.net/vimmary:cache
+          cache-to: type=registry,ref=git.coydog-fence.ts.net/meltforce.net/vimmary:cache,mode=max
+
+  deploy-edge:
+    needs: [docker-edge]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # `host` runs the job directly on bob-01 so the Tailscale-SSH path
+    # to the deploy host resolves via bob-01's own tailscale0.
+    runs-on: host
+    steps:
+      - name: Pull + recreate vimmary on deploy host
+        run: |
+          ssh -o StrictHostKeyChecking=accept-new \
+              -o BatchMode=yes \
+              root@${{ secrets.DEPLOY_HOST }} \
+              "cd ${{ vars.DEPLOY_PATH }} && docker compose pull app && docker compose up -d app"
+
+  release:
+    needs: [go-build-test, web-build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: docker-buildx
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need history for changelog generation
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Codeberg OCI login
+        uses: docker/login-action@v3
+        with:
+          registry: codeberg.org
+          username: ${{ secrets.CODEBERG_USER }}
+          password: ${{ secrets.CODEBERG_TOKEN }}
+
+      - name: Build & push release image to Codeberg
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            codeberg.org/meltforce/vimmary:${{ github.ref_name }}
+            codeberg.org/meltforce/vimmary:latest
+          build-args: |
+            VERSION=${{ github.ref_name }}
+
+      - name: Wait for tag to propagate to Codeberg
+        run: |
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -sSf -H "Authorization: token ${{ secrets.CODEBERG_TOKEN }}" \
+                 "https://codeberg.org/api/v1/repos/meltforce/vimmary/tags/${{ github.ref_name }}" > /dev/null; then
+              echo "Tag ${{ github.ref_name }} is on Codeberg."
+              exit 0
+            fi
+            echo "Tag not yet on Codeberg (attempt $i/10), sleeping 30s..."
+            sleep 30
+          done
+          echo "Tag never appeared on Codeberg within 5 minutes — failing." >&2
+          exit 1
+
+      - name: Generate changelog and create Codeberg release
+        env:
+          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          PREV_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
+          if [ -n "$PREV_TAG" ]; then
+            HEADER="Changes since $PREV_TAG"
+            CHANGES=$(git log --pretty=format:'- %s (%h)' "${PREV_TAG}..${TAG}")
+          else
+            HEADER="Initial release"
+            CHANGES=$(git log --pretty=format:'- %s (%h)' "${TAG}")
+          fi
+          BODY=$(printf '%s\n\n%s\n\n---\n\n**Docker image:** `codeberg.org/meltforce/vimmary:%s`\n' \
+            "$HEADER" "$CHANGES" "$TAG")
+          # Build JSON body with jq to handle quoting safely
+          jq -n --arg tag "$TAG" --arg body "$BODY" \
+            '{tag_name: $tag, name: $tag, body: $body, draft: false, prerelease: false}' \
+            > /tmp/release.json
+          curl -sS -f -X POST \
+            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            -H "Content-Type: application/json" \
+            "https://codeberg.org/api/v1/repos/meltforce/vimmary/releases" \
+            -d @/tmp/release.json | jq '{tag_name, name, html_url}'
