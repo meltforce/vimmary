@@ -1,5 +1,3 @@
-[![CI](https://github.com/meltforce/vimmary/actions/workflows/ci.yml/badge.svg)](https://github.com/meltforce/vimmary/actions/workflows/ci.yml)
-
 # vimmary
 
 YouTube video summary service. Fetches transcripts via YouTube's InnerTube API, generates LLM summaries, and stores everything in Postgres + pgvector for semantic search. Videos can be added manually via the web UI or automatically through [Karakeep](https://karakeep.app) webhooks.
@@ -76,7 +74,7 @@ mkdir vimmary && cd vimmary
 ```yaml
 services:
   app:
-    image: meltforce/vimmary:latest
+    image: codeberg.org/meltforce/vimmary:latest
     ports:
       - "8080:8080"
     volumes:
@@ -212,7 +210,7 @@ Authentication is handled via Tailscale (HTTP mode) or defaults to user ID 1 (st
 CGO_ENABLED=0 go build -o vimmary ./cmd/vimmary
 
 # Build Docker image
-docker buildx build --platform linux/amd64 -t meltforce/vimmary:edge .
+docker buildx build --platform linux/amd64 -t codeberg.org/meltforce/vimmary:edge .
 ```
 
 ## MCP tools
@@ -228,5 +226,9 @@ docker buildx build --platform linux/amd64 -t meltforce/vimmary:edge .
 
 ## Related projects
 
-- [meltkit](https://github.com/meltforce/meltkit) — shared Go library (db, config, secrets, middleware, MCP)
-- [totalrecall](https://github.com/meltforce/totalrecall) — personal knowledge system (architectural blueprint)
+- [meltkit](https://codeberg.org/meltforce/meltkit) — shared Go library (db, config, secrets, middleware, MCP)
+- [totalrecall](https://github.com/meltforce/totalrecall) — personal knowledge system (architectural blueprint) — migration to Codeberg pending
+
+---
+
+vimmary moved from GitHub to Codeberg in May 2026. New canonical home: [codeberg.org/meltforce/vimmary](https://codeberg.org/meltforce/vimmary). Source-of-truth development happens on a self-hosted Forgejo (private); Codeberg is the public mirror.
