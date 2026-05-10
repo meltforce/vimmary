@@ -23,9 +23,9 @@ import (
 	"github.com/meltforce/vimmary/internal/storage"
 	"github.com/meltforce/vimmary/internal/summary"
 	"github.com/meltforce/vimmary/internal/youtube"
-	"github.com/meltforce/meltkit/pkg/db"
-	"github.com/meltforce/meltkit/pkg/middleware"
-	"github.com/meltforce/meltkit/pkg/secrets"
+	"codeberg.org/meltforce/meltkit/pkg/db"
+	"codeberg.org/meltforce/meltkit/pkg/middleware"
+	"codeberg.org/meltforce/meltkit/pkg/secrets"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"tailscale.com/tsnet"
 )

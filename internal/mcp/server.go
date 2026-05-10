@@ -6,7 +6,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/meltforce/vimmary/internal/service"
-	mkmcp "github.com/meltforce/meltkit/pkg/mcp"
+	mkmcp "codeberg.org/meltforce/meltkit/pkg/mcp"
 )
 
 var (

@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	vimmary "github.com/meltforce/vimmary"
-	"github.com/meltforce/meltkit/pkg/db"
+	"codeberg.org/meltforce/meltkit/pkg/db"
 	"github.com/meltforce/vimmary/internal/storage"
 )
 

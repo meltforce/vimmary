@@ -3,13 +3,14 @@ module github.com/meltforce/vimmary
 go 1.25.5
 
 require (
+	codeberg.org/meltforce/meltkit v0.1.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/google/uuid v1.6.0
 	github.com/horiagug/youtube-transcript-api-go v0.0.13
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/mark3labs/mcp-go v0.44.1
-	github.com/meltforce/meltkit v0.0.0-20260309052458-764090009b39
 	github.com/pgvector/pgvector-go v0.3.0
+	github.com/yuin/goldmark v1.7.16
 	tailscale.com v1.94.2
 )
 
@@ -70,7 +71,6 @@ require (
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
-	github.com/yuin/goldmark v1.7.16 // indirect
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/crypto v0.46.0 // indirect

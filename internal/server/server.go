@@ -9,7 +9,7 @@ import (
 	"github.com/meltforce/vimmary/internal/karakeep"
 	"github.com/meltforce/vimmary/internal/service"
 	"github.com/meltforce/vimmary/internal/storage"
-	mkserver "github.com/meltforce/meltkit/pkg/server"
+	mkserver "codeberg.org/meltforce/meltkit/pkg/server"
 )
 
 type Server struct {
