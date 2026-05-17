@@ -1,0 +1,33 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "semanticCommits": "disabled",
+  "assignees": ["linus"],
+  "rangeStrategy": "bump",
+  "minimumReleaseAge": "3 days",
+  "automerge": false,
+  "packageRules": [
+    {
+      "description": "Group postgres + extension variants — same major cadence.",
+      "matchPackageNames": ["meltforce.net/postgres", "meltforce.net/pgvector", "meltforce.net/postgis"],
+      "groupName": "postgres"
+    },
+    {
+      "description": "Never auto-merge majors — on-disk format risk for DBs, behavioural drift for apps.",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track Forgejo-registry-mirrored images in docker-compose.yml. Each tracked entry needs a `# renovate: datasource=docker depName=meltforce.net/<n>` comment immediately before the `image:` line. Renovate queries the Forgejo registry (not docker.io) for tags — so PR proposals are gated on the image being mirrored. The bump-then-merge flow becomes: mirror-bump in ci-workflows merges -> mirror cron pushes new tag to Forgejo -> next Renovate run opens the app-side PR.",
+      "fileMatch": ["(^|/)docker-compose\\.ya?ml$", "(^|/)compose\\.ya?ml$"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+image:\\s*git\\.coydog-fence\\.ts\\.net/[^:]+:(?<currentValue>[^\\s\"]+)"
+      ],
+      "versioningTemplate": "docker",
+      "registryUrlTemplate": "https://git.coydog-fence.ts.net"
+    }
+  ]
+}

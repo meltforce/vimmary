@@ -85,6 +85,16 @@ jobs:
     # to the deploy host resolves via bob-01's own tailscale0.
     runs-on: host
     steps:
+      - uses: actions/checkout@v4
+      # Sync the compose file from the repo to the target host first so the
+      # subsequent `docker compose pull` sees the image refs from main, not
+      # stale on-target edits.
+      - name: Sync compose to deploy host
+        run: |
+          scp -o StrictHostKeyChecking=accept-new \
+              -o BatchMode=yes \
+              docker-compose.yml \
+              "root@${{ secrets.DEPLOY_HOST }}:${{ vars.DEPLOY_PATH }}/docker-compose.yml"
       - name: Pull + recreate vimmary on deploy host
         run: |
           ssh -o StrictHostKeyChecking=accept-new \

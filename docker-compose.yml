@@ -13,6 +13,7 @@ services:
       VIMMARY_DB_PORT: "5432"
 
   db:
+    # renovate: datasource=docker depName=meltforce.net/pgvector
     image: git.coydog-fence.ts.net/meltforce.net/pgvector:pg16
     environment:
       POSTGRES_DB: vimmary
