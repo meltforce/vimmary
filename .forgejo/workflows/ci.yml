@@ -51,6 +51,14 @@ jobs:
     runs-on: docker-buildx
     steps:
       - uses: actions/checkout@v4
+      # Docker Hub login before buildx — base images (alpine, golang, node) are
+      # pulled from docker.io; anonymous pulls hit the 100/6h/IP rate-limit and
+      # fail the build with HTTP 429.
+      - name: Docker Hub login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - uses: docker/setup-buildx-action@v3
       - name: Forgejo registry login
         uses: docker/login-action@v3
@@ -92,6 +100,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # need history for changelog generation
+
+      - name: Docker Hub login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - uses: docker/setup-buildx-action@v3
 
