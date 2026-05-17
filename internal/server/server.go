@@ -5,10 +5,10 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/meltforce/vimmary/internal/feed"
-	"github.com/meltforce/vimmary/internal/karakeep"
-	"github.com/meltforce/vimmary/internal/service"
-	"github.com/meltforce/vimmary/internal/storage"
+	"codeberg.org/meltforce/vimmary/internal/feed"
+	"codeberg.org/meltforce/vimmary/internal/karakeep"
+	"codeberg.org/meltforce/vimmary/internal/service"
+	"codeberg.org/meltforce/vimmary/internal/storage"
 	mkserver "codeberg.org/meltforce/meltkit/pkg/server"
 )
 

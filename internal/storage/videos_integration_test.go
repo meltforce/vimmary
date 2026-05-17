@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	vimmary "github.com/meltforce/vimmary"
+	vimmary "codeberg.org/meltforce/vimmary"
 	"codeberg.org/meltforce/meltkit/pkg/db"
-	"github.com/meltforce/vimmary/internal/storage"
+	"codeberg.org/meltforce/vimmary/internal/storage"
 )
 
 const defaultDSN = "postgres://vimmary:vimmary@localhost:5434/vimmary?sslmode=disable"

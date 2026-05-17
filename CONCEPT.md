@@ -46,7 +46,7 @@ Settings ──"Import bookmarks"──▶         │
 ### Shared Go Module (`meltkit`)
 - Gemeinsame Infrastruktur mit totalrecall in eigenem Repo
 - Packages: `pkg/db`, `pkg/config`, `pkg/secrets`, `pkg/middleware`, `pkg/server`, `pkg/mcp`
-- Versioniert via Go modules (`github.com/meltforce/meltkit`)
+- Versioniert via Go modules (`codeberg.org/meltforce/meltkit`)
 
 ### LLM-Provider konfigurierbar
 - Summaries: Mistral ODER Claude API — per Config + per User wählbar
@@ -191,9 +191,9 @@ React + Vite, embedded in Go binary:
 ## Repo-Struktur
 
 ```
-github.com/meltforce/meltkit        ← Shared Go Library (db, config, secrets, middleware, server, mcp)
+codeberg.org/meltforce/meltkit      ← Shared Go Library (db, config, secrets, middleware, server, mcp)
 github.com/meltforce/totalrecall   ← Personal Knowledge System (importiert meltkit)
-github.com/meltforce/vimmary       ← YouTube Summary Service (importiert meltkit)
+codeberg.org/meltforce/vimmary      ← YouTube Summary Service (importiert meltkit)
 ```
 
 ## RSS Feed

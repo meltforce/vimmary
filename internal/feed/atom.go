@@ -8,7 +8,7 @@ import (
 	"html"
 	"time"
 
-	"github.com/meltforce/vimmary/internal/storage"
+	"codeberg.org/meltforce/vimmary/internal/storage"
 	"github.com/yuin/goldmark"
 )
 

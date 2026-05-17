@@ -1,4 +1,4 @@
-module github.com/meltforce/vimmary
+module codeberg.org/meltforce/vimmary
 
 go 1.25.5
 

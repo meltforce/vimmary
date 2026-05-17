@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/meltforce/vimmary/internal/config"
-	"github.com/meltforce/vimmary/internal/storage"
-	"github.com/meltforce/vimmary/internal/summary"
+	"codeberg.org/meltforce/vimmary/internal/config"
+	"codeberg.org/meltforce/vimmary/internal/storage"
+	"codeberg.org/meltforce/vimmary/internal/summary"
 )
 
 // mockDB implements the DB methods used by the service layer under test.
