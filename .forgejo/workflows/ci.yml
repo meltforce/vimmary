@@ -45,63 +45,38 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run build
 
-  docker-edge:
+  build-deploy:
     needs: [go-build-test, web-build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: docker-buildx
-    steps:
-      - uses: actions/checkout@v4
-      # Docker Hub login before buildx — base images (alpine, golang, node) are
-      # pulled from docker.io; anonymous pulls hit the 100/6h/IP rate-limit and
-      # fail the build with HTTP 429.
-      - name: Docker Hub login
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@v3
-      - name: Forgejo registry login
-        uses: docker/login-action@v3
-        with:
-          registry: git.coydog-fence.ts.net
-          username: ${{ secrets.REGISTRY_USER }}
-          password: ${{ secrets.REGISTRY_TOKEN }}
-      - name: Build & push :edge to Forgejo registry
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/amd64
-          push: true
-          tags: git.coydog-fence.ts.net/meltforce.net/vimmary:edge
-          build-args: |
-            VERSION=edge-${{ github.sha }}
-          cache-from: type=registry,ref=git.coydog-fence.ts.net/meltforce.net/vimmary:cache
-          cache-to: type=registry,ref=git.coydog-fence.ts.net/meltforce.net/vimmary:cache,mode=max
+    uses: meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v3
+    with:
+      app_name: vimmary
+      target_host: vimmary-lxc.coydog-fence.ts.net
+    secrets:
+      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
-  deploy-edge:
-    needs: [docker-edge]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    # `host` runs the job directly on bob-01 so the Tailscale-SSH path
-    # to the deploy host resolves via bob-01's own tailscale0.
+  notify-deploy-failure:
+    needs: [build-deploy]
+    if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: host
     steps:
-      - uses: actions/checkout@v4
-      # Sync the compose file from the repo to the target host first so the
-      # subsequent `docker compose pull` sees the image refs from main, not
-      # stale on-target edits.
-      - name: Sync compose to deploy host
+      - name: ntfy alert
         run: |
-          scp -o StrictHostKeyChecking=accept-new \
-              -o BatchMode=yes \
-              docker-compose.yml \
-              "root@${{ secrets.DEPLOY_HOST }}:${{ vars.DEPLOY_PATH }}/docker-compose.yml"
-      - name: Pull + recreate vimmary on deploy host
-        run: |
-          ssh -o StrictHostKeyChecking=accept-new \
-              -o BatchMode=yes \
-              root@${{ secrets.DEPLOY_HOST }} \
-              "cd ${{ vars.DEPLOY_PATH }} && docker compose pull app && docker compose up -d app"
+          curl -fsS --max-time 10 \
+            -H "Title: vimmary CI deploy FAILED (${GITHUB_SHA:0:7})" \
+            -H "Priority: high" \
+            -H "Tags: warning,docker,vimmary" \
+            -d "Build/deploy failed for commit ${GITHUB_SHA}. :edge may be in a broken state — pin previous digest in homelab catalog or push fix. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            https://ntfy.coydog-fence.ts.net/claude || true
 
+  # Inline by design (Rule of Three) — vimmary is currently the only public
+  # Codeberg-mirrored project. When a second world-public project ships,
+  # extract this job into
+  # ci-workflows/.forgejo/workflows/release-to-codeberg.yml using this block
+  # as the template.
   release:
     needs: [go-build-test, web-build]
     if: startsWith(github.ref, 'refs/tags/v')
