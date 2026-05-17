@@ -1,6 +1,6 @@
 services:
   app:
-    image: meltforce/vimmary:edge
+    image: git.coydog-fence.ts.net/meltforce.net/vimmary:edge
     ports:
       - "8080:8080"
     volumes:
@@ -13,7 +13,7 @@ services:
       VIMMARY_DB_PORT: "5432"
 
   db:
-    image: pgvector/pgvector:pg16
+    image: git.coydog-fence.ts.net/meltforce.net/pgvector:pg16
     environment:
       POSTGRES_DB: vimmary
       POSTGRES_USER: vimmary
