@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"codeberg.org/meltforce/vimmary/internal/storage"
+	"github.com/meltforce/vimmary/internal/storage"
 )
 
 // HybridMatch is a search result from hybrid (keyword + semantic) search.

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"codeberg.org/meltforce/vimmary/internal/karakeep"
+	"github.com/meltforce/vimmary/internal/karakeep"
 )
 
 // ImportResult holds the result of a Karakeep import.

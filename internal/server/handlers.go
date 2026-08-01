@@ -8,10 +8,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"codeberg.org/meltforce/meltkit/pkg/middleware"
-	"codeberg.org/meltforce/vimmary/internal/karakeep"
-	"codeberg.org/meltforce/vimmary/internal/service"
-	"codeberg.org/meltforce/vimmary/internal/storage"
+	"github.com/meltforce/meltkit/pkg/middleware"
+	"github.com/meltforce/vimmary/internal/karakeep"
+	"github.com/meltforce/vimmary/internal/service"
+	"github.com/meltforce/vimmary/internal/storage"
 )
 
 func mustUserID(w http.ResponseWriter, r *http.Request) (int, bool) {

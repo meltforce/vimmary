@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"codeberg.org/meltforce/vimmary/internal/config"
-	"codeberg.org/meltforce/vimmary/internal/models"
-	"codeberg.org/meltforce/vimmary/internal/storage"
-	"codeberg.org/meltforce/vimmary/internal/summary"
-	"codeberg.org/meltforce/vimmary/internal/youtube"
+	"github.com/meltforce/vimmary/internal/config"
+	"github.com/meltforce/vimmary/internal/models"
+	"github.com/meltforce/vimmary/internal/storage"
+	"github.com/meltforce/vimmary/internal/summary"
+	"github.com/meltforce/vimmary/internal/youtube"
 )
 
 // SummaryPromptsInfo holds the current and default prompts for the API.

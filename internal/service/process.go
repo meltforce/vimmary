@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"codeberg.org/meltforce/vimmary/internal/karakeep"
-	"codeberg.org/meltforce/vimmary/internal/storage"
-	"codeberg.org/meltforce/vimmary/internal/youtube"
+	"github.com/meltforce/vimmary/internal/karakeep"
+	"github.com/meltforce/vimmary/internal/storage"
+	"github.com/meltforce/vimmary/internal/youtube"
 )
 
 var (

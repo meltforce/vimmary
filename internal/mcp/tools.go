@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/mark3labs/mcp-go/mcp"
-	"codeberg.org/meltforce/vimmary/internal/storage"
+	"github.com/meltforce/vimmary/internal/storage"
 )
 
 func (h *handlers) searchVideos(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

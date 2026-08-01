@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
-	"codeberg.org/meltforce/vimmary/internal/service"
-	"codeberg.org/meltforce/vimmary/internal/storage"
+	"github.com/meltforce/vimmary/internal/service"
+	"github.com/meltforce/vimmary/internal/storage"
 )
 
 // HandleAtomFeed returns an HTTP handler that serves an Atom feed for a user identified by feed token.

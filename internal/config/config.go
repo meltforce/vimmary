@@ -3,7 +3,7 @@ package config
 import (
 	"fmt"
 
-	mkconfig "codeberg.org/meltforce/meltkit/pkg/config"
+	mkconfig "github.com/meltforce/meltkit/pkg/config"
 )
 
 type Config struct {

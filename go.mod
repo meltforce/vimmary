@@ -1,14 +1,14 @@
-module codeberg.org/meltforce/vimmary
+module github.com/meltforce/vimmary
 
 go 1.25.5
 
 require (
-	codeberg.org/meltforce/meltkit v0.1.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/google/uuid v1.6.0
 	github.com/horiagug/youtube-transcript-api-go v0.0.13
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/mark3labs/mcp-go v0.44.1
+	github.com/meltforce/meltkit v0.2.0
 	github.com/pgvector/pgvector-go v0.3.0
 	github.com/yuin/goldmark v1.7.16
 	tailscale.com v1.94.2

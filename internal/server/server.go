@@ -5,11 +5,11 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"codeberg.org/meltforce/vimmary/internal/feed"
-	"codeberg.org/meltforce/vimmary/internal/karakeep"
-	"codeberg.org/meltforce/vimmary/internal/service"
-	"codeberg.org/meltforce/vimmary/internal/storage"
-	mkserver "codeberg.org/meltforce/meltkit/pkg/server"
+	"github.com/meltforce/vimmary/internal/feed"
+	"github.com/meltforce/vimmary/internal/karakeep"
+	"github.com/meltforce/vimmary/internal/service"
+	"github.com/meltforce/vimmary/internal/storage"
+	mkserver "github.com/meltforce/meltkit/pkg/server"
 )
 
 type Server struct {

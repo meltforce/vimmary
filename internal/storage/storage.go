@@ -1,7 +1,7 @@
 package storage
 
 import (
-	"codeberg.org/meltforce/meltkit/pkg/db"
+	"github.com/meltforce/meltkit/pkg/db"
 )
 
 // DB wraps meltkit's DB to allow defining storage methods in this package.
