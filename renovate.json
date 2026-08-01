@@ -1,0 +1,7 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Headless-Renovate (kein PR-Workflow): Minors/Patches landen direkt auf main; ein kaputter Bump failt den Build in build-push-deploy@v3, kein Image wird gepusht. Preset: homelab/default.json.",
+  "extends": ["local>meltforce.net/homelab"],
+  "rangeStrategy": "pin",
+  "postUpdateOptions": ["gomodTidy"]
+}
