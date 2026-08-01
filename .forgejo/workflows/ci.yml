@@ -47,7 +47,13 @@ jobs:
 
   build-deploy:
     needs: [go-build-test, web-build]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # KEIN github.event_name-Vergleich hier: bei einem `uses:`-Job wird die
+    # Bedingung im *aufgerufenen* Workflow ausgewertet, wo das Event
+    # `workflow_call` heisst. Sie war damit immer falsch — build und deploy
+    # wurden seit Anfang Juni 2026 still uebersprungen, waehrend der Caller
+    # weiter "success" meldete. Folge: :edge war seit 2026-06-13 eingefroren.
+    # github.ref bleibt korrekt und ist auf PRs refs/pull/N/merge.
+    if: github.ref == 'refs/heads/main'
     uses: meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v3
     with:
       app_name: vimmary
