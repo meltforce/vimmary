@@ -17,7 +17,7 @@ COPY --from=frontend /app/web/dist ./web/dist
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o vimmary ./cmd/vimmary
 
 # Stage 3: Runtime
-FROM alpine:3.21
+FROM alpine:3.24
 # ghcr links a package to its repo through this label — without it the package
 # shows up unattached and inherits no visibility or README from the repo.
 LABEL org.opencontainers.image.source="https://github.com/meltforce/vimmary"
