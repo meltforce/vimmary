@@ -69,36 +69,15 @@ Web UI ──manual URL──▶    │                                   │
 mkdir vimmary && cd vimmary
 ```
 
-### 2. Create `docker-compose.yml`
+### 2. Fetch the compose file
 
-```yaml
-services:
-  app:
-    image: codeberg.org/meltforce/vimmary:latest
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./config.yaml:/app/config.yaml
-    depends_on:
-      db:
-        condition: service_healthy
-
-  db:
-    image: pgvector/pgvector:pg16
-    environment:
-      POSTGRES_DB: vimmary
-      POSTGRES_USER: vimmary
-      POSTGRES_PASSWORD: vimmary
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: pg_isready -U vimmary
-      interval: 5s
-      retries: 5
-
-volumes:
-  pgdata:
+```bash
+curl -LO https://raw.githubusercontent.com/meltforce/vimmary/main/compose.example.yml
 ```
+
+It runs `ghcr.io/meltforce/vimmary:latest` alongside pgvector. (`docker-compose.yml`
+in the repo is the *development* stack — it pulls `:edge` from a
+tailnet-internal registry and is not usable from outside.)
 
 ### 3. Create `config.yaml`
 
@@ -127,12 +106,19 @@ secrets:
   claude_api_key: "your-claude-key"     # required if provider is "claude"
 ```
 
-All config values can also be set via `VIMMARY_*` environment variables (e.g. `VIMMARY_SECRETS_CLAUDE_API_KEY`).
+Host, port and database settings can be overridden from the environment:
+`VIMMARY_SERVER_HOST`, `VIMMARY_SERVER_PORT`, `VIMMARY_DB_HOST`,
+`VIMMARY_DB_PORT`, `VIMMARY_DB_NAME`, `VIMMARY_DB_USER`, `VIMMARY_DB_SSLMODE`,
+`VIMMARY_TS_ENABLED`, `VIMMARY_TS_HOSTNAME`, `VIMMARY_TS_STATE_DIR`. Secrets are
+read from `config.yaml` or from the configured secret backend, not from the
+environment.
 
 ### 4. Start
 
 ```bash
-docker compose up -d
+# Postgres reads its password from .env; it has to match secrets.postgres_password
+echo "POSTGRES_PASSWORD=vimmary" > .env
+docker compose -f compose.example.yml up -d
 ```
 
 Open `http://localhost:8080` and start adding videos. Migrations run automatically on startup.
@@ -210,7 +196,7 @@ Authentication is handled via Tailscale (HTTP mode) or defaults to user ID 1 (st
 CGO_ENABLED=0 go build -o vimmary ./cmd/vimmary
 
 # Build Docker image
-docker buildx build --platform linux/amd64 -t codeberg.org/meltforce/vimmary:edge .
+docker buildx build --platform linux/amd64 -t vimmary:local .
 ```
 
 ## MCP tools
@@ -226,9 +212,9 @@ docker buildx build --platform linux/amd64 -t codeberg.org/meltforce/vimmary:edg
 
 ## Related projects
 
-- [meltkit](https://codeberg.org/meltforce/meltkit) — shared Go library (db, config, secrets, middleware, MCP)
-- [totalrecall](https://github.com/meltforce/totalrecall) — personal knowledge system (architectural blueprint) — migration to Codeberg pending
+- [meltkit](https://github.com/meltforce/meltkit) — shared Go library (db, config, secrets, middleware, MCP)
+- [totalrecall](https://github.com/meltforce/totalrecall) — personal knowledge system (architectural blueprint)
 
 ---
 
-vimmary moved from GitHub to Codeberg in May 2026. New canonical home: [codeberg.org/meltforce/vimmary](https://codeberg.org/meltforce/vimmary). Source-of-truth development happens on a self-hosted Forgejo (private); Codeberg is the public mirror.
+Source-of-truth development happens on a self-hosted Forgejo (private); [github.com/meltforce/vimmary](https://github.com/meltforce/vimmary) is the public mirror.

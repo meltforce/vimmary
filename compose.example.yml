@@ -1,0 +1,53 @@
+# Standalone deployment example.
+#
+# `docker-compose.yml` in this repo is the *development* stack: it pulls the
+# `:edge` image from a tailnet-internal registry and is not reachable from
+# outside. This file is the one to copy if you just want to run vimmary.
+#
+#   curl -O https://raw.githubusercontent.com/meltforce/vimmary/main/compose.example.yml
+#   curl -o config.yaml https://raw.githubusercontent.com/meltforce/vimmary/main/config.example.yaml
+#   $EDITOR config.yaml            # at minimum: secrets.claude_api_key
+#   echo "POSTGRES_PASSWORD=..." > .env   # same value as secrets.postgres_password
+#   docker compose -f compose.example.yml up -d
+#
+# Database host and port come from the environment, so config.yaml can stay
+# as shipped — `VIMMARY_DB_*` overrides whatever is in the file.
+
+name: vimmary
+
+services:
+  app:
+    image: ghcr.io/meltforce/vimmary:${VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    volumes:
+      - ./config.yaml:/data/config.yaml:ro
+    environment:
+      VIMMARY_DB_HOST: db
+      VIMMARY_DB_PORT: "5432"
+      VIMMARY_DB_NAME: ${POSTGRES_DB:-vimmary}
+      VIMMARY_DB_USER: ${POSTGRES_USER:-vimmary}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vimmary}
+      POSTGRES_USER: ${POSTGRES_USER:-vimmary}
+      # Must match secrets.postgres_password in config.yaml.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vimmary}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    # Not published — the app reaches it over the compose network.
+
+volumes:
+  pgdata:

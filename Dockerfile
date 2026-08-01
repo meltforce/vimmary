@@ -18,6 +18,9 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o vimmary .
 
 # Stage 3: Runtime
 FROM alpine:3.21
+# ghcr links a package to its repo through this label — without it the package
+# shows up unattached and inherits no visibility or README from the repo.
+LABEL org.opencontainers.image.source="https://github.com/meltforce/vimmary"
 RUN apk add --no-cache ca-certificates ffmpeg python3 py3-pip \
     && pip3 install --break-system-packages yt-dlp
 WORKDIR /app
