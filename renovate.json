@@ -3,5 +3,13 @@
   "description": "Headless-Renovate (kein PR-Workflow): Minors/Patches landen direkt auf main; ein kaputter Bump failt den Build in build-push-deploy@v3, kein Image wird gepusht. Preset: homelab/default.json.",
   "extends": ["local>meltforce.net/homelab"],
   "rangeStrategy": "pin",
-  "postUpdateOptions": ["gomodTidy"]
+  "postUpdateOptions": ["gomodTidy"],
+  "packageRules": [
+    {
+      "description": "Alle npm-Deps teilen sich eine package-lock.json — einzeln gebumpt erzeugen sie gegenseitige Merge-Konflikte und bleiben als PRs liegen (am 2026-08-01 mit 3 Stück passiert). Ein Branch für alle Non-Major-JS-Updates: eine Lockfile-Änderung, kein Konflikt. Majors bleiben einzeln + Dashboard-pflichtig.",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "npm non-major"
+    }
+  ]
 }
