@@ -11,7 +11,7 @@ require (
 	github.com/meltforce/meltkit v0.2.0
 	github.com/pgvector/pgvector-go v0.4.1
 	github.com/yuin/goldmark v1.8.5
-	tailscale.com v1.102.1
+	tailscale.com v1.102.2
 )
 
 require (
