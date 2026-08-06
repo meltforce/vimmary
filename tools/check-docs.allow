@@ -1,0 +1,20 @@
+# Lines the language sweep in check-docs.sh may not flag.
+#
+# Format: <path>%%<substring>
+# A hit is suppressed when its path matches an entry and the matched line
+# contains that entry's substring.
+#
+# Every entry carries a comment saying why. An entry without a reason is a
+# pattern that was weakened rather than a case that was understood.
+#
+# Do not widen an entry to cover a class of lines. If a whole file legitimately
+# contains German, that file is either a verbatim quote of external output or a
+# sign that the language-en module does not fit this project.
+
+# The "Rolle" example is the language rule explaining itself: it names the
+# translation layer it exists to prevent.
+CLAUDE.md%%("Rolle" in the text
+
+# Skill descriptions carry literal trigger phrases in the languages they are
+# spoken in. Translating them would stop the skill from being found.
+skills/verify/SKILL.md%%description:

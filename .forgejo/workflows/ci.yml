@@ -30,6 +30,19 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
 
+  check-docs:
+    runs-on: docker
+    steps:
+      - uses: actions/checkout@v4.4.0
+      # check-docs.sh reads the module selection from
+      # .claude/project-standards.json with python3. Without python3 the read
+      # fails, the language sweep is skipped, and the job still exits 0 — a
+      # green check that verified nothing. Fail loudly instead.
+      - run: python3 --version
+      # Detects; does not prevent. Run tools/check-docs.sh --all locally before
+      # committing, or wire it into .githooks/pre-commit for prevention.
+      - run: ./tools/check-docs.sh --all
+
   web-build:
     runs-on: docker
     defaults:
@@ -47,12 +60,13 @@ jobs:
 
   build-deploy:
     needs: [go-build-test, web-build]
-    # KEIN github.event_name-Vergleich hier: bei einem `uses:`-Job wird die
-    # Bedingung im *aufgerufenen* Workflow ausgewertet, wo das Event
-    # `workflow_call` heisst. Sie war damit immer falsch — build und deploy
-    # wurden seit Anfang Juni 2026 still uebersprungen, waehrend der Caller
-    # weiter "success" meldete. Folge: :edge war seit 2026-06-13 eingefroren.
-    # github.ref bleibt korrekt und ist auf PRs refs/pull/N/merge.
+    # NO github.event_name comparison here: on a `uses:` job the condition is
+    # evaluated in the *called* workflow, where the event is named
+    # `workflow_call`. It was therefore always false — build and deploy were
+    # silently skipped from early June 2026 while the caller kept reporting
+    # "success", and :edge stayed frozen at the 2026-06-13 build.
+    # See INCIDENTS.md, 2026-08-01.
+    # github.ref stays correct and is refs/pull/N/merge on pull requests.
     if: github.ref == 'refs/heads/main'
     uses: meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v3
     with:
@@ -79,11 +93,8 @@ jobs:
             https://ntfy.coydog-fence.ts.net/claude || true
 
   # Inline by design (Rule of Three) — cast2md carries a second, near-identical
-  # block (ghcr push + tag-propagation wait + GitHub release). That is two.
-  # When a third world-public project ships, extract this job into
-  # ci-workflows/.forgejo/workflows/release-to-github.yml using it as the
-  # template; cast2md's variant additionally publishes to PyPI, so the shared
-  # workflow has to leave the language-specific publish to the caller.
+  # block, which is two. Extract only when a third world-public project ships.
+  # Reasoning and the extraction plan: DECISIONS.md, 2026-05-17.
   release:
     needs: [go-build-test, web-build]
     if: startsWith(github.ref, 'refs/tags/v')
