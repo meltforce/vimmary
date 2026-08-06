@@ -25,9 +25,13 @@ config.yaml
 # Tailscale state
 tsnet-*/
 
-# Claude Code
+# Claude Code — session state stays out, project skills are committed.
+# .claude/skills/ has to be negated explicitly: it is the only place Claude Code
+# looks for project skills, so an ignored one exists on a single machine.
+.claude/*
+!.claude/skills/
+!.claude/project-standards.json
 .claude/settings.local.json
-.claude/skills/
 .claude/agents/
 
 # Web frontend build artifacts

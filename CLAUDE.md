@@ -168,22 +168,33 @@ you were when you wrote it.
 
 | Home | For |
 |---|---|
-| `skills/<name>/` in this repo | Skills that depend on this project: its scripts, its services, its MCP servers. Committed here. |
+| `.claude/skills/<name>/` in this repo | Skills that depend on this project: its scripts, its services, its MCP servers. Committed here. |
 | `~/.claude/skills/<name>/` | Skills that work anywhere and carry no project dependency. |
 
 Decide the home before writing. If the skill would fail outside this project, it
 belongs here.
+
+**Those two paths are the only places Claude Code looks**, plus a plugin's own
+`skills/` directory. A `skills/` directory at the repo root is not a discovery
+location — a skill placed there is invisible until something links it into
+`.claude/skills/`, and a link that is not committed exists on one machine only.
+
+`.gitignore` therefore uses `.claude/*` with an explicit `!.claude/skills/`
+negation, which is what keeps session state out while committing the skills.
 
 A `description` carries the literal trigger phrases that should invoke the
 skill, in the languages they are spoken in, plus the cases that should *not*
 invoke it. The description is the only part loaded into every session, so it
 does the whole job of routing.
 
-`.claude/skills/` is a generated runtime view where a setup step symlinks skills
-in. Never edit anything there — edit the source.
+An entry under `.claude/skills/` may be a symlink to a directory elsewhere on
+disk — Claude Code follows it and reads `SKILL.md` from the target. That is
+worth using when a skill genuinely has to live somewhere else; it is not worth
+using to keep the source outside `.claude/`, because the link then has to be
+recreated on every checkout.
 
 ## Verification
 
-Run the `verify` skill in `skills/verify/` before committing. The steps are kept
+Run the `verify` skill in `.claude/skills/verify/` before committing. The steps are kept
 there rather than here because they are needed rarely and are long, and in this
 file they would occupy every session's context.

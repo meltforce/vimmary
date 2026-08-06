@@ -17,4 +17,4 @@ CLAUDE.md%%("Rolle" in the text
 
 # Skill descriptions carry literal trigger phrases in the languages they are
 # spoken in. Translating them would stop the skill from being found.
-skills/verify/SKILL.md%%description:
+.claude/skills/verify/SKILL.md%%description:

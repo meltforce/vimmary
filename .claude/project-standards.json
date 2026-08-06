@@ -1,7 +1,8 @@
 {
-  "standard": "2026-08-05",
+  "standard": "2026-08-06",
   "type": "code",
   "modules": [
+    "doc-contract",
     "incidents",
     "language-en",
     "git-solo",
@@ -10,8 +11,12 @@
     "check-docs"
   ],
   "declined": {
-    "policy": "CLAUDE.md is around 180 lines and its mechanics and policy are not hard to tell apart yet. Revisit if the file grows past what a reader scans in one pass.",
+    "policy": "CLAUDE.md is around 200 lines and its mechanics and policy are not hard to tell apart yet. Revisit if the file grows past what a reader scans in one pass.",
     "specs": "The two spec documents this repo had (CONCEPT.md, docs/rss-feed-concept.md) described features that were already shipped, so they were distilled into DECISIONS.md and removed on 2026-08-06. ROADMAP.md carries one open item, which fits in a row. Add tasks/ when an open item needs more than that.",
     "settings": "No MCP servers are configured for this repo and no standing permissions have come up. The MCP server vimmary *provides* is a product feature, not a session dependency, so it does not create the need."
+  },
+  "notes": {
+    "skills": ".claude/skills/verify/ is committed, which needs the .claude/* plus !.claude/skills/ negation in .gitignore. The skill was briefly at skills/verify/ with a hand-made symlink — a location Claude Code does not read. See the standard's DECISIONS.md, 2026-08-06.",
+    "check-docs": "tools/check-docs.sh is copied unchanged from the standards repo and reads this file for the module selection. Project exceptions live in tools/check-docs.allow. It runs as its own CI job, which does not gate build-deploy."
   }
 }
