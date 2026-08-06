@@ -34,11 +34,10 @@ jobs:
     runs-on: docker
     steps:
       - uses: actions/checkout@v4.4.0
-      # check-docs.sh reads the module selection from
-      # .claude/project-standards.json with python3. Without python3 the read
-      # fails, the language sweep is skipped, and the job still exits 0 — a
-      # green check that verified nothing. Fail loudly instead.
-      - run: python3 --version
+      # Exits 0 when it found nothing, 1 when it found something, 2 when it
+      # could not run at all — a missing python3 or an unreadable
+      # .claude/project-standards.json fail here rather than passing quietly.
+      #
       # Detects; does not prevent. Run tools/check-docs.sh --all locally before
       # committing, or wire it into .githooks/pre-commit for prevention.
       - run: ./tools/check-docs.sh --all
