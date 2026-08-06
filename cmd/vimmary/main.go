@@ -13,6 +13,10 @@ import (
 	"syscall"
 	"time"
 
+	mcpserver "github.com/mark3labs/mcp-go/server"
+	"github.com/meltforce/meltkit/pkg/db"
+	"github.com/meltforce/meltkit/pkg/middleware"
+	"github.com/meltforce/meltkit/pkg/secrets"
 	vimmary "github.com/meltforce/vimmary"
 	"github.com/meltforce/vimmary/internal/cast2md"
 	"github.com/meltforce/vimmary/internal/config"
@@ -24,10 +28,6 @@ import (
 	"github.com/meltforce/vimmary/internal/storage"
 	"github.com/meltforce/vimmary/internal/summary"
 	"github.com/meltforce/vimmary/internal/youtube"
-	"github.com/meltforce/meltkit/pkg/db"
-	"github.com/meltforce/meltkit/pkg/middleware"
-	"github.com/meltforce/meltkit/pkg/secrets"
-	mcpserver "github.com/mark3labs/mcp-go/server"
 	"tailscale.com/tsnet"
 )
 
@@ -205,7 +205,7 @@ func main() {
 	svc.StartPodcastPoller(pollCtx)
 
 	// HTTP server
-	srv := server.New(svc, store, log)
+	srv := server.New(svc, store, Version, log)
 
 	// Mount MCP
 	mcpSrv := vimmarymcp.New(svc, Version, log)
@@ -245,6 +245,18 @@ func main() {
 			os.Exit(1)
 		}
 		log.Info("server starting", "addr", addr, "mode", "dev (no tailscale)")
+	}
+
+	// The health listener comes up only now, with initialisation finished. A
+	// container runtime cannot reach the tsnet listener, so this loopback
+	// endpoint is what tells it whether the service actually serves.
+	if cfg.HealthAddr != "" {
+		healthSrv, err := server.StartHealthListener(ctx, cfg.HealthAddr, Version, store, log)
+		if err != nil {
+			log.Error("health listener failed to start", "addr", cfg.HealthAddr, "error", err)
+			os.Exit(1)
+		}
+		defer func() { _ = healthSrv.Close() }()
 	}
 
 	httpSrv := &http.Server{Handler: srv}

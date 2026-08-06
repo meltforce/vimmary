@@ -7,7 +7,13 @@ import (
 )
 
 type Config struct {
-	ExternalURL   string                       `yaml:"external_url"`
+	ExternalURL string `yaml:"external_url"`
+	// HealthAddr is a loopback-only listener that exists so a container runtime
+	// can tell "the process is up" from "the process is serving". With
+	// Tailscale enabled the real listener lives on the tsnet netstack, which
+	// nothing inside the container can dial, so a healthcheck against localhost
+	// would fail on a perfectly healthy service. Empty disables it.
+	HealthAddr    string                       `yaml:"health_addr"`
 	Server        mkconfig.ServerConfig        `yaml:"server"`
 	Database      mkconfig.DatabaseConfig      `yaml:"database"`
 	Tailscale     mkconfig.TailscaleConfig     `yaml:"tailscale"`
@@ -55,6 +61,7 @@ type Cast2MDConfig struct {
 
 func Load(path string) (*Config, error) {
 	cfg := &Config{
+		HealthAddr: "127.0.0.1:8081",
 		Search: SearchConfig{
 			DefaultThreshold: 0.5,
 			DefaultLimit:     10,

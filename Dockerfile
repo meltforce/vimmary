@@ -14,7 +14,13 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=frontend /app/web/dist ./web/dist
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o vimmary ./cmd/vimmary
+
+# CI passes VERSION=edge-<sha>. Without it linked into the binary, every build
+# reports "dev" and nothing downstream can tell which commit is serving — which
+# is what a deploy gate has to compare against.
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -ldflags="-s -w -X main.Version=${VERSION}" -o vimmary ./cmd/vimmary
 
 # Stage 3: Runtime
 FROM alpine:3.24

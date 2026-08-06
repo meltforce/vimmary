@@ -30,7 +30,18 @@ Changing one does not change the other.
 **tsnet starts before secrets, because setec is reached over it.** The init
 order in `cmd/vimmary/main.go` is config → tsnet → setec resolver → resolve
 secrets → migrations → DB → services → HTTP server. Moving secret resolution
-earlier leaves setec without a transport.
+earlier leaves setec without a transport. Everything before the listener can
+hang without the container noticing, which is what the loopback health endpoint
+below is for.
+
+**The health endpoint is on loopback, and it is deliberate.** With Tailscale
+enabled the real listener runs on the tsnet netstack, which nothing inside the
+container can dial — a healthcheck against localhost would fail on a perfectly
+healthy service. `server.StartHealthListener` opens `health_addr` (default
+`127.0.0.1:8081`) as the *last* step of startup, so the listener existing is
+itself the readiness signal. `/version` on the public router carries the build
+string for the CI deploy gate; `Version` reaches the binary through the
+Dockerfile's `ARG VERSION` and `-X main.Version`, and reads `dev` without it.
 
 **The Atom feed route is mounted outside the Tailscale auth middleware**
 (`internal/server/server.go:39`). The 32-byte token in the URL path is the only

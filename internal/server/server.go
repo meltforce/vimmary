@@ -14,17 +14,19 @@ import (
 
 type Server struct {
 	*mkserver.Server
-	svc   *service.Service
-	store *storage.DB
-	log   *slog.Logger
+	svc     *service.Service
+	store   *storage.DB
+	version string
+	log     *slog.Logger
 }
 
-func New(svc *service.Service, store *storage.DB, log *slog.Logger) *Server {
+func New(svc *service.Service, store *storage.DB, version string, log *slog.Logger) *Server {
 	s := &Server{
-		Server: mkserver.New(mkserver.WithLogger(log)),
-		svc:    svc,
-		store:  store,
-		log:    log,
+		Server:  mkserver.New(mkserver.WithLogger(log)),
+		svc:     svc,
+		store:   store,
+		version: version,
+		log:     log,
 	}
 	s.routes()
 	return s
@@ -32,6 +34,13 @@ func New(svc *service.Service, store *storage.DB, log *slog.Logger) *Server {
 
 func (s *Server) routes() {
 	r := s.Router()
+
+	// Version route — no Tailscale auth, same as /healthz. It reports which
+	// build is serving, which is what lets a deploy gate tell a real rollout
+	// from a green pipeline over an unchanged image. meltkit owns /healthz and
+	// answers a fixed "ok", so this is a route of its own rather than an
+	// override.
+	r.Get("/version", s.handleVersion)
 
 	// Webhook route — no Tailscale auth, uses per-user Bearer token
 	r.Post("/webhook/karakeep", karakeep.WebhookHandler(s.svc, s.store.GetUserByWebhookToken))

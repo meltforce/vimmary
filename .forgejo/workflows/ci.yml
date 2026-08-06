@@ -94,8 +94,69 @@ jobs:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
-  notify-deploy-failure:
+  deploy-gate:
+    # A green `deploy` job is not proof the service serves. On 2026-08-06 the
+    # deploy reported success while vimmary sat in a retry loop resolving its
+    # secrets: the container was up, the HTTP listener never opened, and the
+    # outage was noticed by a person rather than by CI. See INCIDENTS.md.
+    #
+    # /version reports the build linked into the binary and pings the database,
+    # so this compares the commit that is actually serving — not merely that
+    # something answers. An unmoved :edge tag would otherwise pass: the pull
+    # fetches the old image, `up -d` reports up-to-date, and health is green
+    # over a deploy that changed nothing.
+    #
+    # The github.event_name comparison is correct here: this is an ordinary
+    # `runs-on:` job, so the event really is `push`. On a pull request
+    # build-deploy is skipped by design and this job must not run.
     needs: [build-deploy]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: docker
+    steps:
+      - name: Require build-deploy to have run
+        env:
+          RESULT: ${{ needs.build-deploy.result }}
+        run: |
+          set -euo pipefail
+          echo "build-deploy result: ${RESULT}"
+          if [ "${RESULT}" != "success" ]; then
+            echo "::error::build-deploy did not run to success (result: ${RESULT})."
+            exit 1
+          fi
+
+      - name: Verify this commit is the one serving
+        env:
+          EXPECTED: edge-${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Twelve attempts at 10 s: tsnet, setec and migrations run before the
+          # listener opens, and the compose start_period allows 120 s for that.
+          for attempt in $(seq 1 12); do
+            body="$(curl -fsS --max-time 10 https://vimmary.coydog-fence.ts.net/version || true)"
+            got="$(printf '%s' "${body}" \
+                   | sed -n 's/.*"build"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+            if [ "${got}" = "${EXPECTED}" ]; then
+              case "${body}" in
+                *'"status":"ok"'*)
+                  echo "serving ${got}, database reachable"
+                  exit 0
+                  ;;
+              esac
+              echo "attempt ${attempt}: right build, not healthy yet — ${body}"
+            else
+              echo "attempt ${attempt}: build is '${got:-unreachable}', want '${EXPECTED}'"
+            fi
+            sleep 10
+          done
+          echo "::error::After 120s, /version does not report a healthy ${EXPECTED}."
+          echo "'unreachable' for the whole window means the process never"
+          echo "opened its listener — check the container log for a stuck"
+          echo "secret resolution. A different build string means :edge never"
+          echo "moved, or a later push overtook this run."
+          exit 1
+
+  notify-deploy-failure:
+    needs: [build-deploy, deploy-gate]
     if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: host
     steps:
