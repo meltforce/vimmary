@@ -88,6 +88,14 @@ jobs:
     with:
       app_name: vimmary
       target_host: vimmary-lxc.coydog-fence.ts.net
+      # Without this the reusable workflow's own health step is skipped
+      # (`if: inputs.health_url != ''`) and `deploy` reports success on the
+      # strength of `docker compose up -d` returning. That is how a service
+      # that never opened its listener passed as deployed on 2026-08-06.
+      # /version answers 503 when the database is unreachable, and curl -sfS
+      # fails the step on it. The defaults are 30 attempts every 5 s = 150 s,
+      # which covers the 120 s start_period in the compose file.
+      health_url: https://vimmary.coydog-fence.ts.net/version
     secrets:
       REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
       REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
@@ -95,16 +103,17 @@ jobs:
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   deploy-gate:
-    # A green `deploy` job is not proof the service serves. On 2026-08-06 the
-    # deploy reported success while vimmary sat in a retry loop resolving its
-    # secrets: the container was up, the HTTP listener never opened, and the
-    # outage was noticed by a person rather than by CI. See INCIDENTS.md.
+    # Liveness is covered a step earlier, by the health_url passed to
+    # build-deploy above — that fails the deploy job itself when nothing
+    # answers. This job exists for the two things that check cannot see:
     #
-    # /version reports the build linked into the binary and pings the database,
-    # so this compares the commit that is actually serving — not merely that
-    # something answers. An unmoved :edge tag would otherwise pass: the pull
-    # fetches the old image, `up -d` reports up-to-date, and health is green
-    # over a deploy that changed nothing.
+    #   - A deploy that never ran. A skipped `uses:` job counts as success, so
+    #     its health step is skipped too and the pipeline stays green over a
+    #     deploy that did not happen. That is the 2026-08-01 incident.
+    #   - A deploy where :edge never moved. The pull fetches the old image,
+    #     `up -d` reports up-to-date, and the previous build answers the health
+    #     check perfectly. Comparing the build string in /version is what
+    #     separates "deployed" from "still the previous commit".
     #
     # The github.event_name comparison is correct here: this is an ordinary
     # `runs-on:` job, so the event really is `push`. On a pull request

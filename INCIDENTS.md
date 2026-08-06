@@ -69,12 +69,21 @@ endpoint (`health_addr`, default `127.0.0.1:8081`) as the last step of startup,
 and the compose file probes it with a 120 s `start_period`. The listener
 existing is the signal; a start still resolving secrets answers nothing.
 
-CI reported the deploy as successful, because the `deploy` job checks that
-`docker compose up -d` returned, not that the service serves. A `deploy-gate`
-job now polls `/version` for two minutes and requires both the commit's own
-build string and a reachable database. That endpoint is new: the Dockerfile did
-not link `VERSION` into the binary, so every build reported `dev` and no
-downstream check could tell one deploy from another.
+CI reported the deploy as successful, because the `deploy` job checked that
+`docker compose up -d` returned and nothing else. The shared workflow it calls
+has always had a health step — it is gated on `if: inputs.health_url != ''`,
+and neither vimmary nor cast2md ever passed that input, so it never ran in
+either repo. Both now do; for vimmary it polls `/version`, whose 503 on an
+unreachable database `curl -sfS` turns into a failed deploy. Thirty attempts
+every five seconds covers the 120 s `start_period`.
+
+That alone would have caught this outage. A `deploy-gate` job covers the two
+cases it cannot see: a deploy that never ran (a skipped `uses:` job counts as
+success and skips its health step with it — the 2026-08-01 incident), and a
+deploy where `:edge` never moved, where the previous build answers the health
+check perfectly. Telling those apart needs the build string, which is why
+`/version` reports it — and why the Dockerfile now links `VERSION` into the
+binary at all. Until this day every build reported `dev`.
 
 **Not the cause, though each looked like one.** All four secrets existed in
 setec and were readable from a workstation; setec itself was up and answered;
