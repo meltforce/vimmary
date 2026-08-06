@@ -84,7 +84,7 @@ jobs:
     # See INCIDENTS.md, 2026-08-01.
     # github.ref stays correct and is refs/pull/N/merge on pull requests.
     if: github.ref == 'refs/heads/main'
-    uses: meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v3
+    uses: meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v4
     with:
       app_name: vimmary
       target_host: vimmary-lxc.coydog-fence.ts.net
@@ -96,6 +96,11 @@ jobs:
       # fails the step on it. The defaults are 30 attempts every 5 s = 150 s,
       # which covers the 120 s start_period in the compose file.
       health_url: https://vimmary.coydog-fence.ts.net/version
+      # homelab/Ansible owns the deployed compose
+      # (homelab/docker/stacks/vimmary/compose.yaml), and Compose resolves
+      # compose.yaml ahead of docker-compose.yml, so a synced file would sit
+      # unused beside the real one as a second source of truth.
+      sync_compose: false
     secrets:
       REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
       REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
