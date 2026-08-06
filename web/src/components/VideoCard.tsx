@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { deleteVideo, retryVideo, transcribeVideo } from "../api.ts";
 import type { ContentSource } from "../api.ts";
 import SourceBadge, { MicIcon } from "./SourceBadge.tsx";
+import { usePodcastsEnabled } from "../features.ts";
 import { formatDuration, stripMarkdown } from "../utils.ts";
 
 interface Props {
@@ -51,6 +52,9 @@ export default function VideoCard({
 }: Props) {
   const queryClient = useQueryClient();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // The badge marks which of two kinds a row is. With only one kind configured
+  // it marks nothing, so it is left off.
+  const podcastsEnabled = usePodcastsEnabled();
 
   const retry = useMutation({
     mutationFn: () => retryVideo(id),
@@ -132,8 +136,12 @@ export default function VideoCard({
             flexWrap: "wrap",
           }}
         >
-          <SourceBadge source={source} />
-          <span className="vim-dot" />
+          {podcastsEnabled && (
+            <>
+              <SourceBadge source={source} />
+              <span className="vim-dot" />
+            </>
+          )}
           {channel && <span>{channel}</span>}
           {createdAt && (
             <>

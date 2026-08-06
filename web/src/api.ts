@@ -214,6 +214,16 @@ export function fetchProviders(): Promise<ProvidersInfo> {
   return fetchJSON("/api/v1/config/providers");
 }
 
+/** Which optional integrations this deployment has configured. */
+export interface Features {
+  podcasts: boolean;
+  cast2md_url: string;
+}
+
+export function fetchFeatures(): Promise<Features> {
+  return fetchJSON("/api/v1/config/features");
+}
+
 export function fetchStats(source?: ContentSource | "all"): Promise<VideoStats> {
   const params = new URLSearchParams();
   if (source) params.set("source", source);

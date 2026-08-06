@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchStats, listVideos, retryVideo, deleteVideo } from "../api.ts";
 import type { ContentSource } from "../api.ts";
+import { usePodcastsEnabled } from "../features.ts";
 import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
 
 function busiestWeekday(daily: { date: string; count: number }[]): string {
@@ -31,17 +32,22 @@ type StatsScope = ContentSource | "all";
 export default function StatsPage() {
   const queryClient = useQueryClient();
   const [scope, setScope] = useState<StatsScope>("all");
+  const podcastsEnabled = usePodcastsEnabled();
+  // With cast2md off, count videos rather than everything. Podcast rows can
+  // still exist from an earlier configuration, and counting them here while
+  // the video list hides them would make the two disagree.
+  const effectiveScope: StatsScope = podcastsEnabled ? scope : "youtube";
 
   const { data: stats, isLoading, error } = useQuery({
-    queryKey: ["stats", scope],
-    queryFn: () => fetchStats(scope),
+    queryKey: ["stats", effectiveScope],
+    queryFn: () => fetchStats(effectiveScope),
   });
 
   const failedCount = stats?.by_status?.failed ?? 0;
 
   const { data: failedVideos } = useQuery({
-    queryKey: ["videos", "failed", scope],
-    queryFn: () => listVideos({ status: "failed", source: scope, limit: 20 }),
+    queryKey: ["videos", "failed", effectiveScope],
+    queryFn: () => listVideos({ status: "failed", source: effectiveScope, limit: 20 }),
     enabled: failedCount > 0,
   });
 
@@ -110,7 +116,9 @@ export default function StatsPage() {
       <h1 className="vim-h1-stats-settings">Stats</h1>
 
       {/* Scope switch. by_source is always unfiltered, so the counts stay
-          visible whichever scope is selected. */}
+          visible whichever scope is selected. With only one content type there
+          is nothing to switch between, so it is not shown. */}
+      {podcastsEnabled && (
       <div style={{ display: "flex", gap: 6, margin: "16px 0 4px", flexWrap: "wrap" }}>
         {(
           [
@@ -140,6 +148,7 @@ export default function StatsPage() {
           </button>
         ))}
       </div>
+      )}
 
       {/* Headline grid */}
       <div className="vim-grid-stats-headline" style={{ marginBottom: 30 }}>

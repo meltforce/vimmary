@@ -23,6 +23,7 @@ import type {
 } from "../api.ts";
 import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
 import { MicIcon } from "../components/SourceBadge.tsx";
+import { usePodcastsEnabled } from "../features.ts";
 
 function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -504,13 +505,19 @@ function PodcastFeedRow({ feed, isLast }: { feed: PodcastFeed; isLast: boolean }
 }
 
 function PodcastSection() {
+  const enabled = usePodcastsEnabled();
   const { data, isLoading, error } = useQuery({
     queryKey: ["podcast-feeds"],
     queryFn: listPodcastFeeds,
-    // A cast2md that is off or unreachable is a normal state here, not
-    // something to hammer.
+    // Only ask when the server says it has cast2md; a 503 is not worth
+    // retrying either way.
+    enabled,
     retry: false,
   });
+
+  // Without cast2md there is no section — not a disabled one, not an empty
+  // one. This installation simply does not do podcasts.
+  if (!enabled) return null;
 
   return (
     <Section
@@ -548,6 +555,7 @@ export default function SettingsPage() {
   const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [promptSource, setPromptSource] = useState<ContentSource>("youtube");
+  const podcastsEnabled = usePodcastsEnabled();
 
   const { data: webhook, isLoading: webhookLoading, error: webhookError } = useQuery({
     queryKey: ["settings", "webhook"],
@@ -617,11 +625,13 @@ export default function SettingsPage() {
   const truncatedFeedToken = feedInfo ? `${feedInfo.token.slice(0, 8)}…` : "—";
   // Three separate subscriptions rather than one feed with a filter: an RSS
   // reader cannot filter, so the split has to happen in the URL.
-  const feedVariants: { label: string; suffix: string; hint: string }[] = [
-    { label: "Videos only", suffix: "", hint: "The original feed. Existing subscriptions keep this content." },
-    { label: "Podcasts only", suffix: "/podcasts", hint: "Podcast episode summaries." },
-    { label: "Everything", suffix: "/all", hint: "Both kinds; each entry is tagged with its type." },
-  ];
+  const feedVariants: { label: string; suffix: string; hint: string }[] = podcastsEnabled
+    ? [
+        { label: "Videos only", suffix: "", hint: "The original feed. Existing subscriptions keep this content." },
+        { label: "Podcasts only", suffix: "/podcasts", hint: "Podcast episode summaries." },
+        { label: "Everything", suffix: "/all", hint: "Both kinds; each entry is tagged with its type." },
+      ]
+    : [{ label: "Your personal feed URL", suffix: "", hint: "" }];
 
   return (
     <div className="vim-page-narrower">
@@ -750,23 +760,25 @@ export default function SettingsPage() {
             <ModelSelector />
           </div>
         )}
-        <div style={{ padding: "16px 0", borderBottom: "1px solid var(--vim-line-soft)" }}>
-          <div style={{ fontSize: 13, color: "var(--vim-ink-3)", marginBottom: 8 }}>
-            Prompts for
+        {podcastsEnabled && (
+          <div style={{ padding: "16px 0", borderBottom: "1px solid var(--vim-line-soft)" }}>
+            <div style={{ fontSize: 13, color: "var(--vim-ink-3)", marginBottom: 8 }}>
+              Prompts for
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {(["youtube", "podcast"] as ContentSource[]).map((src) => (
+                <button
+                  key={src}
+                  onClick={() => setPromptSource(src)}
+                  className={promptSource === src ? "vim-btn primary" : "vim-btn ghost"}
+                  style={{ padding: "6px 14px", fontSize: 12 }}
+                >
+                  {src === "youtube" ? "Videos" : "Podcasts"}
+                </button>
+              ))}
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            {(["youtube", "podcast"] as ContentSource[]).map((src) => (
-              <button
-                key={src}
-                onClick={() => setPromptSource(src)}
-                className={promptSource === src ? "vim-btn primary" : "vim-btn ghost"}
-                style={{ padding: "6px 14px", fontSize: 12 }}
-              >
-                {src === "youtube" ? "Videos" : "Podcasts"}
-              </button>
-            ))}
-          </div>
-        </div>
+        )}
         {prompts && (
           <>
             <PromptEditor
@@ -828,7 +840,14 @@ export default function SettingsPage() {
       <PodcastSection />
 
       {/* RSS */}
-      <Section title="RSS" subtitle="Subscribe to your own feeds of summaries.">
+      <Section
+        title="RSS"
+        subtitle={
+          podcastsEnabled
+            ? "Subscribe to your own feeds of summaries."
+            : "Subscribe to your own feed of summaries."
+        }
+      >
         {feedInfo &&
           feedVariants.map((variant, i) => (
             <div
@@ -842,9 +861,11 @@ export default function SettingsPage() {
               <div style={{ fontSize: 13, color: "var(--vim-ink-3)", marginBottom: 3 }}>
                 {variant.label}
               </div>
-              <div style={{ fontSize: 12, color: "var(--vim-ink-4)", marginBottom: 8 }}>
-                {variant.hint}
-              </div>
+              {variant.hint && (
+                <div style={{ fontSize: 12, color: "var(--vim-ink-4)", marginBottom: 8 }}>
+                  {variant.hint}
+                </div>
+              )}
               <div
                 style={{
                   fontFamily: "var(--font-mono)",

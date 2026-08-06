@@ -21,6 +21,49 @@ identifier rather than estimated.
 
 ---
 
+## 2026-08-06 — an unconfigured integration is invisible, not disabled
+
+**Decided:** 2026-08-06
+
+**Decision.** Both services stay fully operable alone. When the other side is
+not configured, its half of the UI is absent — not greyed out, not showing an
+error, not an empty page explaining a missing feature.
+
+In vimmary that means: no Podcasts nav entry, no podcast routes registered, no
+Podcasts section in Settings, no Videos/Podcasts prompt switch, no stats scope
+switch, no source badge on cards and detail pages, and one RSS URL instead of
+three. The strapline reads `youtube · read` again. `GET
+/api/v1/config/features` is the single place the frontend asks, and it defaults
+to off while loading, so a deployment without cast2md never flashes the podcast
+UI. In cast2md it means the **Summarize in vimmary** button is not rendered
+when `vimmary_url` is empty, which is how it was built.
+
+The HTTP surface is not gated. `/api/v1/podcasts/*` answers 503 with a typed
+error, and the podcast and combined Atom feeds stay mounted.
+
+**Reasoning.** Someone who downloads either project on its own should get a
+coherent application, not one carrying visible stubs for a service they have
+never heard of. A disabled control still has to be explained; an absent one
+does not.
+
+The HTTP surface stays open because the two are different audiences. The feed
+routes read the database, not cast2md, so they keep working for a reader that
+subscribed while the integration was on — breaking a subscription URL because a
+config key changed would be worse than serving an empty feed. And a typed 503
+tells an API client what is wrong, which a 404 does not.
+
+The stats scope is forced to `youtube` when the integration is off, rather than
+left at "everything". Podcast rows can survive being switched off, and counting
+them in the totals while the video list hides them would make the two pages
+disagree.
+
+**Trigger to re-open.** The integration config moves into the GUI and the
+database, at which point "configured" becomes a runtime state a user can change
+without a restart, and the frontend needs to react to it rather than read it
+once.
+
+---
+
 ## 2026-08-06 — podcast summaries live in vimmary, with cast2md as a transcript source
 
 **Decided:** 2026-08-06

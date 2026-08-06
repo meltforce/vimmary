@@ -56,6 +56,7 @@ func (s *Server) routes() {
 		r.Post("/api/v1/videos/{id}/resummarize", s.handleResummarize)
 		r.Post("/api/v1/videos/{id}/retry", s.handleRetryVideo)
 		r.Post("/api/v1/videos/{id}/transcribe", s.handleTranscribeVideo)
+		r.Get("/api/v1/config/features", s.handleGetFeatures)
 		r.Get("/api/v1/config/providers", s.handleGetProviders)
 		r.Get("/api/v1/config/models", s.handleListModels)
 		r.Get("/api/v1/search", s.handleSearch)

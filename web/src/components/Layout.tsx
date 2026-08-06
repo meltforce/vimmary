@@ -1,15 +1,20 @@
 import { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import ThemeToggle from "./ThemeToggle.tsx";
-
-const navItems = [
-  { to: "/", label: "Videos" },
-  { to: "/podcasts", label: "Podcasts" },
-  { to: "/stats", label: "Stats" },
-  { to: "/settings", label: "Settings" },
-];
+import { usePodcastsEnabled } from "../features.ts";
 
 export default function Layout({ children }: { children: ReactNode }) {
+  const podcasts = usePodcastsEnabled();
+
+  // Without cast2md there is no second content type, so neither the nav entry
+  // nor the strapline mentions one.
+  const navItems = [
+    { to: "/", label: "Videos" },
+    ...(podcasts ? [{ to: "/podcasts", label: "Podcasts" }] : []),
+    { to: "/stats", label: "Stats" },
+    { to: "/settings", label: "Settings" },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col">
       <header
@@ -30,7 +35,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                 className="vim-kicker vim-brand-tag-mobile-hide"
                 style={{ fontSize: 10.5 }}
               >
-                video · podcast · read
+                {podcasts ? "video · podcast · read" : "youtube · read"}
               </span>
             </NavLink>
             <nav className="flex items-center" style={{ gap: 4 }}>

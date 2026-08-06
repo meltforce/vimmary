@@ -23,6 +23,19 @@ func (s *Server) writePodcastError(w http.ResponseWriter, err error, logMsg stri
 	}
 }
 
+// handleGetFeatures reports which optional integrations this deployment has.
+// The frontend hides everything belonging to an integration that is off, so an
+// installation without cast2md shows no trace of podcasts anywhere.
+func (s *Server) handleGetFeatures(w http.ResponseWriter, r *http.Request) {
+	if _, ok := mustUserID(w, r); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"podcasts":    s.svc.PodcastEnabled(),
+		"cast2md_url": s.svc.Cast2MDBaseURL(),
+	})
+}
+
 func (s *Server) handleListPodcastFeeds(w http.ResponseWriter, r *http.Request) {
 	uid, ok := mustUserID(w, r)
 	if !ok {

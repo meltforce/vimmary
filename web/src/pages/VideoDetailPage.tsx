@@ -12,6 +12,7 @@ import {
 import { formatDuration, formatTokens, videoToMarkdown } from "../utils.ts";
 import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
 import SourceBadge, { MicIcon } from "../components/SourceBadge.tsx";
+import { usePodcastsEnabled } from "../features.ts";
 
 function formatDate(iso?: string): string {
   if (!iso) return "";
@@ -44,6 +45,7 @@ export default function VideoDetailPage() {
   const [resumLang, setResumLang] = useState("");
   const [resumProvider, setResumProvider] = useState("");
   const [copiedMd, setCopiedMd] = useState(false);
+  const podcastsEnabled = usePodcastsEnabled();
 
   const { data: providers } = useQuery({
     queryKey: ["providers"],
@@ -174,8 +176,12 @@ export default function VideoDetailPage() {
           flexWrap: "wrap",
         }}
       >
-        <SourceBadge source={video.source} />
-        <span className="vim-dot" />
+        {podcastsEnabled && (
+          <>
+            <SourceBadge source={video.source} />
+            <span className="vim-dot" />
+          </>
+        )}
         {video.channel && <span style={{ color: "var(--vim-ink-2)" }}>{video.channel}</span>}
         {video.duration_seconds ? (
           <>
