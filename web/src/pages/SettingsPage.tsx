@@ -452,13 +452,12 @@ function PodcastFeedRow({ feed, isLast }: { feed: PodcastFeed; isLast: boolean }
             </>
           )}
         </div>
+        {/* The first poll runs when the feed is switched on, so this only
+            appears when that attempt failed and the poller has to retry. */}
         {feed.subscribed && !feed.initialized && (
           <div style={{ fontSize: 11.5, color: "var(--vim-ink-4)", marginTop: 4 }}>
-            {feed.initial_backfill > 0
-              ? `Waiting for the first poll. It will summarize the ${feed.initial_backfill} newest episode${
-                  feed.initial_backfill === 1 ? "" : "s"
-                } and then follow along.`
-              : "Waiting for the first poll. Only episodes transcribed from then on are summarized — use Backfill for older ones."}
+            The first poll has not completed. The poller retries within a poll
+            interval.
           </div>
         )}
         {feed.last_error && (
@@ -510,7 +509,7 @@ function PodcastFeedRow({ feed, isLast }: { feed: PodcastFeed; isLast: boolean }
             }
             className="vim-input"
             style={{ width: "auto", padding: "5px 8px", fontSize: 12 }}
-            title="How many recent episodes the first poll summarizes when this feed is switched on"
+            title="How many recent episodes are summarized right away when this feed is switched on"
           >
             <option value={0}>on subscribe: none</option>
             {[1, 3, 5, 10, 25].map((n) => (

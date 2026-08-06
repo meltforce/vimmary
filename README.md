@@ -174,11 +174,13 @@ tailnet, because cast2md has no authentication and is reachable only there.
 3. Open **Settings → Podcasts**, tick the feeds you want and pick a detail level per feed
 
 Subscribing summarizes the feed's **3 newest** transcribed episodes and follows
-along from there. The number is per feed — `on subscribe: none` restores plain
-"from now on", where the first poll only records a watermark. Either way the
-watermark ends up at the newest episode of that first batch, so nothing is
-summarized twice. Switching a feed off keeps its watermark, so switching it
-back on later fetches the gap.
+along from there. That first poll runs when you tick the box, not at the next
+tick, so the summaries are queued within seconds. The number is per feed —
+`on subscribe: none` restores plain "from now on", where the first poll only
+records a watermark. Either way the watermark ends up at the newest episode of
+that first batch, so nothing is summarized twice. Switching a feed off keeps its
+watermark, so switching it back on later fetches the gap through the ordinary
+poll.
 
 Three ways to reach older episodes, none of which moves the watermark:
 

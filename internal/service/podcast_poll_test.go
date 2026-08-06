@@ -561,3 +561,121 @@ func TestTranscribeAllInFeed(t *testing.T) {
 		t.Errorf("watermark = %q, want it untouched", after.Watermark)
 	}
 }
+
+// Switching a feed on runs the first poll straight away, so the backfill is
+// queued by the time the request returns rather than up to a poll interval
+// later.
+func TestSetPodcastSubscription_PollsImmediately(t *testing.T) {
+	feedID, numericFeedID := uniqueFeedID(t)
+	src := &fakeSource{
+		feeds: []cast2md.Feed{{ID: numericFeedID, Title: "Test Show"}},
+		episodes: map[int]cast2md.Episode{
+			51: {ID: 51, FeedID: numericFeedID, Title: "A", Status: cast2md.StatusCompleted, UpdatedAt: "2026-08-01T10:00:00"},
+			52: {ID: 52, FeedID: numericFeedID, Title: "B", Status: cast2md.StatusCompleted, UpdatedAt: "2026-08-02T10:00:00"},
+		},
+		listResult: []cast2md.Episode{
+			{ID: 51, FeedID: numericFeedID, UpdatedAt: "2026-08-01T10:00:00"},
+			{ID: 52, FeedID: numericFeedID, UpdatedAt: "2026-08-02T10:00:00"},
+		},
+	}
+	svc := newPollTestService(t, src)
+	ctx := context.Background()
+	cleanupFeed(t, svc, 1, feedID)
+
+	sub, err := svc.SetPodcastSubscription(ctx, 1, feedID, true, "medium", 2)
+	if err != nil {
+		t.Fatalf("SetPodcastSubscription: %v", err)
+	}
+
+	// The response already reflects the completed first poll.
+	if !sub.Initialized {
+		t.Error("the returned subscription should already be initialized")
+	}
+	if sub.Watermark != "2026-08-02T10:00:00" {
+		t.Errorf("watermark = %q, want the newest episode's updated_at", sub.Watermark)
+	}
+
+	jobs := drainEpisodeQueue(svc)
+	if len(jobs) != 2 {
+		t.Fatalf("queued %d jobs, want 2", len(jobs))
+	}
+	if jobs[0].episodeID != 51 || jobs[1].episodeID != 52 {
+		t.Errorf("queued %d and %d, want 51 then 52", jobs[0].episodeID, jobs[1].episodeID)
+	}
+}
+
+// A subscription that is already running is not re-initialized when its detail
+// level changes — that would re-summarize the backfill on every edit.
+func TestSetPodcastSubscription_DoesNotRepollAnInitializedFeed(t *testing.T) {
+	feedID, numericFeedID := uniqueFeedID(t)
+	src := &fakeSource{
+		feeds: []cast2md.Feed{{ID: numericFeedID, Title: "Test Show"}},
+		listResult: []cast2md.Episode{
+			{ID: 61, FeedID: numericFeedID, UpdatedAt: "2026-08-09T10:00:00"},
+		},
+	}
+	svc := newPollTestService(t, src)
+	ctx := context.Background()
+	cleanupFeed(t, svc, 1, feedID)
+
+	sub, err := svc.db.UpsertSubscription(ctx, 1, feedID, "Test Show", "", true, "medium", 3)
+	if err != nil {
+		t.Fatalf("UpsertSubscription: %v", err)
+	}
+	if err := svc.db.SetSubscriptionWatermark(ctx, sub.ID, "2026-08-08T10:00:00", true); err != nil {
+		t.Fatalf("SetSubscriptionWatermark: %v", err)
+	}
+
+	before := src.calls
+	if _, err := svc.SetPodcastSubscription(ctx, 1, feedID, true, "deep", 3); err != nil {
+		t.Fatalf("SetPodcastSubscription: %v", err)
+	}
+	if src.calls != before {
+		t.Errorf("cast2md was polled %d extra times on an edit, want 0", src.calls-before)
+	}
+	if jobs := drainEpisodeQueue(svc); len(jobs) != 0 {
+		t.Errorf("editing an initialized subscription queued %d jobs, want 0", len(jobs))
+	}
+
+	after, _ := svc.db.GetSubscription(ctx, 1, feedID)
+	if after.DetailLevel != "deep" {
+		t.Errorf("DetailLevel = %q, want the edit to have applied", after.DetailLevel)
+	}
+	if after.Watermark != "2026-08-08T10:00:00" {
+		t.Errorf("watermark = %q, want it untouched", after.Watermark)
+	}
+}
+
+// Switching a feed off and on again does not re-run the first poll: the
+// watermark survives, so the gap is fetched by the ordinary poll instead.
+func TestSetPodcastSubscription_ReEnableKeepsWatermark(t *testing.T) {
+	feedID, numericFeedID := uniqueFeedID(t)
+	src := &fakeSource{
+		feeds: []cast2md.Feed{{ID: numericFeedID, Title: "Test Show"}},
+	}
+	svc := newPollTestService(t, src)
+	ctx := context.Background()
+	cleanupFeed(t, svc, 1, feedID)
+
+	sub, err := svc.db.UpsertSubscription(ctx, 1, feedID, "Test Show", "", true, "medium", 3)
+	if err != nil {
+		t.Fatalf("UpsertSubscription: %v", err)
+	}
+	if err := svc.db.SetSubscriptionWatermark(ctx, sub.ID, "2026-08-07T10:00:00", true); err != nil {
+		t.Fatalf("SetSubscriptionWatermark: %v", err)
+	}
+
+	if _, err := svc.SetPodcastSubscription(ctx, 1, feedID, false, "medium", 3); err != nil {
+		t.Fatalf("disable: %v", err)
+	}
+	reEnabled, err := svc.SetPodcastSubscription(ctx, 1, feedID, true, "medium", 3)
+	if err != nil {
+		t.Fatalf("re-enable: %v", err)
+	}
+	if reEnabled.Watermark != "2026-08-07T10:00:00" {
+		t.Errorf("watermark = %q, want it preserved across off and on", reEnabled.Watermark)
+	}
+	if jobs := drainEpisodeQueue(svc); len(jobs) != 0 {
+		t.Errorf("re-enabling queued %d jobs, want 0 — the gap comes from the ordinary poll", len(jobs))
+	}
+}

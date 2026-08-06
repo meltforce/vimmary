@@ -292,10 +292,21 @@ func (s *Service) GetPodcastSubscription(ctx context.Context, userID int, feedID
 	return s.db.GetSubscription(ctx, userID, feedID)
 }
 
+// initialPollTimeout bounds the first poll that runs when a feed is switched
+// on. The default backfill of three episodes takes about a second; the cap is
+// there for a large backfill or a slow cast2md, and exceeding it is not an
+// error — the ticker picks the subscription up afterwards.
+const initialPollTimeout = 60 * time.Second
+
 // SetPodcastSubscription switches a feed on or off and sets its detail level.
-// Switching a feed on for the first time leaves it uninitialized, which is what
-// gives the poller its "from now on" semantics. Switching one off keeps the
-// watermark, so switching it back on later fetches the gap.
+//
+// Switching a feed on runs its first poll immediately, so the backfill appears
+// within seconds instead of at the next tick up to a poll interval away. The
+// poll is best effort: the subscription is saved first, and a failure leaves
+// `initialized` false so the poller retries on its own schedule.
+//
+// Switching a feed off keeps the watermark, so switching it back on later
+// fetches the gap rather than starting over.
 func (s *Service) SetPodcastSubscription(ctx context.Context, userID int, feedID string, enabled bool, detailLevel string, initialBackfill int) (*storage.PodcastSubscription, error) {
 	if s.cast2md == nil {
 		return nil, ErrPodcastDisabled
@@ -319,7 +330,29 @@ func (s *Service) SetPodcastSubscription(ctx context.Context, userID int, feedID
 		return nil, err
 	}
 
-	return s.db.UpsertSubscription(ctx, userID, feedID, feed.Name(), feed.ImageURL, enabled, detailLevel, initialBackfill)
+	sub, err := s.db.UpsertSubscription(ctx, userID, feedID, feed.Name(), feed.ImageURL, enabled, detailLevel, initialBackfill)
+	if err != nil {
+		return nil, err
+	}
+	if !sub.Enabled || sub.Initialized {
+		return sub, nil
+	}
+
+	pollCtx, cancel := context.WithTimeout(ctx, initialPollTimeout)
+	defer cancel()
+	if err := s.pollSubscription(pollCtx, *sub); err != nil {
+		// Not returned to the caller: enabling the feed succeeded, and the
+		// poller retries what this attempt did not manage.
+		s.log.Warn("initial poll after subscribe failed, leaving it to the poller",
+			"feed_id", feedID, "user_id", userID, "error", err)
+		if dbErr := s.db.SetSubscriptionError(ctx, sub.ID, err.Error()); dbErr != nil {
+			s.log.Error("failed to record initial poll error", "feed_id", feedID, "error", dbErr)
+		}
+	}
+
+	// Re-read so the response carries the watermark and the initialized flag
+	// the poll just wrote.
+	return s.db.GetSubscription(ctx, userID, feedID)
 }
 
 // EpisodePreview is what the deep-link landing page shows before summarizing.

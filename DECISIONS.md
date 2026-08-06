@@ -102,10 +102,14 @@ silently.
 
 Subscribing summarizes the feed's three newest transcribed episodes and follows
 along from there, with the count settable per feed and 0 restoring plain "from
-now on". The watermark lands on the newest of that first batch, so the batch is
-never fetched twice. The alternative — summarizing a feed's whole history on
-subscribe — turns one checkbox into hundreds of LLM calls, and is available as
-an explicit action instead.
+now on". That first poll runs inside the PUT rather than waiting for the ticker,
+because a checkbox that appears to do nothing for up to fifteen minutes reads as
+broken. It is best effort — the subscription is committed first, and a failure
+leaves the feed uninitialized for the poller to retry. The watermark lands on
+the newest of that first batch, so the batch is never fetched twice. The
+alternative — summarizing a feed's whole history on subscribe — turns one
+checkbox into hundreds of LLM calls, and is available as an explicit action
+instead.
 
 **Trigger to re-open.** cast2md grows its own summarization, or the split of
 concerns stops matching how the two services are actually operated.

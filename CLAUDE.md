@@ -86,6 +86,13 @@ adopts the *newest* of them as the watermark — so the batch is never fetched
 twice. `initial_backfill = 0` restores plain "from now on". Backfill,
 summarize-all and transcribe-all never move the watermark.
 
+**`SetPodcastSubscription` runs that first poll itself**, inside the PUT, so the
+backfill does not wait up to a poll interval. It is best effort: the
+subscription is committed first, and a failure leaves `initialized` false for
+the ticker to retry. It runs only when the feed is enabled *and* uninitialized,
+so editing the detail level of a running subscription does not re-summarize its
+backfill.
+
 **`Transcribe all` is the only call that makes cast2md do work.** Everything
 else reads. `Client.ProcessFeed` is the single non-GET in `internal/cast2md`,
 and the episodes it produces reach vimmary through the ordinary poll, because
