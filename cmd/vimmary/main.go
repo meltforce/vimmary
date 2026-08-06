@@ -68,6 +68,23 @@ func main() {
 		}
 		defer func() { _ = tsServer.Close() }()
 
+		// Start() only kicks the backend off — it returns while the node may
+		// still be without a current netmap. Everything below dials over this
+		// node, and setec answers a request from a node it cannot yet identify
+		// with a plain "access denied". Its store retries, but never recovers
+		// from that answer, so the process sits in a retry loop and never
+		// reaches its HTTP listener. Two outages on 2026-08-06 were this race
+		// lost; see INCIDENTS.md. Up() waits for the node to be running.
+		upCtx, cancelUp := context.WithTimeout(context.Background(), 90*time.Second)
+		tsStatus, err := tsServer.Up(upCtx)
+		cancelUp()
+		if err != nil {
+			log.Error("tsnet did not come up", "error", err)
+			os.Exit(1)
+		}
+		log.Info("tsnet up", "hostname", cfg.Tailscale.Hostname,
+			"state", tsStatus.BackendState, "ips", tsStatus.TailscaleIPs)
+
 		tsnetHTTPClient = &http.Client{
 			Timeout: 15 * time.Second,
 			Transport: &http.Transport{

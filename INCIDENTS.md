@@ -31,18 +31,32 @@ closed, and the container log held 294 consecutive lines of
 
 and nothing else since startup.
 
-**Cause.** The init order in `cmd/vimmary/main.go` is config → tsnet → setec →
-resolve secrets → migrations → DB → services → HTTP listener. tsnet reported
-`state is Running` in the same second it started, before the control plane had
-finished with it, and the setec store's first request went out from an identity
-setec did not accept. The store retried on its own schedule and kept getting the
-same answer; it did not recover on its own. The process therefore never reached
-the listener.
+**Cause.** `tsnet.Server.Start()` does not wait for the node to come up — it
+starts the backend and returns. `cmd/vimmary/main.go` called it and went
+straight on to initialise the setec store, which dials over that node. The init
+order is config → tsnet → setec → resolve secrets → migrations → DB → services →
+HTTP listener, so everything after step two races the tailnet.
 
-The restart was enough. On the second start the same race produced
-`tsnet: backend in state NoState` instead, the retry succeeded a moment later,
-and the service came up normally. The difference between the two failure modes
-is what tsnet had already told the control plane when the first request left.
+Losing the race is not recoverable. tsnet reports `AuthLoop: state is Running`
+from persisted state in the same millisecond it starts, so the first setec
+request really goes out over the network and reaches setec — which cannot yet
+identify the peer and answers a plain `access denied`. The store retries on its
+own schedule and keeps getting the same answer. The process never reaches its
+listener.
+
+Winning it looks different in the log: `tsnet: backend in state NoState`, a
+transport error rather than a rejection, and the retry a moment later succeeds.
+Both `docker restart` recoveries took that path.
+
+The race is old; what was new was how often it ran. The container had been up 39
+hours before that day and was then recreated five times in three hours — two
+deploys through CI, two through Ansible, plus restarts. Two of those five lost.
+
+**The fix.** `tsServer.Up(ctx)` before the setec resolver is initialised, with a
+90 s bound. It waits for the node to reach Running with an address, which closes
+the window in which anything dials over a node the tailnet does not know yet. It
+does not *prove* setec will resolve the identity — it removes the case where the
+request provably went out too early.
 
 **Why nothing caught it.** Two gaps, both now closed.
 
@@ -62,11 +76,16 @@ build string and a reachable database. That endpoint is new: the Dockerfile did
 not link `VERSION` into the binary, so every build reported `dev` and no
 downstream check could tell one deploy from another.
 
-**Not the cause, though it looked like one.** All four secrets existed in setec
-and were readable from a workstation; setec itself was up and answered; the
-tsnet node kept its identity across the restart, with `tag:vimmary` and no key
-expiry. The persistent `access denied` invites a hunt for an ACL change, and
+**Not the cause, though each looked like one.** All four secrets existed in
+setec and were readable from a workstation; setec itself was up and answered;
+the tsnet node kept its identity across the restart, with `tag:vimmary` and no
+key expiry. The persistent `access denied` invites a hunt for an ACL change, and
 there was none.
+
+Nor was anything on the setec side updated. Checked when the second occurrence
+made that the obvious suspect: the setec unit and tailscaled on `tsidp` had both
+been running since 2026-08-01, the tsidp container was four days old, and
+vimmary's `tailscale.com` was already at v1.102.2, the newest stable release.
 
 **Residual risk.** The remedy detects the condition, it does not prevent it. If
 the setec store's retry loop wedges again, the healthcheck turns the container

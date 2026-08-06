@@ -30,7 +30,14 @@ Changing one does not change the other.
 **tsnet starts before secrets, because setec is reached over it.** The init
 order in `cmd/vimmary/main.go` is config → tsnet → setec resolver → resolve
 secrets → migrations → DB → services → HTTP server. Moving secret resolution
-earlier leaves setec without a transport. Everything before the listener can
+earlier leaves setec without a transport.
+
+**`tsServer.Up()` follows `Start()`, and removing it reintroduces an outage.**
+`Start()` returns while the node may still have no current netmap. A setec
+request sent in that window reaches setec, which cannot identify the peer and
+answers `access denied` — and the store never recovers from that answer, so the
+process sits in a retry loop and never opens its listener. Twice on 2026-08-06;
+see INCIDENTS.md. Everything before the listener can
 hang without the container noticing, which is what the loopback health endpoint
 below is for.
 
