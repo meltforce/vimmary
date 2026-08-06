@@ -1,0 +1,17 @@
+{
+  "standard": "2026-08-05",
+  "type": "code",
+  "modules": [
+    "incidents",
+    "language-en",
+    "git-solo",
+    "skills",
+    "verification",
+    "check-docs"
+  ],
+  "declined": {
+    "policy": "CLAUDE.md is around 180 lines and its mechanics and policy are not hard to tell apart yet. Revisit if the file grows past what a reader scans in one pass.",
+    "specs": "The two spec documents this repo had (CONCEPT.md, docs/rss-feed-concept.md) described features that were already shipped, so they were distilled into DECISIONS.md and removed on 2026-08-06. ROADMAP.md carries one open item, which fits in a row. Add tasks/ when an open item needs more than that.",
+    "settings": "No MCP servers are configured for this repo and no standing permissions have come up. The MCP server vimmary *provides* is a product feature, not a session dependency, so it does not create the need."
+  }
+}
