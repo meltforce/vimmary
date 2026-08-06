@@ -10,30 +10,33 @@ import (
 
 // PodcastSubscription is one user's subscription to one cast2md feed.
 type PodcastSubscription struct {
-	ID           int        `json:"id"`
-	UserID       int        `json:"user_id"`
-	FeedID       string     `json:"feed_id"`
-	FeedTitle    string     `json:"feed_title"`
-	ImageURL     string     `json:"image_url,omitempty"`
-	Enabled      bool       `json:"enabled"`
-	DetailLevel  string     `json:"detail_level"`
-	Initialized  bool       `json:"initialized"`
-	Watermark    string     `json:"watermark"`
-	LastPolledAt *time.Time `json:"last_polled_at,omitempty"`
-	LastError    string     `json:"last_error,omitempty"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID          int    `json:"id"`
+	UserID      int    `json:"user_id"`
+	FeedID      string `json:"feed_id"`
+	FeedTitle   string `json:"feed_title"`
+	ImageURL    string `json:"image_url,omitempty"`
+	Enabled     bool   `json:"enabled"`
+	DetailLevel string `json:"detail_level"`
+	// InitialBackfill is how many of the feed's newest completed episodes the
+	// first poll summarizes. 0 means "from now on" — watermark only.
+	InitialBackfill int        `json:"initial_backfill"`
+	Initialized     bool       `json:"initialized"`
+	Watermark       string     `json:"watermark"`
+	LastPolledAt    *time.Time `json:"last_polled_at,omitempty"`
+	LastError       string     `json:"last_error,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 const subscriptionColumns = `id, user_id, feed_id, feed_title, COALESCE(image_url, ''), ` +
-	`enabled, detail_level, initialized, watermark, last_polled_at, ` +
+	`enabled, detail_level, initial_backfill, initialized, watermark, last_polled_at, ` +
 	`COALESCE(last_error, ''), created_at, updated_at`
 
 func scanSubscription(row rowScanner) (*PodcastSubscription, error) {
 	var s PodcastSubscription
 	err := row.Scan(&s.ID, &s.UserID, &s.FeedID, &s.FeedTitle, &s.ImageURL,
-		&s.Enabled, &s.DetailLevel, &s.Initialized, &s.Watermark, &s.LastPolledAt,
-		&s.LastError, &s.CreatedAt, &s.UpdatedAt)
+		&s.Enabled, &s.DetailLevel, &s.InitialBackfill, &s.Initialized, &s.Watermark,
+		&s.LastPolledAt, &s.LastError, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -83,19 +86,20 @@ func (db *DB) GetSubscription(ctx context.Context, userID int, feedID string) (*
 }
 
 // UpsertSubscription writes the user-controlled fields. Enabling a feed that
-// was never initialized leaves initialized false, which is what gives the
-// poller its "from now on" first run.
-func (db *DB) UpsertSubscription(ctx context.Context, userID int, feedID, feedTitle, imageURL string, enabled bool, detailLevel string) (*PodcastSubscription, error) {
+// was never initialized leaves initialized false, so the poller still performs
+// its first run — which is where initial_backfill takes effect.
+func (db *DB) UpsertSubscription(ctx context.Context, userID int, feedID, feedTitle, imageURL string, enabled bool, detailLevel string, initialBackfill int) (*PodcastSubscription, error) {
 	_, err := db.Pool.Exec(ctx, `
-		INSERT INTO podcast_subscriptions (user_id, feed_id, feed_title, image_url, enabled, detail_level)
-		VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6)
+		INSERT INTO podcast_subscriptions (user_id, feed_id, feed_title, image_url, enabled, detail_level, initial_backfill)
+		VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7)
 		ON CONFLICT (user_id, feed_id) DO UPDATE SET
-			feed_title   = EXCLUDED.feed_title,
-			image_url    = EXCLUDED.image_url,
-			enabled      = EXCLUDED.enabled,
-			detail_level = EXCLUDED.detail_level,
-			updated_at   = NOW()
-	`, userID, feedID, feedTitle, imageURL, enabled, detailLevel)
+			feed_title       = EXCLUDED.feed_title,
+			image_url        = EXCLUDED.image_url,
+			enabled          = EXCLUDED.enabled,
+			detail_level     = EXCLUDED.detail_level,
+			initial_backfill = EXCLUDED.initial_backfill,
+			updated_at       = NOW()
+	`, userID, feedID, feedTitle, imageURL, enabled, detailLevel, initialBackfill)
 	if err != nil {
 		return nil, fmt.Errorf("upsert podcast subscription: %w", err)
 	}

@@ -26,10 +26,11 @@ type fakeSource struct {
 	episodes map[int]cast2md.Episode
 	// listResult is returned by ListCompleted, filtered by the Since option so
 	// the watermark semantics are exercised rather than stubbed away.
-	listResult []cast2md.Episode
-	listErr    error
-	lastOpts   cast2md.ListCompletedOptions
-	calls      int
+	listResult    []cast2md.Episode
+	listErr       error
+	lastOpts      cast2md.ListCompletedOptions
+	calls         int
+	processedFeed int
 }
 
 func (f *fakeSource) BaseURL() string { return "https://cast2md.test" }
@@ -83,6 +84,11 @@ func (f *fakeSource) ListCompleted(_ context.Context, opts cast2md.ListCompleted
 
 func (f *fakeSource) GetTranscript(context.Context, int) (string, error) {
 	return "transcript body", nil
+}
+
+func (f *fakeSource) ProcessFeed(_ context.Context, feedID int) (*cast2md.BatchResult, error) {
+	f.processedFeed = feedID
+	return &cast2md.BatchResult{Queued: 7, Skipped: 2}, nil
 }
 
 // newPollTestService wires a Service against the development database and a
@@ -178,7 +184,7 @@ func TestPollSubscription_FirstRunOnlySetsWatermark(t *testing.T) {
 	ctx := context.Background()
 	cleanupFeed(t, svc, 1, feedID)
 
-	sub, err := svc.db.UpsertSubscription(ctx, 1, feedID, "Test Show", "", true, "medium")
+	sub, err := svc.db.UpsertSubscription(ctx, 1, feedID, "Test Show", "", true, "medium", 0)
 	if err != nil {
 		t.Fatalf("UpsertSubscription: %v", err)
 	}
@@ -239,7 +245,7 @@ func TestPollSubscription_SecondRunQueuesOnlyNewEpisodes(t *testing.T) {
 	ctx := context.Background()
 	cleanupFeed(t, svc, 1, feedID)
 
-	sub, err := svc.db.UpsertSubscription(ctx, 1, feedID, "Test Show", "https://img", true, "deep")
+	sub, err := svc.db.UpsertSubscription(ctx, 1, feedID, "Test Show", "https://img", true, "deep", 0)
 	if err != nil {
 		t.Fatalf("UpsertSubscription: %v", err)
 	}
@@ -307,7 +313,7 @@ func TestPollSubscription_ClientErrorLeavesWatermark(t *testing.T) {
 	ctx := context.Background()
 	cleanupFeed(t, svc, 1, feedID)
 
-	sub, err := svc.db.UpsertSubscription(ctx, 1, feedID, "Test Show", "", true, "medium")
+	sub, err := svc.db.UpsertSubscription(ctx, 1, feedID, "Test Show", "", true, "medium", 0)
 	if err != nil {
 		t.Fatalf("UpsertSubscription: %v", err)
 	}
@@ -363,7 +369,7 @@ func TestPollSubscription_BrokenEpisodeDoesNotBlockFeed(t *testing.T) {
 	ctx := context.Background()
 	cleanupFeed(t, svc, 1, feedID)
 
-	sub, err := svc.db.UpsertSubscription(ctx, 1, feedID, "Test Show", "", true, "medium")
+	sub, err := svc.db.UpsertSubscription(ctx, 1, feedID, "Test Show", "", true, "medium", 0)
 	if err != nil {
 		t.Fatalf("UpsertSubscription: %v", err)
 	}
@@ -383,5 +389,175 @@ func TestPollSubscription_BrokenEpisodeDoesNotBlockFeed(t *testing.T) {
 	after, _ := svc.db.GetSubscription(ctx, 1, feedID)
 	if after.Watermark != "2026-08-06T10:00:00" {
 		t.Errorf("watermark = %q, want it past the broken episode", after.Watermark)
+	}
+}
+
+// The default first run summarizes the newest episodes and still sets the
+// watermark to the newest of them, so the next tick fetches none of them again.
+func TestPollSubscription_FirstRunBackfillsNewest(t *testing.T) {
+	feedID, numericFeedID := uniqueFeedID(t)
+	eps := []cast2md.Episode{
+		{ID: 31, FeedID: numericFeedID, UpdatedAt: "2026-08-01T10:00:00"},
+		{ID: 32, FeedID: numericFeedID, UpdatedAt: "2026-08-02T10:00:00"},
+		{ID: 33, FeedID: numericFeedID, UpdatedAt: "2026-08-03T10:00:00"},
+		{ID: 34, FeedID: numericFeedID, UpdatedAt: "2026-08-04T10:00:00"},
+	}
+	byID := map[int]cast2md.Episode{}
+	for _, ep := range eps {
+		e := ep
+		e.Title = "Ep"
+		e.Status = cast2md.StatusCompleted
+		byID[ep.ID] = e
+	}
+	src := &fakeSource{
+		feeds:      []cast2md.Feed{{ID: numericFeedID, Title: "Test Show"}},
+		episodes:   byID,
+		listResult: eps,
+	}
+	svc := newPollTestService(t, src)
+	ctx := context.Background()
+	cleanupFeed(t, svc, 1, feedID)
+
+	sub, err := svc.db.UpsertSubscription(ctx, 1, feedID, "Test Show", "", true, "medium", 3)
+	if err != nil {
+		t.Fatalf("UpsertSubscription: %v", err)
+	}
+	if sub.InitialBackfill != 3 {
+		t.Fatalf("InitialBackfill = %d, want 3", sub.InitialBackfill)
+	}
+
+	if err := svc.pollSubscription(ctx, *sub); err != nil {
+		t.Fatalf("pollSubscription: %v", err)
+	}
+
+	if src.lastOpts.Order != cast2md.OrderUpdatedDesc || src.lastOpts.Limit != 3 {
+		t.Errorf("first run used %+v, want order=updated_desc limit=3", src.lastOpts)
+	}
+
+	jobs := drainEpisodeQueue(svc)
+	if len(jobs) != 3 {
+		t.Fatalf("queued %d jobs, want 3", len(jobs))
+	}
+	// Oldest of the three first, so the list fills in reading order.
+	if jobs[0].episodeID != 32 || jobs[1].episodeID != 33 || jobs[2].episodeID != 34 {
+		t.Errorf("queued %d, %d, %d — want 32, 33, 34", jobs[0].episodeID, jobs[1].episodeID, jobs[2].episodeID)
+	}
+
+	after, err := svc.db.GetSubscription(ctx, 1, feedID)
+	if err != nil {
+		t.Fatalf("GetSubscription: %v", err)
+	}
+	if !after.Initialized {
+		t.Error("subscription should be initialized after the first run")
+	}
+	if after.Watermark != "2026-08-04T10:00:00" {
+		t.Errorf("watermark = %q, want the newest episode's updated_at", after.Watermark)
+	}
+
+	// The watermark is the newest of the backfilled batch, so a second poll
+	// finds nothing to redo.
+	after2, _ := svc.db.GetSubscription(ctx, 1, feedID)
+	if err := svc.pollSubscription(ctx, *after2); err != nil {
+		t.Fatalf("second pollSubscription: %v", err)
+	}
+	if jobs := drainEpisodeQueue(svc); len(jobs) != 0 {
+		t.Errorf("second poll re-queued %d backfilled episodes, want 0", len(jobs))
+	}
+}
+
+// A feed with fewer episodes than the backfill asks for takes what there is.
+func TestPollSubscription_FirstRunBackfillShorterThanFeed(t *testing.T) {
+	feedID, numericFeedID := uniqueFeedID(t)
+	src := &fakeSource{
+		feeds: []cast2md.Feed{{ID: numericFeedID, Title: "Test Show"}},
+		episodes: map[int]cast2md.Episode{
+			41: {ID: 41, FeedID: numericFeedID, Title: "Only one", Status: cast2md.StatusCompleted, UpdatedAt: "2026-08-01T10:00:00"},
+		},
+		listResult: []cast2md.Episode{
+			{ID: 41, FeedID: numericFeedID, UpdatedAt: "2026-08-01T10:00:00"},
+		},
+	}
+	svc := newPollTestService(t, src)
+	ctx := context.Background()
+	cleanupFeed(t, svc, 1, feedID)
+
+	sub, err := svc.db.UpsertSubscription(ctx, 1, feedID, "Test Show", "", true, "medium", 10)
+	if err != nil {
+		t.Fatalf("UpsertSubscription: %v", err)
+	}
+	if err := svc.pollSubscription(ctx, *sub); err != nil {
+		t.Fatalf("pollSubscription: %v", err)
+	}
+
+	if jobs := drainEpisodeQueue(svc); len(jobs) != 1 {
+		t.Fatalf("queued %d jobs, want 1", len(jobs))
+	}
+	after, _ := svc.db.GetSubscription(ctx, 1, feedID)
+	if after.Watermark != "2026-08-01T10:00:00" {
+		t.Errorf("watermark = %q", after.Watermark)
+	}
+}
+
+// An empty feed initializes without a watermark and without work.
+func TestPollSubscription_FirstRunEmptyFeed(t *testing.T) {
+	feedID, numericFeedID := uniqueFeedID(t)
+	src := &fakeSource{feeds: []cast2md.Feed{{ID: numericFeedID, Title: "Empty"}}}
+	svc := newPollTestService(t, src)
+	ctx := context.Background()
+	cleanupFeed(t, svc, 1, feedID)
+
+	sub, err := svc.db.UpsertSubscription(ctx, 1, feedID, "Empty", "", true, "medium", 3)
+	if err != nil {
+		t.Fatalf("UpsertSubscription: %v", err)
+	}
+	if err := svc.pollSubscription(ctx, *sub); err != nil {
+		t.Fatalf("pollSubscription: %v", err)
+	}
+	if jobs := drainEpisodeQueue(svc); len(jobs) != 0 {
+		t.Errorf("queued %d jobs on an empty feed, want 0", len(jobs))
+	}
+	after, _ := svc.db.GetSubscription(ctx, 1, feedID)
+	if !after.Initialized || after.Watermark != "" {
+		t.Errorf("initialized=%v watermark=%q — want initialized with an empty watermark",
+			after.Initialized, after.Watermark)
+	}
+}
+
+// TranscribeAllInFeed drives cast2md and does not touch the watermark, so a
+// running subscription is unaffected by it.
+func TestTranscribeAllInFeed(t *testing.T) {
+	feedID, numericFeedID := uniqueFeedID(t)
+	src := &fakeSource{feeds: []cast2md.Feed{{ID: numericFeedID, Title: "Test Show"}}}
+	svc := newPollTestService(t, src)
+	ctx := context.Background()
+	cleanupFeed(t, svc, 1, feedID)
+
+	sub, err := svc.db.UpsertSubscription(ctx, 1, feedID, "Test Show", "", true, "medium", 3)
+	if err != nil {
+		t.Fatalf("UpsertSubscription: %v", err)
+	}
+	if err := svc.db.SetSubscriptionWatermark(ctx, sub.ID, "2026-08-02T10:00:00", true); err != nil {
+		t.Fatalf("SetSubscriptionWatermark: %v", err)
+	}
+
+	result, err := svc.TranscribeAllInFeed(ctx, 1, feedID)
+	if err != nil {
+		t.Fatalf("TranscribeAllInFeed: %v", err)
+	}
+	if result.Queued != 7 || result.Skipped != 2 {
+		t.Errorf("result = %+v, want the counts cast2md reported", result)
+	}
+	if src.processedFeed != numericFeedID {
+		t.Errorf("cast2md was asked to process feed %d, want %d", src.processedFeed, numericFeedID)
+	}
+
+	// No summaries are queued here — the episodes arrive through the poll once
+	// cast2md has finished them.
+	if jobs := drainEpisodeQueue(svc); len(jobs) != 0 {
+		t.Errorf("TranscribeAllInFeed queued %d summary jobs, want 0", len(jobs))
+	}
+	after, _ := svc.db.GetSubscription(ctx, 1, feedID)
+	if after.Watermark != "2026-08-02T10:00:00" {
+		t.Errorf("watermark = %q, want it untouched", after.Watermark)
 	}
 }

@@ -193,3 +193,77 @@ func TestEpisodeURL(t *testing.T) {
 		t.Errorf("BaseURL = %q — the trailing slash should be trimmed", got)
 	}
 }
+
+func TestFeedCounts(t *testing.T) {
+	f := Feed{StatusCounts: map[string]int{
+		"completed":    68,
+		"new":          700,
+		"needs_audio":  80,
+		"audio_ready":  12,
+		"transcribing": 3,
+		"failed":       5,
+	}}
+	if got := f.Completed(); got != 68 {
+		t.Errorf("Completed() = %d, want 68", got)
+	}
+	// new + needs_audio + audio_ready. In-flight and failed episodes are not
+	// work the batch endpoint would pick up.
+	if got := f.Transcribable(); got != 792 {
+		t.Errorf("Transcribable() = %d, want 792", got)
+	}
+}
+
+func TestFeedCountsOnEmptyMap(t *testing.T) {
+	var f Feed
+	if f.Completed() != 0 || f.Transcribable() != 0 {
+		t.Errorf("a feed without counts should report zeros, got %d and %d",
+			f.Completed(), f.Transcribable())
+	}
+}
+
+func TestListFeedsCarriesStatusCounts(t *testing.T) {
+	c, _ := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"feeds":[{"id":3,"display_title":"Show","episode_count":860,
+			"status_counts":{"completed":68,"new":792}}]}`)
+	}))
+
+	feeds, err := c.ListFeeds(context.Background())
+	if err != nil {
+		t.Fatalf("ListFeeds: %v", err)
+	}
+	if feeds[0].Completed() != 68 || feeds[0].Transcribable() != 792 {
+		t.Errorf("counts = %d completed, %d transcribable", feeds[0].Completed(), feeds[0].Transcribable())
+	}
+}
+
+func TestProcessFeed(t *testing.T) {
+	var method, path string
+	c, _ := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method, path = r.Method, r.URL.Path
+		_, _ = fmt.Fprint(w, `{"queued":792,"skipped":4,"message":"Queued 792 episodes"}`)
+	}))
+
+	result, err := c.ProcessFeed(context.Background(), 3)
+	if err != nil {
+		t.Fatalf("ProcessFeed: %v", err)
+	}
+	if method != http.MethodPost {
+		t.Errorf("method = %s, want POST", method)
+	}
+	if path != "/api/queue/batch/feed/3/process" {
+		t.Errorf("path = %q", path)
+	}
+	if result.Queued != 792 || result.Skipped != 4 {
+		t.Errorf("result = %+v", result)
+	}
+}
+
+func TestProcessFeedSurfacesServerError(t *testing.T) {
+	c, _ := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "feed not found", http.StatusNotFound)
+	}))
+
+	if _, err := c.ProcessFeed(context.Background(), 999); err == nil {
+		t.Fatal("a 404 should be an error")
+	}
+}

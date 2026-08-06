@@ -100,13 +100,31 @@ template. The watermark is stored as text and always comes from cast2md's own
 through Go's timezone handling is the one place episodes could be skipped
 silently.
 
-Subscribing means "from now on". A new subscription's first poll records the
-newest episode's timestamp and processes nothing; older episodes are fetched
-explicitly with backfill. The alternative — summarizing a feed's whole history on
-subscribe — turns one checkbox into hundreds of LLM calls.
+Subscribing summarizes the feed's three newest transcribed episodes and follows
+along from there, with the count settable per feed and 0 restoring plain "from
+now on". The watermark lands on the newest of that first batch, so the batch is
+never fetched twice. The alternative — summarizing a feed's whole history on
+subscribe — turns one checkbox into hundreds of LLM calls, and is available as
+an explicit action instead.
 
 **Trigger to re-open.** cast2md grows its own summarization, or the split of
 concerns stops matching how the two services are actually operated.
+
+**Revisions.** 2026-08-06, same day: subscribing was originally "from now on"
+with nothing summarized on the first poll. A feed that produces no summary until
+the show publishes again gives no sign that it works, so the first poll now
+takes the three newest episodes by default (`podcast_subscriptions.initial_backfill`,
+migration `000011`).
+
+2026-08-06, same day: vimmary gained a "Transcribe all" action per feed, which
+calls cast2md's `POST /api/queue/batch/feed/{id}/process`. This is the first
+place vimmary makes cast2md do work rather than reading from it, and the only
+non-GET in `internal/cast2md`. It does not change the direction of dependency —
+cast2md still knows nothing about vimmary — but it does make vimmary a control
+surface for cast2md's most expensive operation, which is why the button states
+its episode count and asks first. The transcribed episodes arrive through the
+ordinary poll, because finishing a transcription updates the episode's
+`updated_at`.
 
 **Revisions.** This revises the 2026-03 decision below ("a separate service, not
 a cast2md extension"), whose reasoning was that podcasts belong to cast2md and

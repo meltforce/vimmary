@@ -34,7 +34,7 @@ cast2md ──poll/deep-link─▶│                     ┌──────�
 - **Auto-retry** — transcript fetch failures are automatically retried with exponential backoff (2m/5m/10m, max 3 retries)
 - **Retry all failed** — batch-retry all failed videos from the web UI
 - **Podcast summaries** — subscribe to cast2md feeds per user; every episode transcribed from then on is summarized automatically, with per-source prompts and a separate worker queue
-- **Podcast backfill** — pull the N most recent completed episodes of a feed on demand, without disturbing the running poll
+- **Podcast backfill** — subscribing summarizes the 3 newest episodes by default; per feed you can pull the last N, summarize the whole back catalogue, or ask cast2md to transcribe the rest of the feed. None of it disturbs the running poll.
 - **MCP server** — 5 tools for searching and browsing summaries of both kinds
 - **RSS feeds** — three Atom feeds per user (videos, podcasts, both), with per-user feed tokens for authentication
 - **Web UI** — React frontend embedded in the Go binary (Videos, Podcasts, Stats, Settings pages)
@@ -173,11 +173,25 @@ tailnet, because cast2md has no authentication and is reachable only there.
 2. Restart vimmary. Its poller starts 30 seconds later and does nothing until a feed is subscribed
 3. Open **Settings → Podcasts**, tick the feeds you want and pick a detail level per feed
 
-Subscribing means **from now on**. The first poll of a new subscription records
-the newest completed episode's timestamp as its watermark and summarizes
-nothing — older episodes are fetched with the per-feed **Backfill** button, which
-does not move the watermark. Switching a feed off keeps its watermark, so
-switching it back on later fetches the gap.
+Subscribing summarizes the feed's **3 newest** transcribed episodes and follows
+along from there. The number is per feed — `on subscribe: none` restores plain
+"from now on", where the first poll only records a watermark. Either way the
+watermark ends up at the newest episode of that first batch, so nothing is
+summarized twice. Switching a feed off keeps its watermark, so switching it
+back on later fetches the gap.
+
+Three ways to reach older episodes, none of which moves the watermark:
+
+| Action | Does |
+|---|---|
+| **Backfill** (last 5/10/25/50) | Summarizes that many of the newest transcribed episodes. |
+| **Summarize all** | Summarizes every episode cast2md has a transcript for. Only model calls. |
+| **Transcribe all** | Asks cast2md to download and transcribe the rest of the feed. They appear here as they finish, through the ordinary poll — but only if the feed is subscribed. |
+
+**Summarize all** and **Transcribe all** each state their episode count and ask
+before running. Transcribe all is the one action that makes cast2md do work
+rather than just reading from it; on a large feed it can mean hundreds of
+downloads and Whisper runs.
 
 To summarize one episode without subscribing, set `vimmary_url` in cast2md's
 settings. Completed episodes then carry a **Summarize in vimmary** button that

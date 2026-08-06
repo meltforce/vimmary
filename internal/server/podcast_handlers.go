@@ -70,16 +70,26 @@ func (s *Server) handleSetPodcastSubscription(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// InitialBackfill is a pointer so that omitting it keeps the stored value
+	// rather than silently resetting the feed to zero.
 	var body struct {
-		Enabled     bool   `json:"enabled"`
-		DetailLevel string `json:"detail_level"`
+		Enabled         bool   `json:"enabled"`
+		DetailLevel     string `json:"detail_level"`
+		InitialBackfill *int   `json:"initial_backfill"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
 
-	sub, err := s.svc.SetPodcastSubscription(r.Context(), uid, feedID, body.Enabled, body.DetailLevel)
+	initialBackfill := service.DefaultInitialBackfill
+	if body.InitialBackfill != nil {
+		initialBackfill = *body.InitialBackfill
+	} else if existing, err := s.svc.GetPodcastSubscription(r.Context(), uid, feedID); err == nil {
+		initialBackfill = existing.InitialBackfill
+	}
+
+	sub, err := s.svc.SetPodcastSubscription(r.Context(), uid, feedID, body.Enabled, body.DetailLevel, initialBackfill)
 	if err != nil {
 		s.writePodcastError(w, err, "set podcast subscription failed")
 		return
@@ -110,6 +120,52 @@ func (s *Server) handleBackfillPodcastFeed(w http.ResponseWriter, r *http.Reques
 	result, err := s.svc.BackfillFeed(r.Context(), uid, feedID, body.Limit)
 	if err != nil {
 		s.writePodcastError(w, err, "podcast backfill failed")
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, result)
+}
+
+// handleSummarizeAllPodcastFeed summarizes every episode cast2md already has a
+// transcript for. Only LLM calls — cast2md is read, not driven.
+func (s *Server) handleSummarizeAllPodcastFeed(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	feedID := chi.URLParam(r, "feedID")
+	if feedID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "feed ID is required"})
+		return
+	}
+
+	result, err := s.svc.SummarizeAllCompleted(r.Context(), uid, feedID)
+	if err != nil {
+		s.writePodcastError(w, err, "summarize all failed")
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, result)
+}
+
+// handleTranscribeAllPodcastFeed asks cast2md to transcribe the rest of a feed.
+// This queues download and Whisper work over there, not summaries here.
+func (s *Server) handleTranscribeAllPodcastFeed(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	feedID := chi.URLParam(r, "feedID")
+	if feedID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "feed ID is required"})
+		return
+	}
+
+	result, err := s.svc.TranscribeAllInFeed(r.Context(), uid, feedID)
+	if err != nil {
+		s.writePodcastError(w, err, "transcribe all failed")
 		return
 	}
 

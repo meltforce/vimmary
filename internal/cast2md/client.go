@@ -33,6 +33,26 @@ type Feed struct {
 	ImageURL     string `json:"image_url"`
 	Link         string `json:"link"`
 	EpisodeCount int    `json:"episode_count"`
+	// StatusCounts is the episode count per status, e.g. {"completed": 68}.
+	// Statuses with no episodes are absent.
+	StatusCounts map[string]int `json:"status_counts"`
+}
+
+// Completed returns how many of the feed's episodes have a transcript.
+func (f Feed) Completed() int {
+	return f.StatusCounts[StatusCompleted]
+}
+
+// Transcribable returns how many episodes cast2md could still turn into a
+// transcript — everything except the finished ones, the ones already in
+// flight, and the permanently failed. It labels the "Transcribe all" action,
+// so it has to match what cast2md's batch endpoint would actually pick up.
+func (f Feed) Transcribable() int {
+	n := 0
+	for _, status := range []string{StatusNew, StatusAwaitingTranscript, StatusNeedsAudio, StatusAudioReady} {
+		n += f.StatusCounts[status]
+	}
+	return n
 }
 
 // Name returns the title to show, preferring cast2md's display title.
@@ -60,8 +80,18 @@ type Episode struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
-// StatusCompleted is the only episode status vimmary summarizes.
-const StatusCompleted = "completed"
+// cast2md's episode statuses. Only completed episodes have a transcript, and
+// only completed episodes are summarized.
+const (
+	StatusNew                = "new"
+	StatusAwaitingTranscript = "awaiting_transcript"
+	StatusNeedsAudio         = "needs_audio"
+	StatusDownloading        = "downloading"
+	StatusAudioReady         = "audio_ready"
+	StatusTranscribing       = "transcribing"
+	StatusCompleted          = "completed"
+	StatusFailed             = "failed"
+)
 
 // Sort orders accepted by ListCompleted, matching cast2md's whitelist.
 const (
@@ -119,7 +149,11 @@ func (c *Client) do(ctx context.Context, path string, httpClient *http.Client) (
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
+	return c.send(req, httpClient)
+}
 
+func (c *Client) send(req *http.Request, httpClient *http.Client) ([]byte, error) {
+	path := req.URL.Path
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("cast2md request %s: %w", path, err)
@@ -239,6 +273,41 @@ func (c *Client) ListCompleted(ctx context.Context, opts ListCompletedOptions) (
 		return nil, fmt.Errorf("parse episode list: %w", err)
 	}
 	return result.Episodes, nil
+}
+
+// BatchResult is what cast2md reports after queueing a batch of work.
+type BatchResult struct {
+	Queued  int    `json:"queued"`
+	Skipped int    `json:"skipped"`
+	Message string `json:"message"`
+}
+
+// ProcessFeed asks cast2md to download and transcribe every episode of a feed
+// that does not have a transcript yet.
+//
+// This is the one call that makes cast2md do expensive work rather than just
+// read from it, and the only non-GET in this client. It returns as soon as the
+// jobs are queued; the episodes appear in vimmary later, through the ordinary
+// poll, because finishing a transcription updates the episode's updated_at.
+func (c *Client) ProcessFeed(ctx context.Context, feedID int) (*BatchResult, error) {
+	body, err := c.post(ctx, fmt.Sprintf("/api/queue/batch/feed/%d/process", feedID))
+	if err != nil {
+		return nil, err
+	}
+	var result BatchResult
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parse batch result: %w", err)
+	}
+	return &result, nil
+}
+
+func (c *Client) post(ctx context.Context, path string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return c.send(req, c.metadata)
 }
 
 // GetTranscript returns the plain-text transcript without timestamps.

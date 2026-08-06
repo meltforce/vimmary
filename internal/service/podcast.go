@@ -28,6 +28,7 @@ type PodcastSource interface {
 	GetEpisode(ctx context.Context, episodeID int) (*cast2md.Episode, error)
 	ListCompleted(ctx context.Context, opts cast2md.ListCompletedOptions) ([]cast2md.Episode, error)
 	GetTranscript(ctx context.Context, episodeID int) (string, error)
+	ProcessFeed(ctx context.Context, feedID int) (*cast2md.BatchResult, error)
 }
 
 // errEpisodeNotReady means cast2md has the episode but has not finished
@@ -205,18 +206,32 @@ func (s *Service) ProcessEpisode(ctx context.Context, userID, episodeID int, lev
 	return nil
 }
 
+// How many of a feed's newest episodes a fresh subscription summarizes.
+// The database carries the same default and the same ceiling.
+const (
+	DefaultInitialBackfill = 3
+	MaxInitialBackfill     = 100
+)
+
 // PodcastFeed is one cast2md feed joined with this user's subscription state.
 type PodcastFeed struct {
-	FeedID          string     `json:"feed_id"`
-	Title           string     `json:"title"`
-	ImageURL        string     `json:"image_url,omitempty"`
-	EpisodeCount    int        `json:"episode_count"`
-	Subscribed      bool       `json:"subscribed"`
-	DetailLevel     string     `json:"detail_level"`
-	Initialized     bool       `json:"initialized"`
-	SummarizedCount int        `json:"summarized_count"`
-	LastPolledAt    *time.Time `json:"last_polled_at,omitempty"`
-	LastError       string     `json:"last_error,omitempty"`
+	FeedID       string `json:"feed_id"`
+	Title        string `json:"title"`
+	ImageURL     string `json:"image_url,omitempty"`
+	EpisodeCount int    `json:"episode_count"`
+	// CompletedCount is how many episodes cast2md has a transcript for, and so
+	// how many "Summarize all" would take on.
+	CompletedCount int `json:"completed_count"`
+	// TranscribableCount is how many episodes cast2md could still turn into a
+	// transcript, and so how many "Transcribe all" would queue.
+	TranscribableCount int        `json:"transcribable_count"`
+	Subscribed         bool       `json:"subscribed"`
+	DetailLevel        string     `json:"detail_level"`
+	InitialBackfill    int        `json:"initial_backfill"`
+	Initialized        bool       `json:"initialized"`
+	SummarizedCount    int        `json:"summarized_count"`
+	LastPolledAt       *time.Time `json:"last_polled_at,omitempty"`
+	LastError          string     `json:"last_error,omitempty"`
 }
 
 // ListPodcastFeeds returns every cast2md feed with this user's subscription
@@ -248,16 +263,20 @@ func (s *Service) ListPodcastFeeds(ctx context.Context, userID int) ([]PodcastFe
 	for _, f := range feeds {
 		feedID := strconv.Itoa(f.ID)
 		pf := PodcastFeed{
-			FeedID:          feedID,
-			Title:           f.Name(),
-			ImageURL:        f.ImageURL,
-			EpisodeCount:    f.EpisodeCount,
-			DetailLevel:     s.summaryCfg.DefaultLevel,
-			SummarizedCount: counts[feedID],
+			FeedID:             feedID,
+			Title:              f.Name(),
+			ImageURL:           f.ImageURL,
+			EpisodeCount:       f.EpisodeCount,
+			CompletedCount:     f.Completed(),
+			TranscribableCount: f.Transcribable(),
+			DetailLevel:        s.summaryCfg.DefaultLevel,
+			InitialBackfill:    DefaultInitialBackfill,
+			SummarizedCount:    counts[feedID],
 		}
 		if sub, ok := byFeedID[feedID]; ok {
 			pf.Subscribed = sub.Enabled
 			pf.DetailLevel = sub.DetailLevel
+			pf.InitialBackfill = sub.InitialBackfill
 			pf.Initialized = sub.Initialized
 			pf.LastPolledAt = sub.LastPolledAt
 			pf.LastError = sub.LastError
@@ -267,11 +286,17 @@ func (s *Service) ListPodcastFeeds(ctx context.Context, userID int) ([]PodcastFe
 	return out, nil
 }
 
+// GetPodcastSubscription returns one subscription, or an error when the user
+// has none for that feed.
+func (s *Service) GetPodcastSubscription(ctx context.Context, userID int, feedID string) (*storage.PodcastSubscription, error) {
+	return s.db.GetSubscription(ctx, userID, feedID)
+}
+
 // SetPodcastSubscription switches a feed on or off and sets its detail level.
 // Switching a feed on for the first time leaves it uninitialized, which is what
 // gives the poller its "from now on" semantics. Switching one off keeps the
 // watermark, so switching it back on later fetches the gap.
-func (s *Service) SetPodcastSubscription(ctx context.Context, userID int, feedID string, enabled bool, detailLevel string) (*storage.PodcastSubscription, error) {
+func (s *Service) SetPodcastSubscription(ctx context.Context, userID int, feedID string, enabled bool, detailLevel string, initialBackfill int) (*storage.PodcastSubscription, error) {
 	if s.cast2md == nil {
 		return nil, ErrPodcastDisabled
 	}
@@ -280,6 +305,9 @@ func (s *Service) SetPodcastSubscription(ctx context.Context, userID int, feedID
 	}
 	if detailLevel != "medium" && detailLevel != "deep" {
 		return nil, fmt.Errorf("invalid detail level: %q (must be medium or deep)", detailLevel)
+	}
+	if initialBackfill < 0 || initialBackfill > MaxInitialBackfill {
+		return nil, fmt.Errorf("invalid initial backfill: %d (must be between 0 and %d)", initialBackfill, MaxInitialBackfill)
 	}
 
 	numericFeedID, err := strconv.Atoi(feedID)
@@ -291,7 +319,7 @@ func (s *Service) SetPodcastSubscription(ctx context.Context, userID int, feedID
 		return nil, err
 	}
 
-	return s.db.UpsertSubscription(ctx, userID, feedID, feed.Name(), feed.ImageURL, enabled, detailLevel)
+	return s.db.UpsertSubscription(ctx, userID, feedID, feed.Name(), feed.ImageURL, enabled, detailLevel, initialBackfill)
 }
 
 // EpisodePreview is what the deep-link landing page shows before summarizing.

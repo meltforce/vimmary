@@ -420,7 +420,7 @@ func TestSubscriptionWatermarkRoundTrip(t *testing.T) {
 		_, _ = store.Pool.Exec(ctx, `DELETE FROM podcast_subscriptions WHERE feed_id = $1`, feedID)
 	})
 
-	sub, err := store.UpsertSubscription(ctx, 1, feedID, "Show", "https://img", true, "deep")
+	sub, err := store.UpsertSubscription(ctx, 1, feedID, "Show", "https://img", true, "deep", 3)
 	if err != nil {
 		t.Fatalf("UpsertSubscription: %v", err)
 	}
@@ -429,6 +429,9 @@ func TestSubscriptionWatermarkRoundTrip(t *testing.T) {
 	}
 	if sub.DetailLevel != "deep" {
 		t.Errorf("DetailLevel = %q", sub.DetailLevel)
+	}
+	if sub.InitialBackfill != 3 {
+		t.Errorf("InitialBackfill = %d, want 3", sub.InitialBackfill)
 	}
 
 	// cast2md writes naive local timestamps. They are stored as text and must
@@ -454,7 +457,7 @@ func TestSubscriptionWatermarkRoundTrip(t *testing.T) {
 	}
 
 	// Disabling keeps the watermark, so re-enabling fetches the gap.
-	if _, err := store.UpsertSubscription(ctx, 1, feedID, "Show", "https://img", false, "deep"); err != nil {
+	if _, err := store.UpsertSubscription(ctx, 1, feedID, "Show", "https://img", false, "deep", 3); err != nil {
 		t.Fatalf("disable: %v", err)
 	}
 	got, err = store.GetSubscription(ctx, 1, feedID)
@@ -466,5 +469,48 @@ func TestSubscriptionWatermarkRoundTrip(t *testing.T) {
 	}
 	if got.Watermark != watermark {
 		t.Errorf("watermark = %q after disabling, want it preserved", got.Watermark)
+	}
+}
+
+// initial_backfill has a default and a ceiling in the database, so a bad value
+// cannot reach the poller even if a caller skips the service-layer check.
+func TestInitialBackfillDefaultAndBounds(t *testing.T) {
+	store := setupTestDB(t)
+	ctx := context.Background()
+
+	feedID := "98" + uuid.NewString()[:4]
+	t.Cleanup(func() {
+		_, _ = store.Pool.Exec(ctx, `DELETE FROM podcast_subscriptions WHERE feed_id = $1`, feedID)
+	})
+
+	// A row inserted without the column takes the schema default.
+	if _, err := store.Pool.Exec(ctx,
+		`INSERT INTO podcast_subscriptions (user_id, feed_id, feed_title) VALUES (1, $1, 'Show')`,
+		feedID); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	sub, err := store.GetSubscription(ctx, 1, feedID)
+	if err != nil {
+		t.Fatalf("GetSubscription: %v", err)
+	}
+	if sub.InitialBackfill != 3 {
+		t.Errorf("default initial_backfill = %d, want 3", sub.InitialBackfill)
+	}
+
+	// 0 is valid and means "from now on".
+	if _, err := store.UpsertSubscription(ctx, 1, feedID, "Show", "", true, "medium", 0); err != nil {
+		t.Fatalf("UpsertSubscription(0): %v", err)
+	}
+	sub, _ = store.GetSubscription(ctx, 1, feedID)
+	if sub.InitialBackfill != 0 {
+		t.Errorf("initial_backfill = %d, want 0", sub.InitialBackfill)
+	}
+
+	// Out of range is rejected by the CHECK constraint.
+	if _, err := store.UpsertSubscription(ctx, 1, feedID, "Show", "", true, "medium", -1); err == nil {
+		t.Error("a negative initial_backfill should be rejected")
+	}
+	if _, err := store.UpsertSubscription(ctx, 1, feedID, "Show", "", true, "medium", 101); err == nil {
+		t.Error("an initial_backfill above the ceiling should be rejected")
 	}
 }

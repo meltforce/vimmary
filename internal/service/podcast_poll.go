@@ -114,6 +114,21 @@ func (s *Service) requeueStalePodcasts(ctx context.Context) {
 	}
 }
 
+// queueEpisode writes the row and enqueues the work, reporting whether it got
+// that far. The row is written before the caller moves the watermark past the
+// episode: if the process dies in between, the row exists and
+// requeueStalePodcasts finds it, so the in-memory queue is not a place work
+// can be lost.
+func (s *Service) queueEpisode(ctx context.Context, sub storage.PodcastSubscription, episodeID int) bool {
+	if _, err := s.EnsureEpisodeRow(ctx, sub.UserID, episodeID, sub.DetailLevel); err != nil {
+		s.log.Warn("failed to create podcast row, skipping episode",
+			"episode_id", episodeID, "feed_id", sub.FeedID, "error", err)
+		return false
+	}
+	s.ProcessEpisodeAsync(sub.UserID, episodeID, sub.DetailLevel)
+	return true
+}
+
 // pollSubscription advances one subscription by its watermark.
 func (s *Service) pollSubscription(ctx context.Context, sub storage.PodcastSubscription) error {
 	feedID, err := strconv.Atoi(sub.FeedID)
@@ -121,28 +136,49 @@ func (s *Service) pollSubscription(ctx context.Context, sub storage.PodcastSubsc
 		return fmt.Errorf("subscription has a non-numeric feed ID %q", sub.FeedID)
 	}
 
-	// A subscription that was just switched on means "from now on". Take the
-	// newest completed episode, adopt its timestamp as the watermark and
-	// process nothing. The watermark therefore comes from cast2md's clock,
-	// which removes both the timezone and the clock-skew failure mode.
+	// First poll after the subscription was switched on. It reads the feed's
+	// newest completed episodes, adopts the newest timestamp as the watermark,
+	// and summarizes as many of them as initial_backfill asks for. The
+	// watermark therefore comes from cast2md's clock, which removes both the
+	// timezone and the clock-skew failure mode, and because it is the newest of
+	// the batch, none of these episodes is fetched again on the next tick.
+	//
+	// initial_backfill = 0 restores plain "from now on": watermark only.
 	if !sub.Initialized {
+		limit := sub.InitialBackfill
+		if limit < 1 {
+			limit = 1
+		}
 		eps, err := s.cast2md.ListCompleted(ctx, cast2md.ListCompletedOptions{
 			FeedID: feedID,
 			Order:  cast2md.OrderUpdatedDesc,
-			Limit:  1,
+			Limit:  limit,
 		})
 		if err != nil {
 			return fmt.Errorf("initial poll: %w", err)
 		}
+
 		watermark := ""
 		if len(eps) > 0 {
 			watermark = eps[0].UpdatedAt
 		}
+
+		queued := 0
+		if sub.InitialBackfill > 0 {
+			// Oldest first, so the list fills in reading order.
+			for i := len(eps) - 1; i >= 0; i-- {
+				if s.queueEpisode(ctx, sub, eps[i].ID) {
+					queued++
+				}
+			}
+		}
+
 		if err := s.db.SetSubscriptionWatermark(ctx, sub.ID, watermark, true); err != nil {
 			return err
 		}
 		s.log.Info("podcast subscription initialized",
-			"feed_id", sub.FeedID, "user_id", sub.UserID, "watermark", watermark)
+			"feed_id", sub.FeedID, "user_id", sub.UserID,
+			"watermark", watermark, "backfilled", queued)
 		return nil
 	}
 
@@ -159,20 +195,12 @@ func (s *Service) pollSubscription(ctx context.Context, sub storage.PodcastSubsc
 	watermark := sub.Watermark
 	queued := 0
 	for _, ep := range eps {
-		// The row is written before the watermark moves past the episode. If
-		// the process dies here, the row exists and requeueStalePodcasts picks
-		// it up; the in-memory queue is therefore not a place work can be lost.
-		if _, err := s.EnsureEpisodeRow(ctx, sub.UserID, ep.ID, sub.DetailLevel); err != nil {
-			s.log.Warn("failed to create podcast row, skipping episode",
-				"episode_id", ep.ID, "feed_id", sub.FeedID, "error", err)
-			// The watermark still advances. A single broken episode must not
-			// block every later one in the feed.
-			watermark = ep.UpdatedAt
-			continue
+		// The watermark advances either way. A single broken episode must not
+		// block every later one in the feed.
+		if s.queueEpisode(ctx, sub, ep.ID) {
+			queued++
 		}
-		s.ProcessEpisodeAsync(sub.UserID, ep.ID, sub.DetailLevel)
 		watermark = ep.UpdatedAt
-		queued++
 	}
 
 	if err := s.db.SetSubscriptionWatermark(ctx, sub.ID, watermark, true); err != nil {
@@ -189,6 +217,48 @@ func (s *Service) pollSubscription(ctx context.Context, sub storage.PodcastSubsc
 type BackfillResult struct {
 	Queued  int `json:"queued"`
 	Skipped int `json:"skipped"`
+}
+
+// backfillAllLimit caps "summarize everything" so one click cannot queue an
+// unbounded number of LLM calls. The largest feed measured on 2026-08-06 had
+// 367 completed episodes, so this is a backstop rather than a working limit.
+const backfillAllLimit = 2000
+
+// SummarizeAllCompleted summarizes every episode of a feed that cast2md has a
+// transcript for. It is BackfillFeed without the small limit; the watermark
+// stays where it is, so a running subscription is unaffected.
+func (s *Service) SummarizeAllCompleted(ctx context.Context, userID int, feedID string) (*BackfillResult, error) {
+	return s.BackfillFeed(ctx, userID, feedID, backfillAllLimit)
+}
+
+// TranscribeAllInFeed asks cast2md to download and transcribe every episode of
+// a feed that has no transcript yet.
+//
+// This is the one place vimmary makes cast2md do expensive work. It queues jobs
+// there and returns; the episodes reach vimmary through the ordinary poll,
+// because finishing a transcription updates the episode's updated_at and the
+// watermark query picks it up. A feed that is not subscribed will therefore
+// gain transcripts in cast2md but no summaries here.
+func (s *Service) TranscribeAllInFeed(ctx context.Context, userID int, feedID string) (*cast2md.BatchResult, error) {
+	if s.cast2md == nil {
+		return nil, ErrPodcastDisabled
+	}
+	numericFeedID, err := strconv.Atoi(feedID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid feed ID %q", feedID)
+	}
+
+	result, err := s.cast2md.ProcessFeed(ctx, numericFeedID)
+	if err != nil {
+		return nil, fmt.Errorf("queue transcription in cast2md: %w", err)
+	}
+
+	sub, subErr := s.db.GetSubscription(ctx, userID, feedID)
+	subscribed := subErr == nil && sub.Enabled
+	s.log.Info("cast2md transcription queued for feed",
+		"feed_id", feedID, "user_id", userID,
+		"queued", result.Queued, "skipped", result.Skipped, "subscribed", subscribed)
+	return result, nil
 }
 
 // BackfillFeed summarizes the N most recently completed episodes of a feed

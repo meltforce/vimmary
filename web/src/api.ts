@@ -316,12 +316,23 @@ export interface PodcastFeed {
   title: string;
   image_url?: string;
   episode_count: number;
+  /** Episodes cast2md has a transcript for — what "Summarize all" would take. */
+  completed_count: number;
+  /** Episodes cast2md could still transcribe — what "Transcribe all" would queue. */
+  transcribable_count: number;
   subscribed: boolean;
   detail_level: string;
+  initial_backfill: number;
   initialized: boolean;
   summarized_count: number;
   last_polled_at?: string;
   last_error?: string;
+}
+
+export interface BatchResult {
+  queued: number;
+  skipped: number;
+  message?: string;
 }
 
 export interface PodcastFeedsResponse {
@@ -352,13 +363,29 @@ export function listPodcastFeeds(): Promise<PodcastFeedsResponse> {
 export function setPodcastSubscription(
   feedID: string,
   enabled: boolean,
-  detailLevel: string
+  detailLevel: string,
+  initialBackfill?: number
 ): Promise<unknown> {
   return fetchJSON(`/api/v1/podcasts/feeds/${feedID}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ enabled, detail_level: detailLevel }),
+    body: JSON.stringify({
+      enabled,
+      detail_level: detailLevel,
+      // Omitted rather than null, so the server keeps the stored value.
+      ...(initialBackfill === undefined ? {} : { initial_backfill: initialBackfill }),
+    }),
   });
+}
+
+/** Summarize every episode cast2md already has a transcript for. */
+export function summarizeAllPodcastFeed(feedID: string): Promise<BatchResult> {
+  return fetchJSON(`/api/v1/podcasts/feeds/${feedID}/summarize-all`, { method: "POST" });
+}
+
+/** Ask cast2md to download and transcribe the rest of a feed. */
+export function transcribeAllPodcastFeed(feedID: string): Promise<BatchResult> {
+  return fetchJSON(`/api/v1/podcasts/feeds/${feedID}/transcribe-all`, { method: "POST" });
 }
 
 export function backfillPodcastFeed(

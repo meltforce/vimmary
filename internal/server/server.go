@@ -5,11 +5,11 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	mkserver "github.com/meltforce/meltkit/pkg/server"
 	"github.com/meltforce/vimmary/internal/feed"
 	"github.com/meltforce/vimmary/internal/karakeep"
 	"github.com/meltforce/vimmary/internal/service"
 	"github.com/meltforce/vimmary/internal/storage"
-	mkserver "github.com/meltforce/meltkit/pkg/server"
 )
 
 type Server struct {
@@ -66,6 +66,10 @@ func (s *Server) routes() {
 		r.Get("/api/v1/podcasts/feeds", s.handleListPodcastFeeds)
 		r.Put("/api/v1/podcasts/feeds/{feedID}", s.handleSetPodcastSubscription)
 		r.Post("/api/v1/podcasts/feeds/{feedID}/backfill", s.handleBackfillPodcastFeed)
+		// Whole-feed actions. summarize-all spends LLM calls here;
+		// transcribe-all queues download and Whisper work in cast2md.
+		r.Post("/api/v1/podcasts/feeds/{feedID}/summarize-all", s.handleSummarizeAllPodcastFeed)
+		r.Post("/api/v1/podcasts/feeds/{feedID}/transcribe-all", s.handleTranscribeAllPodcastFeed)
 		r.Get("/api/v1/podcasts/episodes/{episodeID}", s.handleGetEpisodePreview)
 		r.Post("/api/v1/podcasts/episodes", s.handleSubmitEpisode)
 

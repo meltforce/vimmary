@@ -81,9 +81,16 @@ through Go's timezone handling is the one place episodes would be skipped
 without any error.
 
 **A new podcast subscription starts uninitialized on purpose.** The first poll
-reads one episode with `order=updated_desc&limit=1`, adopts its timestamp and
-processes nothing. That is the "from now on" guarantee; backfill is the explicit
-way to reach older episodes and never moves the watermark.
+reads `initial_backfill` episodes with `order=updated_desc`, summarizes them and
+adopts the *newest* of them as the watermark — so the batch is never fetched
+twice. `initial_backfill = 0` restores plain "from now on". Backfill,
+summarize-all and transcribe-all never move the watermark.
+
+**`Transcribe all` is the only call that makes cast2md do work.** Everything
+else reads. `Client.ProcessFeed` is the single non-GET in `internal/cast2md`,
+and the episodes it produces reach vimmary through the ordinary poll, because
+finishing a transcription updates the episode's `updated_at`. On a feed that is
+not subscribed, they never arrive.
 
 **Two queues, two workers** (`internal/service/service.go`). `adaptiveDelay()`
 compensates for YouTube's rate limit, which does not apply to cast2md, and a
