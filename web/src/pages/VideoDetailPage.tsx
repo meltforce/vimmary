@@ -11,6 +11,7 @@ import {
 } from "../api.ts";
 import { formatDuration, formatTokens, videoToMarkdown } from "../utils.ts";
 import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
+import SourceBadge, { MicIcon } from "../components/SourceBadge.tsx";
 
 function formatDate(iso?: string): string {
   if (!iso) return "";
@@ -117,8 +118,18 @@ export default function VideoDetailPage() {
 
   if (!video) return null;
 
-  const thumbnail = `https://img.youtube.com/vi/${video.youtube_id}/mqdefault.jpg`;
-  const youtubeUrl = `https://youtube.com/watch?v=${video.youtube_id}`;
+  const isPodcast = video.source === "podcast";
+  const thumbnail = isPodcast
+    ? video.thumbnail_url
+    : `https://img.youtube.com/vi/${video.youtube_id}/mqdefault.jpg`;
+  // For podcasts the external link goes back to the cast2md episode page; for
+  // videos to YouTube.
+  const externalUrl = isPodcast
+    ? video.source_url ?? ""
+    : `https://youtube.com/watch?v=${video.youtube_id}`;
+  const externalLabel = isPodcast ? "Open in cast2md" : "Watch on YouTube";
+  const backTo = isPodcast ? "/podcasts" : "/";
+  const backLabel = isPodcast ? "← Back to podcasts" : "← Back to videos";
   const isProcessing = video.status === "pending" || video.status === "processing";
   const isFailed = video.status === "failed";
 
@@ -134,7 +145,7 @@ export default function VideoDetailPage() {
   return (
     <div className="vim-page-narrow vim-page-detail">
       <Link
-        to="/"
+        to={backTo}
         className="vim-kicker"
         style={{
           display: "inline-block",
@@ -143,7 +154,7 @@ export default function VideoDetailPage() {
           textDecoration: "none",
         }}
       >
-        ← Back to videos
+        {backLabel}
       </Link>
 
       {/* Header */}
@@ -163,6 +174,8 @@ export default function VideoDetailPage() {
           flexWrap: "wrap",
         }}
       >
+        <SourceBadge source={video.source} />
+        <span className="vim-dot" />
         {video.channel && <span style={{ color: "var(--vim-ink-2)" }}>{video.channel}</span>}
         {video.duration_seconds ? (
           <>
@@ -204,37 +217,60 @@ export default function VideoDetailPage() {
       {/* Thumbnail + actions */}
       <div className="vim-grid-detail-actions" style={{ marginBottom: 44 }}>
         <a
-          href={youtubeUrl}
+          href={externalUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="vim-thumb"
           style={{ aspectRatio: "16 / 9", width: "100%", height: "auto" }}
         >
-          <img src={thumbnail} alt="" />
+          {thumbnail ? (
+            <img src={thumbnail} alt="" />
+          ) : (
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "var(--vim-surface-2)",
+              }}
+            >
+              <MicIcon size={40} color="var(--vim-ink-4)" />
+            </div>
+          )}
           {video.duration_seconds ? (
             <span className="dur">{formatDuration(video.duration_seconds)}</span>
           ) : null}
           <div className="play" style={{ opacity: 1 }}>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="#fff">
-              <path d="M3 1.5v11L13 7z" />
-            </svg>
+            {isPodcast ? (
+              <MicIcon size={13} color="#fff" />
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="#fff">
+                <path d="M3 1.5v11L13 7z" />
+              </svg>
+            )}
           </div>
         </a>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <a
-            href={youtubeUrl}
+            href={externalUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="vim-btn primary"
             style={{ padding: "13px 16px" }}
           >
-            <svg width="13" height="13" viewBox="0 0 14 14" fill="currentColor">
-              <path d="M3 1.5v11L13 7z" />
-            </svg>
-            Watch on YouTube
+            {isPodcast ? (
+              <MicIcon size={13} color="currentColor" />
+            ) : (
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="currentColor">
+                <path d="M3 1.5v11L13 7z" />
+              </svg>
+            )}
+            {externalLabel}
           </a>
-          {video.karakeep_bookmark_id && karakeepStatus?.base_url && (
+          {!isPodcast && video.karakeep_bookmark_id && karakeepStatus?.base_url && (
             <a
               href={`${karakeepStatus.base_url}/dashboard/preview/${video.karakeep_bookmark_id}`}
               target="_blank"
@@ -294,7 +330,8 @@ export default function VideoDetailPage() {
             fontSize: 13,
           }}
         >
-          Video is being processed. This page will update automatically.
+          {isPodcast ? "Episode" : "Video"} is being processed. This page will update
+          automatically.
         </div>
       )}
 
@@ -594,7 +631,7 @@ export default function VideoDetailPage() {
                   className="vim-btn outline danger"
                   style={{ padding: "7px 14px", fontSize: 12 }}
                 >
-                  Delete video
+                  Delete {isPodcast ? "episode" : "video"}
                 </button>
               ) : (
                 <>

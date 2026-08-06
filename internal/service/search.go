@@ -15,6 +15,8 @@ import (
 type HybridMatch struct {
 	ID        uuid.UUID       `json:"id"`
 	YouTubeID string          `json:"youtube_id"`
+	Source    string          `json:"source"`
+	SourceURL string          `json:"source_url,omitempty"`
 	Title     string          `json:"title"`
 	Channel   string          `json:"channel"`
 	Summary   string          `json:"summary"`
@@ -25,7 +27,8 @@ type HybridMatch struct {
 }
 
 // Search runs hybrid (keyword + semantic) search with RRF merging.
-func (s *Service) Search(ctx context.Context, userID int, query string, limit int) ([]HybridMatch, []string, error) {
+// An empty source searches videos and podcasts alike.
+func (s *Service) Search(ctx context.Context, userID int, query string, limit int, source string) ([]HybridMatch, []string, error) {
 	if limit == 0 {
 		limit = s.searchCfg.DefaultLimit
 	}
@@ -47,7 +50,7 @@ func (s *Service) Search(ctx context.Context, userID int, query string, limit in
 	semCh := make(chan semanticResult, 1)
 
 	go func() {
-		matches, err := s.db.TextSearchVideos(ctx, userID, query, fetchLimit)
+		matches, err := s.db.TextSearchVideos(ctx, userID, query, fetchLimit, source)
 		textCh <- textResult{matches, err}
 	}()
 
@@ -57,7 +60,7 @@ func (s *Service) Search(ctx context.Context, userID int, query string, limit in
 			semCh <- semanticResult{nil, err}
 			return
 		}
-		matches, err := s.db.SearchVideos(ctx, userID, embedding, s.searchCfg.DefaultThreshold, fetchLimit)
+		matches, err := s.db.SearchVideos(ctx, userID, embedding, s.searchCfg.DefaultThreshold, fetchLimit, source)
 		semCh <- semanticResult{matches, err}
 	}()
 
@@ -92,7 +95,8 @@ func (s *Service) Search(ctx context.Context, userID int, query string, limit in
 			e, ok := merged[m.ID]
 			if !ok {
 				e = &entry{HybridMatch: HybridMatch{
-					ID: m.ID, YouTubeID: m.YouTubeID, Title: m.Title,
+					ID: m.ID, YouTubeID: m.YouTubeID,
+					Source: m.Source, SourceURL: m.SourceURL, Title: m.Title,
 					Channel: m.Channel, Summary: m.Summary, Metadata: m.Metadata,
 					CreatedAt: m.CreatedAt,
 				}}
@@ -108,7 +112,8 @@ func (s *Service) Search(ctx context.Context, userID int, query string, limit in
 			e, ok := merged[m.ID]
 			if !ok {
 				e = &entry{HybridMatch: HybridMatch{
-					ID: m.ID, YouTubeID: m.YouTubeID, Title: m.Title,
+					ID: m.ID, YouTubeID: m.YouTubeID,
+					Source: m.Source, SourceURL: m.SourceURL, Title: m.Title,
 					Channel: m.Channel, Summary: m.Summary, Metadata: m.Metadata,
 					CreatedAt: m.CreatedAt,
 				}}
@@ -170,7 +175,7 @@ func (s *Service) GetVideo(ctx context.Context, userID int, id uuid.UUID) (*stor
 	return s.db.GetVideo(ctx, userID, id)
 }
 
-// Stats returns aggregate statistics.
-func (s *Service) Stats(ctx context.Context, userID int) (*storage.VideoStats, error) {
-	return s.db.GetStats(ctx, userID)
+// Stats returns aggregate statistics. An empty source covers both kinds.
+func (s *Service) Stats(ctx context.Context, userID int, source string) (*storage.VideoStats, error) {
+	return s.db.GetStats(ctx, userID, source)
 }

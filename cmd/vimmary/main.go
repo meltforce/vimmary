@@ -14,6 +14,7 @@ import (
 	"time"
 
 	vimmary "github.com/meltforce/vimmary"
+	"github.com/meltforce/vimmary/internal/cast2md"
 	"github.com/meltforce/vimmary/internal/config"
 	vimmarymcp "github.com/meltforce/vimmary/internal/mcp"
 	"github.com/meltforce/vimmary/internal/mistral"
@@ -138,6 +139,17 @@ func main() {
 	mc := mistral.NewClient(mistralKey)
 	ytClient := youtube.NewClient(cfg.YouTube.SubLangs)
 
+	// cast2md sits inside the tailnet, so it needs the tsnet transport. The
+	// variable is interface-typed and left nil when the feature is off — a nil
+	// *cast2md.Client assigned to the interface would not compare equal to nil,
+	// and the service would call methods on it.
+	var podcastSrc service.PodcastSource
+	if cfg.Cast2MD.Enabled {
+		podcastSrc = cast2md.New(cfg.Cast2MD.BaseURL, tsnetHTTPClient,
+			15*time.Second, time.Duration(cfg.Cast2MD.TimeoutSeconds)*time.Second)
+		log.Info("cast2md client configured", "base_url", cfg.Cast2MD.BaseURL)
+	}
+
 	// Init summarizers
 	summarizers := make(map[string]summary.Summarizer)
 
@@ -168,7 +180,9 @@ func main() {
 	// Init model registry
 	registry := models.NewRegistry(claudeKey, mistralKey, log)
 
-	svc := service.New(store, summarizers, cfg.Summary.Provider, registry, ytClient, cfg.Karakeep.BaseURL, cfg.ExternalURL, mc, mc, cfg.Search, cfg.Summary, log)
+	svc := service.New(store, summarizers, cfg.Summary.Provider, registry, ytClient,
+		podcastSrc, cfg.Cast2MD, cfg.Karakeep.BaseURL, cfg.ExternalURL, mc, mc,
+		cfg.Search, cfg.Summary, log)
 
 	// MCP stdio mode
 	if *mcpMode {
@@ -184,6 +198,11 @@ func main() {
 		}
 		return
 	}
+
+	// Poll cast2md for newly transcribed episodes. No-op when cast2md is off.
+	pollCtx, stopPoller := context.WithCancel(context.Background())
+	defer stopPoller()
+	svc.StartPodcastPoller(pollCtx)
 
 	// HTTP server
 	srv := server.New(svc, store, log)

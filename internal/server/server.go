@@ -36,8 +36,12 @@ func (s *Server) routes() {
 	// Webhook route — no Tailscale auth, uses per-user Bearer token
 	r.Post("/webhook/karakeep", karakeep.WebhookHandler(s.svc, s.store.GetUserByWebhookToken))
 
-	// Feed route — no Tailscale auth, token in URL path is the access control
-	r.Get("/feed/atom/{token}", feed.HandleAtomFeed(s.svc, s.store))
+	// Feed routes — no Tailscale auth, token in URL path is the access control.
+	// The bare path stays videos-only so existing subscriptions keep their
+	// contents when podcast rows appear.
+	r.Get("/feed/atom/{token}", feed.HandleVideoFeed(s.svc, s.store))
+	r.Get("/feed/atom/{token}/podcasts", feed.HandlePodcastFeed(s.svc, s.store))
+	r.Get("/feed/atom/{token}/all", feed.HandleCombinedFeed(s.svc, s.store))
 
 	r.Group(func(r chi.Router) {
 		r.Use(s.IdentityMiddleware())
@@ -56,6 +60,13 @@ func (s *Server) routes() {
 		r.Get("/api/v1/config/models", s.handleListModels)
 		r.Get("/api/v1/search", s.handleSearch)
 		r.Get("/api/v1/stats", s.handleStats)
+
+		// Podcasts
+		r.Get("/api/v1/podcasts/feeds", s.handleListPodcastFeeds)
+		r.Put("/api/v1/podcasts/feeds/{feedID}", s.handleSetPodcastSubscription)
+		r.Post("/api/v1/podcasts/feeds/{feedID}/backfill", s.handleBackfillPodcastFeed)
+		r.Get("/api/v1/podcasts/episodes/{episodeID}", s.handleGetEpisodePreview)
+		r.Post("/api/v1/podcasts/episodes", s.handleSubmitEpisode)
 
 		// Settings
 		r.Get("/api/v1/settings/feed", s.handleGetFeed)

@@ -10,8 +10,47 @@ import (
 	"github.com/meltforce/vimmary/internal/storage"
 )
 
-// HandleAtomFeed returns an HTTP handler that serves an Atom feed for a user identified by feed token.
-func HandleAtomFeed(svc *service.Service, store *storage.DB) http.HandlerFunc {
+// The three feeds a user can subscribe to. The video feed keeps the original
+// path and its videos-only contents, so existing subscriptions are unaffected
+// by podcast rows appearing.
+var (
+	videoFeed = FeedOptions{
+		Source:   storage.SourceYouTube,
+		Slug:     "videos",
+		Title:    "vimmary — Video Summaries",
+		Subtitle: "AI-generated summaries of YouTube videos",
+	}
+	podcastFeed = FeedOptions{
+		Source:   storage.SourcePodcast,
+		Slug:     "podcasts",
+		Title:    "vimmary — Podcast Summaries",
+		Subtitle: "AI-generated summaries of podcast episodes",
+	}
+	combinedFeed = FeedOptions{
+		Source:   "",
+		Slug:     "all",
+		Title:    "vimmary — Summaries",
+		Subtitle: "AI-generated summaries of videos and podcast episodes",
+	}
+)
+
+// HandleVideoFeed serves the YouTube-only Atom feed.
+func HandleVideoFeed(svc *service.Service, store *storage.DB) http.HandlerFunc {
+	return handleFeed(svc, store, videoFeed)
+}
+
+// HandlePodcastFeed serves the podcast-only Atom feed.
+func HandlePodcastFeed(svc *service.Service, store *storage.DB) http.HandlerFunc {
+	return handleFeed(svc, store, podcastFeed)
+}
+
+// HandleCombinedFeed serves both kinds in one Atom feed. Entries carry their
+// type as the first category.
+func HandleCombinedFeed(svc *service.Service, store *storage.DB) http.HandlerFunc {
+	return handleFeed(svc, store, combinedFeed)
+}
+
+func handleFeed(svc *service.Service, store *storage.DB, opts FeedOptions) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := chi.URLParam(r, "token")
 		if token == "" {
@@ -37,7 +76,7 @@ func HandleAtomFeed(svc *service.Service, store *storage.DB) http.HandlerFunc {
 			limit = 200
 		}
 
-		filters := storage.ListFilters{Status: "completed"}
+		filters := storage.ListFilters{Status: "completed", Source: opts.Source}
 		videos, _, err := svc.ListRecent(r.Context(), userID, filters, limit, 0)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
@@ -47,7 +86,7 @@ func HandleAtomFeed(svc *service.Service, store *storage.DB) http.HandlerFunc {
 		scheme := "https"
 		baseURL := scheme + "://" + r.Host
 
-		data, err := BuildFeed(videos, baseURL)
+		data, err := BuildFeed(videos, baseURL, opts)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return

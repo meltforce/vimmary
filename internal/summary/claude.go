@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -34,20 +35,21 @@ func NewClaudeSummarizer(apiKey, baseURL string, httpClient *http.Client) *Claud
 	}
 }
 
-func (c *ClaudeSummarizer) Summarize(ctx context.Context, title, transcript, level, language, customPrompt, model string) (*Summary, error) {
-	template := promptForLevel(level)
-	if customPrompt != "" {
-		template = customPrompt
+func (c *ClaudeSummarizer) Summarize(ctx context.Context, req Request) (*Summary, error) {
+	template := promptFor(req.Source, req.Level)
+	if req.CustomPrompt != "" {
+		template = req.CustomPrompt
 	}
-	prompt := BuildPrompt(template, title, language, truncateTranscript(transcript))
+	prompt := BuildPrompt(template, req.Title, req.Language, truncateTranscript(req.Transcript))
 
+	model := req.Model
 	if model == "" {
 		model = "claude-sonnet-4-20250514"
 	}
 
 	body := map[string]any{
 		"model":      model,
-		"max_tokens": 4096,
+		"max_tokens": maxOutputTokens(req.Level),
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
@@ -58,15 +60,15 @@ func (c *ClaudeSummarizer) Summarize(ctx context.Context, title, transcript, lev
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/v1/messages", bytes.NewReader(jsonBody))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/v1/messages", bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", c.apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-api-key", c.apiKey)
+	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
-	resp, err := c.http.Do(req)
+	resp, err := c.http.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("claude API request: %w", err)
 	}
@@ -108,6 +110,16 @@ func (c *ClaudeSummarizer) Summarize(ctx context.Context, title, transcript, lev
 	return sum, nil
 }
 
+// maxOutputTokens is the output budget per detail level. A deep summary of a
+// multi-hour episode asks for segment headers, quotes, key points and a
+// reference list, which does not fit in the 4096 that medium needs.
+func maxOutputTokens(level string) int {
+	if level == "deep" {
+		return 16000
+	}
+	return 4096
+}
+
 // truncateTranscript limits transcript length to avoid token limits.
 // Claude supports ~200k tokens, so we allow generous transcripts.
 func truncateTranscript(transcript string) string {
@@ -118,19 +130,30 @@ func truncateTranscript(transcript string) string {
 	return transcript
 }
 
+// errTruncatedJSON reports a response whose JSON object never closed, which is
+// what hitting the output token limit looks like.
+var errTruncatedJSON = errors.New("model response ended inside the JSON object (output token limit reached)")
+
 func parseSummaryJSON(text string) (*Summary, error) {
 	// Try to extract JSON from the response (may be wrapped in markdown code blocks)
 	cleaned := text
-	if idx := findJSONStart(cleaned); idx >= 0 {
-		cleaned = cleaned[idx:]
+	start := findJSONStart(cleaned)
+	if start >= 0 {
+		cleaned = cleaned[start:]
 	}
-	if idx := findJSONEnd(cleaned); idx >= 0 {
-		cleaned = cleaned[:idx+1]
+	end := findJSONEnd(cleaned)
+	if end >= 0 {
+		cleaned = cleaned[:end+1]
+	} else if start >= 0 {
+		// The object opened but never closed. Falling through to the raw-text
+		// path here would store a cut-off summary as if it were complete, so
+		// the caller has to see this as a failure.
+		return nil, errTruncatedJSON
 	}
 
 	var s Summary
 	if err := json.Unmarshal([]byte(cleaned), &s); err != nil {
-		// If JSON parsing fails, use the raw text as summary
+		// No JSON at all — treat the whole response as the summary text.
 		return &Summary{
 			Text:        text,
 			Topics:      []string{},

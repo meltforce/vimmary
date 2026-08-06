@@ -51,16 +51,27 @@ type atomCategory struct {
 	Term string `xml:"term,attr"`
 }
 
-// BuildFeed generates an Atom 1.0 XML feed from the given videos.
-func BuildFeed(videos []storage.Video, baseURL string) ([]byte, error) {
+// FeedOptions describes one of the feeds a user can subscribe to.
+type FeedOptions struct {
+	// Source is "youtube", "podcast", or empty for the combined feed.
+	Source string
+	// Slug distinguishes the feed IDs. Without it a reader that sees all three
+	// deduplicates them against each other.
+	Slug     string
+	Title    string
+	Subtitle string
+}
+
+// BuildFeed generates an Atom 1.0 XML feed from the given rows.
+func BuildFeed(videos []storage.Video, baseURL string, opts FeedOptions) ([]byte, error) {
 	feed := atomFeed{
 		XMLNS:    "http://www.w3.org/2005/Atom",
-		Title:    "vimmary — Video Summaries",
-		Subtitle: "AI-generated summaries of YouTube videos",
+		Title:    opts.Title,
+		Subtitle: opts.Subtitle,
 		Link: []atomLink{
 			{Href: baseURL, Rel: "alternate", Type: "text/html"},
 		},
-		ID: baseURL + "/feed/atom",
+		ID: baseURL + "/feed/atom/" + opts.Slug,
 	}
 
 	if len(videos) > 0 {
@@ -76,16 +87,23 @@ func BuildFeed(videos []storage.Video, baseURL string) ([]byte, error) {
 			continue
 		}
 
-		vimmaryURL := fmt.Sprintf("%s/video/%s", baseURL, v.ID)
+		vimmaryURL := baseURL + itemPath(v)
+		published := v.CreatedAt
+		if v.PublishedAt != nil {
+			published = *v.PublishedAt
+		}
 		entry := atomEntry{
 			Title: fmt.Sprintf("[%s] %s", v.Channel, v.Title),
 			Links: []atomLink{
 				{Href: vimmaryURL, Rel: "alternate", Type: "text/html"},
-				{Href: fmt.Sprintf("https://youtube.com/watch?v=%s", v.YouTubeID), Rel: "related"},
+				{Href: externalURL(v), Rel: "related"},
 			},
 			ID:        fmt.Sprintf("urn:uuid:%s", v.ID),
-			Published: v.CreatedAt.Format(time.RFC3339),
+			Published: published.Format(time.RFC3339),
 			Updated:   v.UpdatedAt.Format(time.RFC3339),
+			// The type goes in as the first category, so the combined feed
+			// still tells the two kinds apart.
+			Categories: []atomCategory{{Term: v.Source}},
 		}
 
 		// Summary: first 200 chars of plain text
@@ -169,9 +187,31 @@ func buildContent(md goldmark.Markdown, v storage.Video, baseURL string) (string
 		buf.WriteString("</ul>\n")
 	}
 
-	fmt.Fprintf(&buf, `<p><a href="%s/video/%s">View summary in vimmary</a> · <a href="https://youtube.com/watch?v=%s">Watch on YouTube</a></p>`, baseURL, v.ID, v.YouTubeID)
+	externalLabel := "Watch on YouTube"
+	if v.Source == storage.SourcePodcast {
+		externalLabel = "Open episode in cast2md"
+	}
+	fmt.Fprintf(&buf, `<p><a href="%s%s">View summary in vimmary</a> · <a href="%s">%s</a></p>`,
+		baseURL, itemPath(v), externalURL(v), externalLabel)
 
 	return buf.String(), nil
+}
+
+// itemPath is the vimmary route for a row, which differs by source.
+func itemPath(v storage.Video) string {
+	if v.Source == storage.SourcePodcast {
+		return "/podcast/" + v.ID.String()
+	}
+	return "/video/" + v.ID.String()
+}
+
+// externalURL points back at the source: the cast2md episode page for
+// podcasts, the YouTube watch page for videos.
+func externalURL(v storage.Video) string {
+	if v.Source == storage.SourcePodcast {
+		return v.SourceURL
+	}
+	return "https://youtube.com/watch?v=" + v.YouTubeID
 }
 
 // renderInlineMarkdown converts a Markdown string to HTML and strips the wrapping <p> tags

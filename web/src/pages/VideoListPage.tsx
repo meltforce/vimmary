@@ -11,6 +11,7 @@ import {
 } from "../api.ts";
 import VideoCard from "../components/VideoCard.tsx";
 import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
+import { PlayIcon } from "../components/SourceBadge.tsx";
 import { formatDuration, stripMarkdown } from "../utils.ts";
 import { Link } from "react-router-dom";
 
@@ -23,22 +24,6 @@ function formatDate(iso?: string): string {
     day: "numeric",
     year: "numeric",
   });
-}
-
-function PlayIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="var(--vim-ink-3)"
-      strokeWidth="1.6"
-    >
-      <rect x="3" y="6" width="18" height="12" rx="3" />
-      <path d="M10 9v6l5-3z" fill="var(--vim-ink-3)" />
-    </svg>
-  );
 }
 
 function SearchIcon() {
@@ -300,6 +285,7 @@ export default function VideoListPage() {
   type Row = {
     id: string;
     youtube_id: string;
+    source?: "youtube" | "podcast";
     title: string;
     channel: string;
     summary?: string;
@@ -320,6 +306,7 @@ export default function VideoListPage() {
     ? searchResult.data?.results.map((m) => ({
         id: m.id,
         youtube_id: m.youtube_id,
+        source: m.source,
         title: m.title,
         channel: m.channel,
         summary: m.summary,
@@ -711,6 +698,7 @@ export default function VideoListPage() {
               key={v.id}
               id={v.id}
               youtubeId={v.youtube_id}
+              source={v.source}
               title={v.title}
               channel={v.channel}
               durationSeconds={v.duration_seconds}

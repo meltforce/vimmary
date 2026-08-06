@@ -32,6 +32,13 @@ youtube:
     - en
     - de
 
+cast2md:
+  enabled: false
+  base_url: ""                # e.g. "https://cast2md.leo-royal.ts.net"
+  poll_interval_minutes: 15   # an int, not "15m" — yaml.v3 does not decode durations
+  max_per_poll: 25            # episodes queued per feed per tick
+  timeout_seconds: 60         # transcript fetch; metadata calls use 15 s
+
 secrets:
   postgres_password: "vimmary"
   mistral_api_key: ""

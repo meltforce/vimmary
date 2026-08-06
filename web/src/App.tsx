@@ -5,6 +5,8 @@ import Layout from "./components/Layout.tsx";
 
 const VideoListPage = lazy(() => import("./pages/VideoListPage.tsx"));
 const VideoDetailPage = lazy(() => import("./pages/VideoDetailPage.tsx"));
+const PodcastListPage = lazy(() => import("./pages/PodcastListPage.tsx"));
+const PodcastNewPage = lazy(() => import("./pages/PodcastNewPage.tsx"));
 const StatsPage = lazy(() => import("./pages/StatsPage.tsx"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage.tsx"));
 
@@ -26,6 +28,11 @@ export default function App() {
           <Routes>
             <Route path="/" element={<VideoListPage />} />
             <Route path="/video/:id" element={<VideoDetailPage />} />
+            <Route path="/podcasts" element={<PodcastListPage />} />
+            <Route path="/podcasts/new" element={<PodcastNewPage />} />
+            {/* Podcast summaries reuse the detail page; the route differs so
+                back-links and the RSS entry links point at the right list. */}
+            <Route path="/podcast/:id" element={<VideoDetailPage />} />
             <Route path="/stats" element={<StatsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

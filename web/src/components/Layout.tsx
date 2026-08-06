@@ -4,6 +4,7 @@ import ThemeToggle from "./ThemeToggle.tsx";
 
 const navItems = [
   { to: "/", label: "Videos" },
+  { to: "/podcasts", label: "Podcasts" },
   { to: "/stats", label: "Stats" },
   { to: "/settings", label: "Settings" },
 ];
@@ -29,7 +30,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                 className="vim-kicker vim-brand-tag-mobile-hide"
                 style={{ fontSize: 10.5 }}
               >
-                youtube · read
+                video · podcast · read
               </span>
             </NavLink>
             <nav className="flex items-center" style={{ gap: 4 }}>

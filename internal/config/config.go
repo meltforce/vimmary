@@ -17,6 +17,7 @@ type Config struct {
 	Summary       SummaryConfig                `yaml:"summary"`
 	Karakeep      KarakeepConfig               `yaml:"karakeep"`
 	YouTube       YouTubeConfig                `yaml:"youtube"`
+	Cast2MD       Cast2MDConfig                `yaml:"cast2md"`
 }
 
 type SearchConfig struct {
@@ -40,6 +41,18 @@ type YouTubeConfig struct {
 	SubLangs []string `yaml:"sub_langs"` // preferred subtitle languages
 }
 
+// Cast2MDConfig configures the podcast source. cast2md is reachable over the
+// tailnet and has no authentication, so there is no secret here.
+type Cast2MDConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	BaseURL string `yaml:"base_url"` // e.g. "https://cast2md.coydog-fence.ts.net"
+	// PollIntervalMinutes is an int rather than a time.Duration because
+	// meltkit decodes with yaml.v3, which does not turn "15m" into a Duration.
+	PollIntervalMinutes int `yaml:"poll_interval_minutes"`
+	MaxPerPoll          int `yaml:"max_per_poll"`
+	TimeoutSeconds      int `yaml:"timeout_seconds"`
+}
+
 func Load(path string) (*Config, error) {
 	cfg := &Config{
 		Search: SearchConfig{
@@ -55,6 +68,13 @@ func Load(path string) (*Config, error) {
 		},
 		YouTube: YouTubeConfig{
 			SubLangs: []string{"en", "de"},
+		},
+		Cast2MD: Cast2MDConfig{
+			Enabled:             false,
+			BaseURL:             "",
+			PollIntervalMinutes: 15,
+			MaxPerPoll:          25,
+			TimeoutSeconds:      60,
 		},
 		Tailscale: mkconfig.TailscaleConfig{
 			Enabled:  true,
@@ -74,6 +94,9 @@ func Load(path string) (*Config, error) {
 	}
 	if !cfg.Tailscale.Enabled && cfg.Server.Port == 0 {
 		return nil, fmt.Errorf("config validation: server.port is required when tailscale is disabled")
+	}
+	if cfg.Cast2MD.Enabled && cfg.Cast2MD.BaseURL == "" {
+		return nil, fmt.Errorf("config validation: cast2md.base_url is required when cast2md is enabled")
 	}
 
 	return cfg, nil

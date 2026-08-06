@@ -11,11 +11,23 @@ import (
 	pgvector "github.com/pgvector/pgvector-go"
 )
 
+// Content sources. `videos` holds both kinds of row, discriminated by this column.
+const (
+	SourceYouTube = "youtube"
+	SourcePodcast = "podcast"
+)
+
 type Video struct {
 	ID                  uuid.UUID       `json:"id"`
 	UserID              int             `json:"user_id"`
 	KarakeepBookmarkID  string          `json:"karakeep_bookmark_id,omitempty"`
 	YouTubeID           string          `json:"youtube_id"`
+	Source              string          `json:"source"`
+	ExternalID          string          `json:"external_id"`
+	SourceURL           string          `json:"source_url,omitempty"`
+	SourceFeedID        string          `json:"source_feed_id,omitempty"`
+	ThumbnailURL        string          `json:"thumbnail_url,omitempty"`
+	PublishedAt         *time.Time      `json:"published_at,omitempty"`
 	Title               string          `json:"title"`
 	Channel             string          `json:"channel"`
 	DurationSeconds     int             `json:"duration_seconds,omitempty"`
@@ -37,6 +49,8 @@ type Video struct {
 type VideoMatch struct {
 	ID         uuid.UUID       `json:"id"`
 	YouTubeID  string          `json:"youtube_id"`
+	Source     string          `json:"source"`
+	SourceURL  string          `json:"source_url,omitempty"`
 	Title      string          `json:"title"`
 	Channel    string          `json:"channel"`
 	Summary    string          `json:"summary"`
@@ -46,12 +60,13 @@ type VideoMatch struct {
 }
 
 type VideoStats struct {
-	TotalCount             int            `json:"total_count"`
-	TotalDurationSeconds   int64          `json:"total_duration_seconds"`
-	ByStatus               map[string]int `json:"by_status"`
-	ByChannel              []ChannelCount `json:"by_channel"`
-	TopTopics              []TopicCount   `json:"top_topics"`
-	DailyActivity          []DailyCount   `json:"daily_activity"`
+	TotalCount           int            `json:"total_count"`
+	TotalDurationSeconds int64          `json:"total_duration_seconds"`
+	ByStatus             map[string]int `json:"by_status"`
+	BySource             map[string]int `json:"by_source"`
+	ByChannel            []ChannelCount `json:"by_channel"`
+	TopTopics            []TopicCount   `json:"top_topics"`
+	DailyActivity        []DailyCount   `json:"daily_activity"`
 }
 
 type ChannelCount struct {
@@ -69,44 +84,132 @@ type DailyCount struct {
 	Count int    `json:"count"`
 }
 
-func (db *DB) InsertVideo(ctx context.Context, v *Video) error {
-	var embeddingArg any
+// videoColumns is the SELECT list for every Video read, in the order scanVideo
+// expects. youtube_id is NULL on podcast rows, so it is coalesced and
+// Video.YouTubeID stays a plain string.
+const videoColumns = `id, user_id, karakeep_bookmark_id, COALESCE(youtube_id, ''), ` +
+	`title, channel, duration_seconds, language, transcript, summary, detail_level, ` +
+	`summary_provider, summary_model, summary_input_tokens, summary_output_tokens, ` +
+	`metadata, status, COALESCE(error_message, ''), created_at, updated_at, ` +
+	`source, external_id, COALESCE(source_url, ''), COALESCE(source_feed_id, ''), ` +
+	`COALESCE(thumbnail_url, ''), published_at`
+
+// videoColumnsNoTranscript is videoColumns with the transcript replaced by an
+// empty string, for list queries where the full text is dead weight.
+const videoColumnsNoTranscript = `id, user_id, karakeep_bookmark_id, COALESCE(youtube_id, ''), ` +
+	`title, channel, duration_seconds, language, '', summary, detail_level, ` +
+	`summary_provider, summary_model, summary_input_tokens, summary_output_tokens, ` +
+	`metadata, status, COALESCE(error_message, ''), created_at, updated_at, ` +
+	`source, external_id, COALESCE(source_url, ''), COALESCE(source_feed_id, ''), ` +
+	`COALESCE(thumbnail_url, ''), published_at`
+
+// rowScanner is satisfied by both pgx.Row and pgx.Rows.
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanVideo(row rowScanner) (*Video, error) {
+	var v Video
+	err := row.Scan(&v.ID, &v.UserID, &v.KarakeepBookmarkID, &v.YouTubeID,
+		&v.Title, &v.Channel, &v.DurationSeconds, &v.Language, &v.Transcript,
+		&v.Summary, &v.DetailLevel, &v.SummaryProvider,
+		&v.SummaryModel, &v.SummaryInputTokens, &v.SummaryOutputTokens, &v.Metadata,
+		&v.Status, &v.ErrorMessage, &v.CreatedAt, &v.UpdatedAt,
+		&v.Source, &v.ExternalID, &v.SourceURL, &v.SourceFeedID,
+		&v.ThumbnailURL, &v.PublishedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &v, nil
+}
+
+func scanVideos(rows pgx.Rows) ([]Video, error) {
+	defer rows.Close()
+	var videos []Video
+	for rows.Next() {
+		v, err := scanVideo(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan video: %w", err)
+		}
+		videos = append(videos, *v)
+	}
+	return videos, rows.Err()
+}
+
+// normalize fills in the defaults a row needs before it is written.
+func (v *Video) normalize() {
+	if v.Source == "" {
+		v.Source = SourceYouTube
+	}
+	if v.ExternalID == "" {
+		v.ExternalID = v.YouTubeID
+	}
 	if v.Metadata == nil {
 		v.Metadata = json.RawMessage(`{}`)
 	}
-	_, err := db.Pool.Exec(ctx, `
-		INSERT INTO videos (id, user_id, karakeep_bookmark_id, youtube_id, title, channel,
-			duration_seconds, language, transcript, summary, detail_level, summary_provider,
-			summary_model, summary_input_tokens, summary_output_tokens,
-			embedding, metadata, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-	`, v.ID, v.UserID, v.KarakeepBookmarkID, v.YouTubeID, v.Title, v.Channel,
+}
+
+// youtubeIDArg returns NULL for an empty YouTube ID. Writing the empty string
+// instead would make two podcast rows collide on UNIQUE(user_id, youtube_id).
+func (v *Video) youtubeIDArg() any {
+	if v.YouTubeID == "" {
+		return nil
+	}
+	return v.YouTubeID
+}
+
+const insertVideoSQL = `
+	INSERT INTO videos (id, user_id, karakeep_bookmark_id, youtube_id, title, channel,
+		duration_seconds, language, transcript, summary, detail_level, summary_provider,
+		summary_model, summary_input_tokens, summary_output_tokens,
+		embedding, metadata, status,
+		source, external_id, source_url, source_feed_id, thumbnail_url, published_at)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
+		$19, $20, NULLIF($21, ''), NULLIF($22, ''), NULLIF($23, ''), $24)`
+
+func (v *Video) insertArgs() []any {
+	var embeddingArg any
+	return []any{v.ID, v.UserID, v.KarakeepBookmarkID, v.youtubeIDArg(), v.Title, v.Channel,
 		v.DurationSeconds, v.Language, v.Transcript, v.Summary, v.DetailLevel, v.SummaryProvider,
 		v.SummaryModel, v.SummaryInputTokens, v.SummaryOutputTokens,
-		embeddingArg, v.Metadata, v.Status)
-	if err != nil {
+		embeddingArg, v.Metadata, v.Status,
+		v.Source, v.ExternalID, v.SourceURL, v.SourceFeedID, v.ThumbnailURL, v.PublishedAt}
+}
+
+func (db *DB) InsertVideo(ctx context.Context, v *Video) error {
+	v.normalize()
+	if _, err := db.Pool.Exec(ctx, insertVideoSQL, v.insertArgs()...); err != nil {
 		return fmt.Errorf("insert video: %w", err)
 	}
 	return nil
 }
 
-func (db *DB) GetByYouTubeID(ctx context.Context, userID int, youtubeID string) (*Video, error) {
-	var v Video
-	err := db.Pool.QueryRow(ctx, `
-		SELECT id, user_id, karakeep_bookmark_id, youtube_id, title, channel,
-			duration_seconds, language, transcript, summary, detail_level, summary_provider,
-			summary_model, summary_input_tokens, summary_output_tokens, metadata,
-			status, COALESCE(error_message, ''), created_at, updated_at
-		FROM videos WHERE user_id = $1 AND youtube_id = $2
-	`, userID, youtubeID).Scan(&v.ID, &v.UserID, &v.KarakeepBookmarkID, &v.YouTubeID,
-		&v.Title, &v.Channel, &v.DurationSeconds, &v.Language, &v.Transcript,
-		&v.Summary, &v.DetailLevel, &v.SummaryProvider,
-		&v.SummaryModel, &v.SummaryInputTokens, &v.SummaryOutputTokens, &v.Metadata,
-		&v.Status, &v.ErrorMessage, &v.CreatedAt, &v.UpdatedAt)
+// EnsureVideoRow inserts the row if the (user, source, external ID) triple is
+// new and returns whatever row exists afterwards. Concurrent pollers and a
+// manual submission for the same episode therefore converge on one row.
+func (db *DB) EnsureVideoRow(ctx context.Context, v *Video) (*Video, error) {
+	v.normalize()
+	_, err := db.Pool.Exec(ctx,
+		insertVideoSQL+` ON CONFLICT (user_id, source, external_id) DO NOTHING`,
+		v.insertArgs()...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ensure video row: %w", err)
 	}
-	return &v, nil
+	return db.GetBySourceID(ctx, v.UserID, v.Source, v.ExternalID)
+}
+
+func (db *DB) GetByYouTubeID(ctx context.Context, userID int, youtubeID string) (*Video, error) {
+	return scanVideo(db.Pool.QueryRow(ctx,
+		`SELECT `+videoColumns+` FROM videos WHERE user_id = $1 AND youtube_id = $2`,
+		userID, youtubeID))
+}
+
+// GetBySourceID looks a row up by its source-native identifier.
+func (db *DB) GetBySourceID(ctx context.Context, userID int, source, externalID string) (*Video, error) {
+	return scanVideo(db.Pool.QueryRow(ctx,
+		`SELECT `+videoColumns+`
+		FROM videos WHERE user_id = $1 AND source = $2 AND external_id = $3`,
+		userID, source, externalID))
 }
 
 func (db *DB) UpdateBookmarkID(ctx context.Context, id uuid.UUID, bookmarkID string) error {
@@ -117,22 +220,9 @@ func (db *DB) UpdateBookmarkID(ctx context.Context, id uuid.UUID, bookmarkID str
 }
 
 func (db *DB) GetVideo(ctx context.Context, userID int, id uuid.UUID) (*Video, error) {
-	var v Video
-	err := db.Pool.QueryRow(ctx, `
-		SELECT id, user_id, karakeep_bookmark_id, youtube_id, title, channel,
-			duration_seconds, language, transcript, summary, detail_level, summary_provider,
-			summary_model, summary_input_tokens, summary_output_tokens, metadata,
-			status, COALESCE(error_message, ''), created_at, updated_at
-		FROM videos WHERE id = $1 AND user_id = $2
-	`, id, userID).Scan(&v.ID, &v.UserID, &v.KarakeepBookmarkID, &v.YouTubeID,
-		&v.Title, &v.Channel, &v.DurationSeconds, &v.Language, &v.Transcript,
-		&v.Summary, &v.DetailLevel, &v.SummaryProvider,
-		&v.SummaryModel, &v.SummaryInputTokens, &v.SummaryOutputTokens, &v.Metadata,
-		&v.Status, &v.ErrorMessage, &v.CreatedAt, &v.UpdatedAt)
-	if err != nil {
-		return nil, err
-	}
-	return &v, nil
+	return scanVideo(db.Pool.QueryRow(ctx,
+		`SELECT `+videoColumns+` FROM videos WHERE id = $1 AND user_id = $2`,
+		id, userID))
 }
 
 func (db *DB) UpdateVideoSummary(ctx context.Context, id uuid.UUID, summary string, detailLevel string, provider string, model string, inputTokens, outputTokens int, embedding []float32, metadata json.RawMessage) error {
@@ -190,88 +280,61 @@ func (db *DB) UpdateVideoStatus(ctx context.Context, id uuid.UUID, status, error
 	return err
 }
 
+// The three batch queries below feed the YouTube pipeline, which addresses rows
+// by their YouTube ID. Without the source filter the first failed podcast row
+// would produce jobs with an empty YouTube ID.
+
 func (db *DB) ListFailedVideos(ctx context.Context, userID int) ([]Video, error) {
-	rows, err := db.Pool.Query(ctx, `
-		SELECT id, user_id, karakeep_bookmark_id, youtube_id, title, channel,
-			duration_seconds, language, '', summary, detail_level, summary_provider,
-			summary_model, summary_input_tokens, summary_output_tokens, metadata,
-			status, COALESCE(error_message, ''), created_at, updated_at
-		FROM videos WHERE user_id = $1 AND status = 'failed'
-	`, userID)
+	rows, err := db.Pool.Query(ctx,
+		`SELECT `+videoColumnsNoTranscript+`
+		FROM videos WHERE user_id = $1 AND status = 'failed' AND source = 'youtube'`,
+		userID)
 	if err != nil {
 		return nil, fmt.Errorf("list failed videos: %w", err)
 	}
-	defer rows.Close()
-
-	var videos []Video
-	for rows.Next() {
-		var v Video
-		if err := rows.Scan(&v.ID, &v.UserID, &v.KarakeepBookmarkID, &v.YouTubeID,
-			&v.Title, &v.Channel, &v.DurationSeconds, &v.Language, &v.Transcript,
-			&v.Summary, &v.DetailLevel, &v.SummaryProvider,
-			&v.SummaryModel, &v.SummaryInputTokens, &v.SummaryOutputTokens, &v.Metadata,
-			&v.Status, &v.ErrorMessage, &v.CreatedAt, &v.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan failed video: %w", err)
-		}
-		videos = append(videos, v)
-	}
-	return videos, rows.Err()
+	return scanVideos(rows)
 }
 
 func (db *DB) ListVideosWithoutMetadata(ctx context.Context, userID int) ([]Video, error) {
-	rows, err := db.Pool.Query(ctx, `
-		SELECT id, user_id, karakeep_bookmark_id, youtube_id, title, channel,
-			duration_seconds, language, '', summary, detail_level, summary_provider,
-			summary_model, summary_input_tokens, summary_output_tokens, metadata,
-			status, COALESCE(error_message, ''), created_at, updated_at
-		FROM videos WHERE user_id = $1 AND title = ''
-	`, userID)
+	rows, err := db.Pool.Query(ctx,
+		`SELECT `+videoColumnsNoTranscript+`
+		FROM videos WHERE user_id = $1 AND title = '' AND source = 'youtube'`,
+		userID)
 	if err != nil {
 		return nil, fmt.Errorf("list videos without metadata: %w", err)
 	}
-	defer rows.Close()
-
-	var videos []Video
-	for rows.Next() {
-		var v Video
-		if err := rows.Scan(&v.ID, &v.UserID, &v.KarakeepBookmarkID, &v.YouTubeID,
-			&v.Title, &v.Channel, &v.DurationSeconds, &v.Language, &v.Transcript,
-			&v.Summary, &v.DetailLevel, &v.SummaryProvider,
-			&v.SummaryModel, &v.SummaryInputTokens, &v.SummaryOutputTokens, &v.Metadata,
-			&v.Status, &v.ErrorMessage, &v.CreatedAt, &v.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan video without metadata: %w", err)
-		}
-		videos = append(videos, v)
-	}
-	return videos, rows.Err()
+	return scanVideos(rows)
 }
 
 func (db *DB) ListNoCaptionsVideos(ctx context.Context, userID int) ([]Video, error) {
-	rows, err := db.Pool.Query(ctx, `
-		SELECT id, user_id, karakeep_bookmark_id, youtube_id, title, channel,
-			duration_seconds, language, '', summary, detail_level, summary_provider,
-			summary_model, summary_input_tokens, summary_output_tokens, metadata,
-			status, COALESCE(error_message, ''), created_at, updated_at
-		FROM videos WHERE user_id = $1 AND status = 'no_captions'
-	`, userID)
+	rows, err := db.Pool.Query(ctx,
+		`SELECT `+videoColumnsNoTranscript+`
+		FROM videos WHERE user_id = $1 AND status = 'no_captions' AND source = 'youtube'`,
+		userID)
 	if err != nil {
 		return nil, fmt.Errorf("list no_captions videos: %w", err)
 	}
-	defer rows.Close()
+	return scanVideos(rows)
+}
 
-	var videos []Video
-	for rows.Next() {
-		var v Video
-		if err := rows.Scan(&v.ID, &v.UserID, &v.KarakeepBookmarkID, &v.YouTubeID,
-			&v.Title, &v.Channel, &v.DurationSeconds, &v.Language, &v.Transcript,
-			&v.Summary, &v.DetailLevel, &v.SummaryProvider,
-			&v.SummaryModel, &v.SummaryInputTokens, &v.SummaryOutputTokens, &v.Metadata,
-			&v.Status, &v.ErrorMessage, &v.CreatedAt, &v.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan no_captions video: %w", err)
-		}
-		videos = append(videos, v)
+// ListStalePodcasts returns podcast rows that have been pending or processing
+// for longer than the given number of minutes, across all users. A restart in
+// the middle of processing, a queue overflow and a crashed job all look the
+// same from here, and all three are fixed by re-queuing.
+func (db *DB) ListStalePodcasts(ctx context.Context, olderThanMinutes int, limit int) ([]Video, error) {
+	rows, err := db.Pool.Query(ctx,
+		`SELECT `+videoColumnsNoTranscript+`
+		FROM videos
+		WHERE source = 'podcast'
+		  AND status IN ('pending', 'processing')
+		  AND updated_at < NOW() - make_interval(mins => $1)
+		ORDER BY updated_at ASC
+		LIMIT $2`,
+		olderThanMinutes, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list stale podcasts: %w", err)
 	}
-	return videos, rows.Err()
+	return scanVideos(rows)
 }
 
 func (db *DB) DeleteVideo(ctx context.Context, userID int, id uuid.UUID) error {
@@ -290,34 +353,49 @@ func (db *DB) DeleteByBookmarkID(ctx context.Context, userID int, bookmarkID str
 	return err
 }
 
-func (db *DB) SearchVideos(ctx context.Context, userID int, embedding []float32, threshold float64, limit int) ([]VideoMatch, error) {
-	rows, err := db.Pool.Query(ctx, `
-		SELECT id, youtube_id, title, channel, summary, metadata, similarity, created_at
-		FROM match_videos($1, $2, $3, $4)
-	`, pgvector.NewVector(embedding), userID, threshold, limit)
-	if err != nil {
-		return nil, fmt.Errorf("search videos: %w", err)
-	}
+func scanMatches(rows pgx.Rows, what string) ([]VideoMatch, error) {
 	defer rows.Close()
-
 	var matches []VideoMatch
 	for rows.Next() {
 		var m VideoMatch
-		if err := rows.Scan(&m.ID, &m.YouTubeID, &m.Title, &m.Channel, &m.Summary,
-			&m.Metadata, &m.Similarity, &m.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan video match: %w", err)
+		if err := rows.Scan(&m.ID, &m.YouTubeID, &m.Source, &m.SourceURL, &m.Title,
+			&m.Channel, &m.Summary, &m.Metadata, &m.Similarity, &m.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan %s: %w", what, err)
 		}
 		matches = append(matches, m)
 	}
 	return matches, rows.Err()
 }
 
-func (db *DB) TextSearchVideos(ctx context.Context, userID int, query string, limit int) ([]VideoMatch, error) {
+// SearchVideos runs the semantic match. An empty source searches both kinds.
+func (db *DB) SearchVideos(ctx context.Context, userID int, embedding []float32, threshold float64, limit int, source string) ([]VideoMatch, error) {
+	var sourceArg any
+	if source != "" {
+		sourceArg = source
+	}
 	rows, err := db.Pool.Query(ctx, `
-		SELECT id, youtube_id, title, channel, summary, metadata, 0.0::float8 AS similarity, created_at
+		SELECT id, youtube_id, source, source_url, title, channel, summary, metadata, similarity, created_at
+		FROM match_videos($1, $2, $3, $4, $5)
+	`, pgvector.NewVector(embedding), userID, threshold, limit, sourceArg)
+	if err != nil {
+		return nil, fmt.Errorf("search videos: %w", err)
+	}
+	return scanMatches(rows, "video match")
+}
+
+// TextSearchVideos runs the keyword match. An empty source searches both kinds.
+func (db *DB) TextSearchVideos(ctx context.Context, userID int, query string, limit int, source string) ([]VideoMatch, error) {
+	var sourceArg any
+	if source != "" {
+		sourceArg = source
+	}
+	rows, err := db.Pool.Query(ctx, `
+		SELECT id, COALESCE(youtube_id, ''), source, COALESCE(source_url, ''), title, channel,
+		       summary, metadata, 0.0::float8 AS similarity, created_at
 		FROM videos
 		WHERE user_id = $1
 		  AND status = 'completed'
+		  AND ($4::text IS NULL OR source = $4)
 		  AND (
 		    title ILIKE '%' || $2 || '%'
 		    OR channel ILIKE '%' || $2 || '%'
@@ -327,22 +405,11 @@ func (db *DB) TextSearchVideos(ctx context.Context, userID int, query string, li
 		  )
 		ORDER BY created_at DESC
 		LIMIT $3
-	`, userID, query, limit)
+	`, userID, query, limit, sourceArg)
 	if err != nil {
 		return nil, fmt.Errorf("text search videos: %w", err)
 	}
-	defer rows.Close()
-
-	var matches []VideoMatch
-	for rows.Next() {
-		var m VideoMatch
-		if err := rows.Scan(&m.ID, &m.YouTubeID, &m.Title, &m.Channel, &m.Summary,
-			&m.Metadata, &m.Similarity, &m.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan text match: %w", err)
-		}
-		matches = append(matches, m)
-	}
-	return matches, rows.Err()
+	return scanMatches(rows, "text match")
 }
 
 type ListFilters struct {
@@ -350,6 +417,7 @@ type ListFilters struct {
 	Language string
 	Topic    string
 	Status   string
+	Source   string
 }
 
 func (db *DB) ListRecent(ctx context.Context, userID int, filters ListFilters, limit, offset int) ([]Video, int, error) {
@@ -357,35 +425,31 @@ func (db *DB) ListRecent(ctx context.Context, userID int, filters ListFilters, l
 	if filters.Status != "" {
 		statusFilter = fmt.Sprintf("status = '%s'", filters.Status)
 	}
-	query := fmt.Sprintf(`SELECT id, user_id, karakeep_bookmark_id, youtube_id, title, channel,
-		duration_seconds, language, '', summary, detail_level, summary_provider,
-		summary_model, summary_input_tokens, summary_output_tokens, metadata,
-		status, COALESCE(error_message, ''), created_at, updated_at
+	query := fmt.Sprintf(`SELECT `+videoColumnsNoTranscript+`
 		FROM videos WHERE user_id = $1 AND %s`, statusFilter)
 	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM videos WHERE user_id = $1 AND %s`, statusFilter)
 	args := []any{userID}
 	argN := 2
 
-	if filters.Channel != "" {
-		clause := fmt.Sprintf(` AND channel ILIKE '%%' || $%d || '%%'`, argN)
+	addFilter := func(clauseFmt string, value any) {
+		clause := fmt.Sprintf(clauseFmt, argN)
 		query += clause
 		countQuery += clause
-		args = append(args, filters.Channel)
+		args = append(args, value)
 		argN++
+	}
+
+	if filters.Source != "" {
+		addFilter(` AND source = $%d`, filters.Source)
+	}
+	if filters.Channel != "" {
+		addFilter(` AND channel ILIKE '%%' || $%d || '%%'`, filters.Channel)
 	}
 	if filters.Language != "" {
-		clause := fmt.Sprintf(` AND language = $%d`, argN)
-		query += clause
-		countQuery += clause
-		args = append(args, filters.Language)
-		argN++
+		addFilter(` AND language = $%d`, filters.Language)
 	}
 	if filters.Topic != "" {
-		clause := fmt.Sprintf(` AND metadata->'topics' ? $%d`, argN)
-		query += clause
-		countQuery += clause
-		args = append(args, filters.Topic)
-		argN++
+		addFilter(` AND metadata->'topics' ? $%d`, filters.Topic)
 	}
 
 	var total int
@@ -400,45 +464,46 @@ func (db *DB) ListRecent(ctx context.Context, userID int, filters ListFilters, l
 	if err != nil {
 		return nil, 0, fmt.Errorf("list videos: %w", err)
 	}
-	defer rows.Close()
-
-	var videos []Video
-	for rows.Next() {
-		var v Video
-		if err := rows.Scan(&v.ID, &v.UserID, &v.KarakeepBookmarkID, &v.YouTubeID,
-			&v.Title, &v.Channel, &v.DurationSeconds, &v.Language, &v.Transcript,
-			&v.Summary, &v.DetailLevel, &v.SummaryProvider,
-			&v.SummaryModel, &v.SummaryInputTokens, &v.SummaryOutputTokens, &v.Metadata,
-			&v.Status, &v.ErrorMessage, &v.CreatedAt, &v.UpdatedAt); err != nil {
-			return nil, 0, fmt.Errorf("scan video: %w", err)
-		}
-		videos = append(videos, v)
+	videos, err := scanVideos(rows)
+	if err != nil {
+		return nil, 0, err
 	}
-	return videos, total, rows.Err()
+	return videos, total, nil
 }
 
-func (db *DB) GetStats(ctx context.Context, userID int) (*VideoStats, error) {
+// GetStats aggregates over one source, or over both when source is empty.
+func (db *DB) GetStats(ctx context.Context, userID int, source string) (*VideoStats, error) {
 	stats := &VideoStats{
 		ByStatus: make(map[string]int),
+		BySource: make(map[string]int),
 	}
 
-	if err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM videos WHERE user_id = $1`, userID).Scan(&stats.TotalCount); err != nil {
+	var sourceArg any
+	if source != "" {
+		sourceArg = source
+	}
+	// $2 is the optional source filter, repeated in every query below.
+	const srcClause = ` AND ($2::text IS NULL OR source = $2)`
+
+	if err := db.Pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM videos WHERE user_id = $1`+srcClause,
+		userID, sourceArg).Scan(&stats.TotalCount); err != nil {
 		return nil, fmt.Errorf("count videos: %w", err)
 	}
 
 	if err := db.Pool.QueryRow(ctx, `
 		SELECT COALESCE(SUM(duration_seconds), 0)
 		FROM videos
-		WHERE user_id = $1 AND status = 'completed' AND duration_seconds IS NOT NULL
-	`, userID).Scan(&stats.TotalDurationSeconds); err != nil {
+		WHERE user_id = $1 AND status = 'completed' AND duration_seconds IS NOT NULL`+srcClause,
+		userID, sourceArg).Scan(&stats.TotalDurationSeconds); err != nil {
 		return nil, fmt.Errorf("sum durations: %w", err)
 	}
 
 	// By status
 	rows, err := db.Pool.Query(ctx, `
-		SELECT status, COUNT(*) FROM videos WHERE user_id = $1
+		SELECT status, COUNT(*) FROM videos WHERE user_id = $1`+srcClause+`
 		GROUP BY status ORDER BY COUNT(*) DESC
-	`, userID)
+	`, userID, sourceArg)
 	if err != nil {
 		return nil, fmt.Errorf("status counts: %w", err)
 	}
@@ -453,12 +518,30 @@ func (db *DB) GetStats(ctx context.Context, userID int) (*VideoStats, error) {
 	}
 	rows.Close()
 
+	// By source — always unfiltered, so the UI can offer the other tab's count.
+	rows, err = db.Pool.Query(ctx, `
+		SELECT source, COUNT(*) FROM videos WHERE user_id = $1 GROUP BY source
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("source counts: %w", err)
+	}
+	for rows.Next() {
+		var src string
+		var count int
+		if err := rows.Scan(&src, &count); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		stats.BySource[src] = count
+	}
+	rows.Close()
+
 	// By channel
 	rows, err = db.Pool.Query(ctx, `
 		SELECT COALESCE(channel, 'unknown'), COUNT(*) as cnt
-		FROM videos WHERE user_id = $1 AND status = 'completed'
+		FROM videos WHERE user_id = $1 AND status = 'completed'`+srcClause+`
 		GROUP BY channel ORDER BY cnt DESC LIMIT 10
-	`, userID)
+	`, userID, sourceArg)
 	if err != nil {
 		return nil, fmt.Errorf("channel counts: %w", err)
 	}
@@ -476,9 +559,9 @@ func (db *DB) GetStats(ctx context.Context, userID int) (*VideoStats, error) {
 	rows, err = db.Pool.Query(ctx, `
 		SELECT topic, COUNT(*) as cnt
 		FROM videos, jsonb_array_elements_text(metadata->'topics') AS topic
-		WHERE user_id = $1 AND status = 'completed'
+		WHERE user_id = $1 AND status = 'completed'`+srcClause+`
 		GROUP BY topic ORDER BY cnt DESC LIMIT 10
-	`, userID)
+	`, userID, sourceArg)
 	if err != nil && err != pgx.ErrNoRows {
 		return nil, fmt.Errorf("top topics: %w", err)
 	}
@@ -496,9 +579,9 @@ func (db *DB) GetStats(ctx context.Context, userID int) (*VideoStats, error) {
 	rows, err = db.Pool.Query(ctx, `
 		SELECT created_at::date::text AS day, COUNT(*)
 		FROM videos
-		WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '30 days'
+		WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '30 days'`+srcClause+`
 		GROUP BY day ORDER BY day
-	`, userID)
+	`, userID, sourceArg)
 	if err != nil {
 		return nil, fmt.Errorf("daily activity: %w", err)
 	}

@@ -21,6 +21,58 @@ identifier rather than estimated.
 
 ---
 
+## 2026-08-06 — podcast summaries live in vimmary, with cast2md as a transcript source
+
+**Decided:** 2026-08-06
+
+**Decision.** vimmary summarizes podcast episodes as well as YouTube videos.
+cast2md keeps downloading and transcribing; it gained one additive query
+extension (`since`, `feed_id` and `order` on `GET /api/episodes/status/{status}`)
+and one optional link back. vimmary polls cast2md over the tailnet with a
+persisted watermark. No summarization logic was added to cast2md.
+
+The two kinds share one table, `videos`, discriminated by a `source` column, and
+one processing path from the transcript onwards. They are separated at every
+point a reader meets them: `GET /api/v1/videos` and MCP `list_recent` default to
+`source=youtube`, the GUI has its own Podcasts page, every card and detail page
+carries a type marker, and there are three RSS feeds instead of one.
+
+**Reasoning.** Everything downstream of the transcript — summarizer interface,
+per-user prompts, model registry, pgvector embeddings, hybrid search, Atom feed,
+web UI — was already source-independent and only wired to YouTube. Rebuilding
+that in cast2md would have been a second copy of six subsystems; the alternative
+of a shared library for them is the same coupling with more moving parts.
+
+Sharing the table rather than adding a `podcasts` table follows from where the
+work is: search, stats, feed and UI all operate over one list, and two tables
+would mean a UNION in every one of them. The cost is that source-blind queries
+become bugs — `ListFailedVideos`, `ListVideosWithoutMetadata` and
+`ListNoCaptionsVideos` all needed `AND source = 'youtube'`, because their callers
+hand `YouTubeID` to the YouTube pipeline.
+
+Polling rather than a webhook from cast2md keeps the direction of dependency
+single: cast2md does not know vimmary exists, except for one optional link in a
+template. The watermark is stored as text and always comes from cast2md's own
+`updated_at`, because those timestamps are naive local time — a round trip
+through Go's timezone handling is the one place episodes could be skipped
+silently.
+
+Subscribing means "from now on". A new subscription's first poll records the
+newest episode's timestamp and processes nothing; older episodes are fetched
+explicitly with backfill. The alternative — summarizing a feed's whole history on
+subscribe — turns one checkbox into hundreds of LLM calls.
+
+**Trigger to re-open.** cast2md grows its own summarization, or the split of
+concerns stops matching how the two services are actually operated.
+
+**Revisions.** This revises the 2026-03 decision below ("a separate service, not
+a cast2md extension"), whose reasoning was that podcasts belong to cast2md and
+videos to vimmary. That boundary held for *transcription* and still does; it did
+not hold for *summarization*, which is the trigger that entry named. The separate
+services remain separate.
+
+---
+
 ## 2026-05-17 — the GitHub release job stays inline until a third public project exists
 
 **Decided:** 2026-05-17
@@ -168,6 +220,11 @@ across its updates and puts the operator on someone else's release schedule.
 
 **Trigger to re-open.** Karakeep gains a stable, documented plugin interface, or
 cast2md and vimmary end up sharing more code than they differ in.
+
+**Revisions.** 2026-08-06: the claim that podcasts are out of vimmary's domain
+no longer holds. Summarization moved to vimmary for both kinds; see the
+2026-08-06 entry above. The two services stay separate — cast2md transcribes,
+vimmary summarizes.
 
 ---
 

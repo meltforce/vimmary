@@ -5,36 +5,90 @@ import (
 	"testing"
 )
 
-func TestPromptForLevel(t *testing.T) {
+func TestPromptFor(t *testing.T) {
 	tests := []struct {
+		source   string
 		level    string
 		contains string
 	}{
-		{"medium", "3-5 paragraphs"},
-		{"deep", "chapter-by-chapter"},
-		{"", "3-5 paragraphs"},       // default to medium
-		{"unknown", "3-5 paragraphs"}, // unknown defaults to medium
+		{"youtube", "medium", "3-5 paragraphs"},
+		{"youtube", "deep", "chapter-by-chapter"},
+		{"youtube", "", "3-5 paragraphs"},        // default to medium
+		{"youtube", "unknown", "3-5 paragraphs"}, // unknown defaults to medium
+		{"podcast", "medium", "This is a conversation"},
+		{"podcast", "deep", "segment-by-segment"},
+		{"podcast", "", "This is a conversation"},
+		{"", "medium", "3-5 paragraphs"}, // unknown source falls back to video
+		{"unknown", "deep", "chapter-by-chapter"},
 	}
 
 	for _, tt := range tests {
-		t.Run("level="+tt.level, func(t *testing.T) {
-			got := promptForLevel(tt.level)
+		t.Run(tt.source+"/"+tt.level, func(t *testing.T) {
+			got := promptFor(tt.source, tt.level)
 			if !strings.Contains(got, tt.contains) {
-				t.Errorf("promptForLevel(%q) should contain %q", tt.level, tt.contains)
+				t.Errorf("promptFor(%q, %q) should contain %q", tt.source, tt.level, tt.contains)
 			}
 		})
 	}
 }
 
-func TestDefaultPrompt(t *testing.T) {
-	medium := DefaultPrompt("medium")
-	deep := DefaultPrompt("deep")
-
-	if !strings.Contains(medium, "3-5 paragraphs") {
-		t.Error("DefaultPrompt(medium) should contain '3-5 paragraphs'")
+func TestDefaultPromptFor(t *testing.T) {
+	if !strings.Contains(DefaultPromptFor("youtube", "medium"), "3-5 paragraphs") {
+		t.Error("video medium prompt should contain '3-5 paragraphs'")
 	}
-	if !strings.Contains(deep, "chapter-by-chapter") {
-		t.Error("DefaultPrompt(deep) should contain 'chapter-by-chapter'")
+	if !strings.Contains(DefaultPromptFor("youtube", "deep"), "chapter-by-chapter") {
+		t.Error("video deep prompt should contain 'chapter-by-chapter'")
+	}
+	if !strings.Contains(DefaultPromptFor("podcast", "deep"), "## References") {
+		t.Error("podcast deep prompt should ask for a References section")
+	}
+}
+
+// Every built-in prompt has to carry all three placeholders, otherwise
+// BuildPrompt silently drops the transcript or the language instruction.
+func TestPromptPlaceholders(t *testing.T) {
+	for _, source := range []string{"youtube", "podcast"} {
+		for _, level := range []string{"medium", "deep"} {
+			t.Run(source+"/"+level, func(t *testing.T) {
+				tmpl := DefaultPromptFor(source, level)
+				for _, ph := range []string{"{{TITLE}}", "{{LANGUAGE}}", "{{TRANSCRIPT}}"} {
+					if !strings.Contains(tmpl, ph) {
+						t.Errorf("prompt is missing %s", ph)
+					}
+				}
+				built := BuildPrompt(tmpl, "Some Show — Episode 12", "de", "transcript body")
+				if strings.Contains(built, "{{") {
+					t.Error("BuildPrompt left a placeholder unreplaced")
+				}
+				if !strings.Contains(built, "Some Show — Episode 12") {
+					t.Error("BuildPrompt did not substitute the title")
+				}
+				if !strings.Contains(built, "transcript body") {
+					t.Error("BuildPrompt did not substitute the transcript")
+				}
+			})
+		}
+	}
+}
+
+// The podcast path passes LangSameAsTranscript because cast2md reports no
+// language for an episode.
+func TestLangSameAsTranscript(t *testing.T) {
+	got := languageInstruction(LangSameAsTranscript)
+	if !strings.Contains(got, "same language as the transcript") {
+		t.Errorf("languageInstruction(%q) = %q", LangSameAsTranscript, got)
+	}
+}
+
+func TestMaxOutputTokens(t *testing.T) {
+	if got := maxOutputTokens("medium"); got != 4096 {
+		t.Errorf("medium budget = %d, want 4096", got)
+	}
+	if got := maxOutputTokens("deep"); got != 16000 {
+		t.Errorf("deep budget = %d, want 16000", got)
+	}
+	if got := maxOutputTokens(""); got != 4096 {
+		t.Errorf("empty level budget = %d, want the medium budget 4096", got)
 	}
 }
 

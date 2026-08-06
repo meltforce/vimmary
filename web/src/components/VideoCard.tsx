@@ -2,11 +2,15 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { deleteVideo, retryVideo, transcribeVideo } from "../api.ts";
+import type { ContentSource } from "../api.ts";
+import SourceBadge, { MicIcon } from "./SourceBadge.tsx";
 import { formatDuration, stripMarkdown } from "../utils.ts";
 
 interface Props {
   id: string;
   youtubeId: string;
+  source?: ContentSource;
+  thumbnailUrl?: string;
   title: string;
   channel: string;
   durationSeconds?: number;
@@ -30,6 +34,8 @@ function formatDate(iso?: string): string {
 export default function VideoCard({
   id,
   youtubeId,
+  source = "youtube",
+  thumbnailUrl,
   title,
   channel,
   durationSeconds,
@@ -59,7 +65,13 @@ export default function VideoCard({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["videos"] }),
   });
 
-  const thumbnail = `https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`;
+  const isPodcast = source === "podcast";
+  // Podcasts have no per-episode still, so the feed cover art stands in and a
+  // missing cover falls back to a mic placeholder rather than a broken image.
+  const thumbnail = isPodcast
+    ? thumbnailUrl
+    : `https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`;
+  const detailPath = isPodcast ? `/podcast/${id}` : `/video/${id}`;
   const isFailed = status === "failed";
   const isNoCaptions = status === "no_captions";
   const isProcessing = status === "processing" || status === "pending";
@@ -79,13 +91,32 @@ export default function VideoCard({
       }}
     >
       <div className="vim-thumb vim-thumb-list-row" style={{ width: 176, height: 99 }}>
-        <img src={thumbnail} alt="" />
+        {thumbnail ? (
+          <img src={thumbnail} alt="" />
+        ) : (
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "var(--vim-surface-2)",
+            }}
+          >
+            <MicIcon size={28} color="var(--vim-ink-4)" />
+          </div>
+        )}
         {durationSeconds ? <span className="dur">{formatDuration(durationSeconds)}</span> : null}
         {isLinked && (
           <div className="play">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="#fff">
-              <path d="M3 1.5v11L13 7z" />
-            </svg>
+            {isPodcast ? (
+              <MicIcon size={13} color="#fff" />
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="#fff">
+                <path d="M3 1.5v11L13 7z" />
+              </svg>
+            )}
           </div>
         )}
       </div>
@@ -101,6 +132,8 @@ export default function VideoCard({
             flexWrap: "wrap",
           }}
         >
+          <SourceBadge source={source} />
+          <span className="vim-dot" />
           {channel && <span>{channel}</span>}
           {createdAt && (
             <>
@@ -114,7 +147,7 @@ export default function VideoCard({
               <span className="vim-status fail">failed</span>
             </>
           )}
-          {isNoCaptions && (
+          {isNoCaptions && !isPodcast && (
             <>
               <span className="vim-dot" />
               <span className="vim-status fail">no captions</span>
@@ -166,7 +199,7 @@ export default function VideoCard({
             {errorMessage}
           </p>
         )}
-        {isNoCaptions && (
+        {isNoCaptions && !isPodcast && (
           <p style={{ fontSize: 12.5, color: "var(--vim-ink-3)", margin: "0 0 10px" }}>
             No captions available on YouTube.
           </p>
@@ -207,7 +240,7 @@ export default function VideoCard({
               {retry.isPending ? "Retrying…" : "Retry"}
             </button>
           )}
-          {isNoCaptions && (
+          {isNoCaptions && !isPodcast && (
             <button
               onClick={(e) => {
                 stop(e);
@@ -293,7 +326,7 @@ export default function VideoCard({
   if (!isLinked) return inner;
 
   return (
-    <Link to={`/video/${id}`} style={{ display: "block", color: "inherit", textDecoration: "none" }}>
+    <Link to={detailPath} style={{ display: "block", color: "inherit", textDecoration: "none" }}>
       {inner}
     </Link>
   );

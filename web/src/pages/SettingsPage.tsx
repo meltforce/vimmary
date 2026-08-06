@@ -11,9 +11,18 @@ import {
   fetchProviders,
   fetchModels,
   setModel,
+  listPodcastFeeds,
+  setPodcastSubscription,
+  backfillPodcastFeed,
 } from "../api.ts";
-import type { ModelInfo, ModelsResponse } from "../api.ts";
+import type {
+  ContentSource,
+  ModelInfo,
+  ModelsResponse,
+  PodcastFeed,
+} from "../api.ts";
 import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
+import { MicIcon } from "../components/SourceBadge.tsx";
 
 function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -221,11 +230,13 @@ function ModelSelector() {
 }
 
 function PromptEditor({
+  source,
   level,
   label,
   currentPrompt,
   defaultPrompt,
 }: {
+  source: ContentSource;
   level: string;
   label: string;
   currentPrompt: string;
@@ -237,12 +248,12 @@ function PromptEditor({
   const isCustom = currentPrompt !== defaultPrompt;
 
   const save = useMutation({
-    mutationFn: (prompt: string) => setSummaryPrompt(level, prompt),
+    mutationFn: (prompt: string) => setSummaryPrompt(source, level, prompt),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["settings", "prompts"] }),
   });
 
   const reset = useMutation({
-    mutationFn: () => setSummaryPrompt(level, ""),
+    mutationFn: () => setSummaryPrompt(source, level, ""),
     onSuccess: () => {
       setValue(defaultPrompt);
       queryClient.invalidateQueries({ queryKey: ["settings", "prompts"] });
@@ -337,10 +348,206 @@ function PromptEditor({
   );
 }
 
+function formatPolled(iso?: string): string {
+  if (!iso) return "never polled";
+  return `polled ${new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+}
+
+function PodcastFeedRow({ feed, isLast }: { feed: PodcastFeed; isLast: boolean }) {
+  const queryClient = useQueryClient();
+  const [backfillLimit, setBackfillLimit] = useState(5);
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["podcast-feeds"] });
+    queryClient.invalidateQueries({ queryKey: ["podcasts"] });
+  };
+
+  const subscribe = useMutation({
+    mutationFn: (next: { enabled: boolean; level: string }) =>
+      setPodcastSubscription(feed.feed_id, next.enabled, next.level),
+    onSuccess: invalidate,
+  });
+
+  const backfill = useMutation({
+    mutationFn: () => backfillPodcastFeed(feed.feed_id, backfillLimit),
+    onSuccess: invalidate,
+  });
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 14,
+        padding: "16px 0",
+        borderBottom: isLast ? "none" : "1px solid var(--vim-line-soft)",
+      }}
+    >
+      <div
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: 8,
+          overflow: "hidden",
+          flexShrink: 0,
+          background: "var(--vim-surface-2)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {feed.image_url ? (
+          <img
+            src={feed.image_url}
+            alt=""
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : (
+          <MicIcon size={20} color="var(--vim-ink-4)" />
+        )}
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14, color: "var(--vim-ink)", marginBottom: 3 }}>{feed.title}</div>
+        <div style={{ fontSize: 11.5, color: "var(--vim-ink-3)" }}>
+          {feed.episode_count} episode{feed.episode_count === 1 ? "" : "s"} in cast2md ·{" "}
+          {feed.summarized_count} summarized
+          {feed.subscribed && (
+            <>
+              {" · "}
+              {formatPolled(feed.last_polled_at)}
+            </>
+          )}
+        </div>
+        {feed.subscribed && !feed.initialized && (
+          <div style={{ fontSize: 11.5, color: "var(--vim-ink-4)", marginTop: 4 }}>
+            Waiting for the first poll. Only episodes transcribed from then on are summarized —
+            use Backfill for older ones.
+          </div>
+        )}
+        {feed.last_error && (
+          <div style={{ fontSize: 11.5, color: "var(--vim-err)", marginTop: 4 }}>
+            {feed.last_error}
+          </div>
+        )}
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginTop: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
+            <input
+              type="checkbox"
+              checked={feed.subscribed}
+              disabled={subscribe.isPending}
+              onChange={(e) =>
+                subscribe.mutate({ enabled: e.target.checked, level: feed.detail_level })
+              }
+            />
+            Subscribed
+          </label>
+          <select
+            value={feed.detail_level}
+            disabled={subscribe.isPending}
+            onChange={(e) => subscribe.mutate({ enabled: feed.subscribed, level: e.target.value })}
+            className="vim-input"
+            style={{ width: "auto", padding: "5px 8px", fontSize: 12 }}
+          >
+            <option value="medium">medium</option>
+            <option value="deep">deep</option>
+          </select>
+          <select
+            value={backfillLimit}
+            onChange={(e) => setBackfillLimit(parseInt(e.target.value, 10))}
+            className="vim-input"
+            style={{ width: "auto", padding: "5px 8px", fontSize: 12 }}
+          >
+            {[5, 10, 25, 50].map((n) => (
+              <option key={n} value={n}>
+                last {n}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => backfill.mutate()}
+            disabled={backfill.isPending}
+            className="vim-btn ghost"
+            style={{ padding: "5px 12px", fontSize: 12 }}
+            title="Summarize the newest completed episodes without moving the watermark"
+          >
+            {backfill.isPending ? "Queuing…" : "Backfill"}
+          </button>
+          {backfill.isSuccess && (
+            <span style={{ fontSize: 12, color: "var(--vim-ok)" }}>
+              {backfill.data.queued} queued · {backfill.data.skipped} skipped
+            </span>
+          )}
+          {(subscribe.isError || backfill.isError) && (
+            <span style={{ fontSize: 12, color: "var(--vim-err)" }}>
+              {((subscribe.error ?? backfill.error) as Error).message}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PodcastSection() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["podcast-feeds"],
+    queryFn: listPodcastFeeds,
+    // A cast2md that is off or unreachable is a normal state here, not
+    // something to hammer.
+    retry: false,
+  });
+
+  return (
+    <Section
+      title="Podcasts"
+      subtitle="Pick the shows whose episodes get summarized as cast2md finishes them."
+    >
+      {isLoading && (
+        <div style={{ padding: "16px 0", fontSize: 13, color: "var(--vim-ink-3)" }}>
+          Loading feeds…
+        </div>
+      )}
+      {error && (
+        <div style={{ padding: "16px 0", fontSize: 13, color: "var(--vim-ink-3)" }}>
+          cast2md is not reachable: {(error as Error).message}
+        </div>
+      )}
+      {data && data.feeds.length === 0 && (
+        <div style={{ padding: "16px 0", fontSize: 13, color: "var(--vim-ink-3)" }}>
+          cast2md has no feeds yet.
+        </div>
+      )}
+      {data?.feeds.map((feed, i) => (
+        <PodcastFeedRow
+          key={feed.feed_id}
+          feed={feed}
+          isLast={i === data.feeds.length - 1}
+        />
+      ))}
+    </Section>
+  );
+}
+
 export default function SettingsPage() {
   const queryClient = useQueryClient();
   const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
+  const [promptSource, setPromptSource] = useState<ContentSource>("youtube");
 
   const { data: webhook, isLoading: webhookLoading, error: webhookError } = useQuery({
     queryKey: ["settings", "webhook"],
@@ -355,8 +562,8 @@ export default function SettingsPage() {
     queryFn: fetchKarakeepStatus,
   });
   const { data: prompts, isLoading: promptsLoading, error: promptsError } = useQuery({
-    queryKey: ["settings", "prompts"],
-    queryFn: fetchSummaryPrompts,
+    queryKey: ["settings", "prompts", promptSource],
+    queryFn: () => fetchSummaryPrompts(promptSource),
   });
   const { data: providers } = useQuery({
     queryKey: ["providers"],
@@ -406,10 +613,15 @@ export default function SettingsPage() {
     );
 
   const webhookURL = `${window.location.origin}/webhook/karakeep`;
-  const feedURL = feedInfo ? `${window.location.origin}/feed/atom/${feedInfo.token}` : "";
-  const truncatedFeedToken = feedInfo
-    ? `${feedInfo.token.slice(0, 8)}…`
-    : "—";
+  const feedBase = feedInfo ? `${window.location.origin}/feed/atom/${feedInfo.token}` : "";
+  const truncatedFeedToken = feedInfo ? `${feedInfo.token.slice(0, 8)}…` : "—";
+  // Three separate subscriptions rather than one feed with a filter: an RSS
+  // reader cannot filter, so the split has to happen in the URL.
+  const feedVariants: { label: string; suffix: string; hint: string }[] = [
+    { label: "Videos only", suffix: "", hint: "The original feed. Existing subscriptions keep this content." },
+    { label: "Podcasts only", suffix: "/podcasts", hint: "Podcast episode summaries." },
+    { label: "Everything", suffix: "/all", hint: "Both kinds; each entry is tagged with its type." },
+  ];
 
   return (
     <div className="vim-page-narrower">
@@ -538,15 +750,36 @@ export default function SettingsPage() {
             <ModelSelector />
           </div>
         )}
+        <div style={{ padding: "16px 0", borderBottom: "1px solid var(--vim-line-soft)" }}>
+          <div style={{ fontSize: 13, color: "var(--vim-ink-3)", marginBottom: 8 }}>
+            Prompts for
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {(["youtube", "podcast"] as ContentSource[]).map((src) => (
+              <button
+                key={src}
+                onClick={() => setPromptSource(src)}
+                className={promptSource === src ? "vim-btn primary" : "vim-btn ghost"}
+                style={{ padding: "6px 14px", fontSize: 12 }}
+              >
+                {src === "youtube" ? "Videos" : "Podcasts"}
+              </button>
+            ))}
+          </div>
+        </div>
         {prompts && (
           <>
             <PromptEditor
+              key={`${promptSource}-medium`}
+              source={promptSource}
               level="medium"
               label="Medium summary prompt"
               currentPrompt={prompts.medium}
               defaultPrompt={prompts.default_medium}
             />
             <PromptEditor
+              key={`${promptSource}-deep`}
+              source={promptSource}
               level="deep"
               label="Deep summary prompt"
               currentPrompt={prompts.deep}
@@ -591,35 +824,52 @@ export default function SettingsPage() {
         )}
       </Section>
 
+      {/* Podcasts */}
+      <PodcastSection />
+
       {/* RSS */}
-      <Section title="RSS" subtitle="Subscribe to your own feed of summaries.">
-        {feedInfo && (
-          <div style={{ padding: "16px 0" }}>
-            <div style={{ fontSize: 13, color: "var(--vim-ink-3)", marginBottom: 8 }}>
-              Your personal feed URL
-            </div>
+      <Section title="RSS" subtitle="Subscribe to your own feeds of summaries.">
+        {feedInfo &&
+          feedVariants.map((variant, i) => (
             <div
+              key={variant.suffix}
               style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 12.5,
-                padding: "12px 14px",
-                background: "var(--vim-surface-2)",
-                borderRadius: 6,
-                color: "var(--vim-ink-2)",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 12,
+                padding: "16px 0",
+                borderBottom:
+                  i === feedVariants.length - 1 ? "none" : "1px solid var(--vim-line-soft)",
               }}
             >
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {window.location.origin}/feed/atom/
-                <span style={{ color: "var(--vim-accent-ink)" }}>{truncatedFeedToken}</span>
-              </span>
-              <CopyButton text={feedURL} />
+              <div style={{ fontSize: 13, color: "var(--vim-ink-3)", marginBottom: 3 }}>
+                {variant.label}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--vim-ink-4)", marginBottom: 8 }}>
+                {variant.hint}
+              </div>
+              <div
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 12.5,
+                  padding: "12px 14px",
+                  background: "var(--vim-surface-2)",
+                  borderRadius: 6,
+                  color: "var(--vim-ink-2)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                <span
+                  style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                >
+                  {window.location.origin}/feed/atom/
+                  <span style={{ color: "var(--vim-accent-ink)" }}>{truncatedFeedToken}</span>
+                  {variant.suffix}
+                </span>
+                <CopyButton text={feedBase + variant.suffix} />
+              </div>
             </div>
-          </div>
-        )}
+          ))}
       </Section>
     </div>
   );

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 
 // SummaryPromptsInfo holds the current and default prompts for the API.
 type SummaryPromptsInfo struct {
+	Source        string `json:"source"`
 	Medium        string `json:"medium"`
 	Deep          string `json:"deep"`
 	DefaultMedium string `json:"default_medium"`
@@ -42,6 +44,14 @@ type processJob struct {
 	forceVoxtral bool
 }
 
+// episodeJob represents a podcast episode queued for summarization.
+type episodeJob struct {
+	userID     int
+	episodeID  int
+	level      string
+	retryCount int
+}
+
 // Service contains all business logic for vimmary.
 type Service struct {
 	db              *storage.DB
@@ -49,6 +59,8 @@ type Service struct {
 	defaultProvider string
 	registry        *models.Registry
 	yt              *youtube.Client
+	cast2md         PodcastSource
+	cast2mdCfg      config.Cast2MDConfig
 	karakeepBaseURL string
 	externalURL     string
 	embedder        Embedder
@@ -57,6 +69,7 @@ type Service struct {
 	summaryCfg      config.SummaryConfig
 	log             *slog.Logger
 	queue           chan processJob
+	episodeQueue    chan episodeJob
 }
 
 // New creates a new Service.
@@ -66,6 +79,8 @@ func New(
 	defaultProvider string,
 	registry *models.Registry,
 	yt *youtube.Client,
+	c2m PodcastSource,
+	cast2mdCfg config.Cast2MDConfig,
 	karakeepBaseURL string,
 	externalURL string,
 	embedder Embedder,
@@ -80,6 +95,8 @@ func New(
 		defaultProvider: defaultProvider,
 		registry:        registry,
 		yt:              yt,
+		cast2md:         c2m,
+		cast2mdCfg:      cast2mdCfg,
 		karakeepBaseURL: karakeepBaseURL,
 		externalURL:     externalURL,
 		embedder:        embedder,
@@ -88,8 +105,10 @@ func New(
 		summaryCfg:      summaryCfg,
 		log:             log,
 		queue:           make(chan processJob, 100),
+		episodeQueue:    make(chan episodeJob, 200),
 	}
 	go s.processWorker()
+	go s.episodeWorker()
 	return s
 }
 
@@ -180,6 +199,41 @@ func (s *Service) processWorker() {
 	}
 }
 
+// episodeWorker drains the podcast queue. It is separate from processWorker
+// because adaptiveDelay compensates for YouTube's rate limit, which does not
+// apply to cast2md, and because a three-hour episode would otherwise block
+// every YouTube job for the duration of its LLM call.
+func (s *Service) episodeWorker() {
+	for job := range s.episodeQueue {
+		err := s.ProcessEpisode(context.Background(), job.userID, job.episodeID, job.level)
+		if err == nil {
+			continue
+		}
+
+		s.log.Error("episode processing failed",
+			"episode_id", job.episodeID, "retry", job.retryCount, "error", err)
+
+		// A transcript that is not ready yet, or a cast2md that is briefly
+		// unreachable, is worth retrying; a failed summary is not.
+		retryable := IsEpisodeNotReady(err) || strings.Contains(err.Error(), "transcript fetch failed")
+		if !retryable || job.retryCount >= maxRetries {
+			continue
+		}
+
+		nextRetry := job.retryCount + 1
+		backoff := retryBackoff(nextRetry)
+		s.log.Info("scheduling retry for episode",
+			"episode_id", job.episodeID, "retry", nextRetry, "delay", backoff)
+		retryJob := episodeJob{
+			userID:     job.userID,
+			episodeID:  job.episodeID,
+			level:      job.level,
+			retryCount: nextRetry,
+		}
+		time.AfterFunc(backoff, func() { s.enqueueEpisode(retryJob) })
+	}
+}
+
 // getSummarizer returns the summarizer for the given provider name.
 // If provider is empty, the default provider is used.
 func (s *Service) getSummarizer(provider string) (summary.Summarizer, string, error) {
@@ -222,7 +276,8 @@ func (s *Service) DeleteByBookmarkID(ctx context.Context, userID int, bookmarkID
 	return s.db.DeleteByBookmarkID(ctx, userID, bookmarkID)
 }
 
-// RetryVideo resets a failed video and re-processes it.
+// RetryVideo resets a failed row and re-processes it. Podcast rows go back to
+// the episode worker, not to the YouTube pipeline, which has no ID to work with.
 func (s *Service) RetryVideo(ctx context.Context, userID int, id uuid.UUID) error {
 	video, err := s.db.GetVideo(ctx, userID, id)
 	if err != nil {
@@ -234,6 +289,14 @@ func (s *Service) RetryVideo(ctx context.Context, userID int, id uuid.UUID) erro
 	if err := s.db.UpdateVideoStatus(ctx, id, "pending", ""); err != nil {
 		return fmt.Errorf("reset status: %w", err)
 	}
+	if video.Source == storage.SourcePodcast {
+		episodeID, convErr := strconv.Atoi(video.ExternalID)
+		if convErr != nil {
+			return fmt.Errorf("podcast row %s has a non-numeric episode ID %q", id, video.ExternalID)
+		}
+		s.ProcessEpisodeAsync(userID, episodeID, video.DetailLevel)
+		return nil
+	}
 	s.ProcessVideoAsync(userID, video.YouTubeID, video.KarakeepBookmarkID)
 	return nil
 }
@@ -243,6 +306,9 @@ func (s *Service) TranscribeVideo(ctx context.Context, userID int, id uuid.UUID)
 	video, err := s.db.GetVideo(ctx, userID, id)
 	if err != nil {
 		return err
+	}
+	if video.Source != storage.SourceYouTube {
+		return fmt.Errorf("voxtral transcription applies to YouTube videos only (source: %s)", video.Source)
 	}
 	if video.Status != "no_captions" && video.Status != "failed" {
 		return fmt.Errorf("video is not in no_captions or failed state (status: %s)", video.Status)
@@ -326,52 +392,66 @@ func (s *Service) HasKarakeepAPIKey(ctx context.Context, userID int) (bool, erro
 	return key != "", nil
 }
 
-// getUserPrompt returns the user's custom prompt for the given level, or empty string for default.
-func (s *Service) getUserPrompt(ctx context.Context, userID int, level string) string {
-	medium, deep, err := s.db.GetSummaryPrompts(ctx, userID)
+// getUserPrompt returns the user's custom prompt for one source and level, or
+// an empty string when the built-in default applies.
+func (s *Service) getUserPrompt(ctx context.Context, userID int, source, level string) string {
+	if level != "deep" {
+		level = "medium"
+	}
+	prompt, err := s.db.GetUserPrompt(ctx, userID, normalizeSource(source), level)
 	if err != nil {
-		s.log.Warn("failed to load custom prompts, using defaults", "user_id", userID, "error", err)
+		s.log.Warn("failed to load custom prompt, using default",
+			"user_id", userID, "source", source, "level", level, "error", err)
 		return ""
 	}
-	if level == "deep" && deep != nil {
-		return *deep
-	}
-	if level != "deep" && medium != nil {
-		return *medium
-	}
-	return ""
+	return prompt
 }
 
-// GetSummaryPrompts returns the user's current and default prompts.
-func (s *Service) GetSummaryPrompts(ctx context.Context, userID int) (*SummaryPromptsInfo, error) {
-	medium, deep, err := s.db.GetSummaryPrompts(ctx, userID)
+// normalizeSource maps an empty or unknown source onto youtube, so a caller
+// that never learned about sources keeps working.
+func normalizeSource(source string) string {
+	if source == storage.SourcePodcast {
+		return storage.SourcePodcast
+	}
+	return storage.SourceYouTube
+}
+
+// GetSummaryPrompts returns the user's current and default prompts for one source.
+func (s *Service) GetSummaryPrompts(ctx context.Context, userID int, source string) (*SummaryPromptsInfo, error) {
+	source = normalizeSource(source)
+	prompts, err := s.db.GetUserPrompts(ctx, userID, source)
 	if err != nil {
 		return nil, fmt.Errorf("get prompts: %w", err)
 	}
 
 	info := &SummaryPromptsInfo{
-		DefaultMedium: summary.DefaultPrompt("medium"),
-		DefaultDeep:   summary.DefaultPrompt("deep"),
+		Source:        source,
+		DefaultMedium: summary.DefaultPromptFor(source, "medium"),
+		DefaultDeep:   summary.DefaultPromptFor(source, "deep"),
 	}
-	if medium != nil {
-		info.Medium = *medium
+	if p, ok := prompts["medium"]; ok {
+		info.Medium = p
 	} else {
 		info.Medium = info.DefaultMedium
 	}
-	if deep != nil {
-		info.Deep = *deep
+	if p, ok := prompts["deep"]; ok {
+		info.Deep = p
 	} else {
 		info.Deep = info.DefaultDeep
 	}
 	return info, nil
 }
 
-// SetSummaryPrompt sets a custom prompt for the given level. Empty string resets to default.
-func (s *Service) SetSummaryPrompt(ctx context.Context, userID int, level, prompt string) error {
+// SetSummaryPrompt sets a custom prompt for one source and level. An empty
+// prompt resets to the default.
+func (s *Service) SetSummaryPrompt(ctx context.Context, userID int, source, level, prompt string) error {
 	if level != "medium" && level != "deep" {
 		return fmt.Errorf("invalid level: %q (must be medium or deep)", level)
 	}
-	return s.db.SetSummaryPrompt(ctx, userID, level, prompt)
+	if source != "" && source != storage.SourceYouTube && source != storage.SourcePodcast {
+		return fmt.Errorf("invalid source: %q (must be youtube or podcast)", source)
+	}
+	return s.db.SetUserPrompt(ctx, userID, normalizeSource(source), level, prompt)
 }
 
 // ListAllModels returns available models from all configured providers.

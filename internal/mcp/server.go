@@ -15,24 +15,24 @@ var (
 )
 
 func New(svc *service.Service, version string, log *slog.Logger) *server.MCPServer {
-	s := mkmcp.NewServer("vimmary", version, `Vimmary is the user's personal YouTube video library with AI-generated summaries.
+	s := mkmcp.NewServer("vimmary", version, `Vimmary is the user's personal library of YouTube videos and podcast episodes with AI-generated summaries.
 
-It contains summaries and transcripts of YouTube videos the user has watched, bookmarked, or saved. Use this whenever the user asks about videos they've seen, topics from YouTube content, or wants to recall something from a video.
+It contains summaries and transcripts of YouTube videos the user has watched, bookmarked, or saved, and of podcast episodes from feeds they subscribe to. Use this whenever the user asks about videos or podcasts they have seen or heard, topics from that content, or wants to recall something from it.
 
 ALWAYS use this when the user:
-- Asks what they watched, bookmarked, or saved ("what did I watch about X", "videos about X")
-- Wants to find or recall a video ("that video about Docker", "the one from Lex Fridman")
-- Asks about topics covered in their videos ("what do I know about self-hosting")
-- Wants statistics about their viewing habits ("how many videos", "top channels")
-- References YouTube content in any way
+- Asks what they watched, listened to, bookmarked, or saved ("what did I watch about X", "which podcast covered X")
+- Wants to find or recall an item ("that video about Docker", "the one from Lex Fridman", "the episode with the linguist")
+- Asks about topics covered in their library ("what do I know about self-hosting")
+- Wants statistics about their habits ("how many videos", "top channels", "how many podcast hours")
+- References YouTube or podcast content in any way
 
-Search and browse summaries of bookmarked YouTube videos. Summaries are automatically generated when videos are bookmarked in Karakeep.
+Video summaries are generated when a video is bookmarked in Karakeep; podcast summaries when an episode finishes transcribing in cast2md.
 
-Use search_videos for semantic search across all video summaries and transcripts.
-Use get_video to retrieve the full summary and transcript for a specific video.
-Use list_recent to browse recently processed videos.
+Use search_videos for semantic search across every summary and transcript, of both kinds.
+Use get_video to retrieve the full summary and transcript for a specific item.
+Use list_recent to browse recent items — it lists videos unless the source argument says otherwise.
 Use resummarize to regenerate a summary with a different detail level.
-Use stats for aggregate statistics about the video library.`)
+Use stats for aggregate statistics, optionally per source.`)
 
 	h := &handlers{svc: svc, log: log}
 
@@ -53,10 +53,13 @@ type handlers struct {
 }
 
 var toolSearchVideos = mcp.NewTool("search_videos",
-	mcp.WithDescription("Search the user's YouTube video library by topic, keyword, or meaning. Finds videos the user has watched or bookmarked. Use for questions like 'videos about Docker', 'that talk about productivity', 'what did I watch about AI'."),
+	mcp.WithDescription("Search the user's library of YouTube videos and podcast episodes by topic, keyword, or meaning. Use for questions like 'videos about Docker', 'that talk about productivity', 'which podcast covered AI regulation'."),
 	mcp.WithString("query",
 		mcp.Required(),
 		mcp.Description("Natural language search query."),
+	),
+	mcp.WithString("source",
+		mcp.Description("Restrict to 'youtube' or 'podcast'. Default: both."),
 	),
 	mcp.WithNumber("limit",
 		mcp.Description("Maximum number of results. Default: 10."),
@@ -99,6 +102,9 @@ var toolListRecent = mcp.NewTool("list_recent",
 	mcp.WithString("topic",
 		mcp.Description("Filter by topic tag."),
 	),
+	mcp.WithString("source",
+		mcp.Description("Which kind to list: 'youtube' (default), 'podcast', or 'all'."),
+	),
 	mcp.WithNumber("limit",
 		mcp.Description("Number of results per page. Default: 20."),
 	),
@@ -108,6 +114,9 @@ var toolListRecent = mcp.NewTool("list_recent",
 )
 
 var toolStats = mcp.NewTool("stats",
-	mcp.WithDescription("Get statistics about the user's video library: total count, top channels, top topics, and daily activity. Use for 'how many videos do I have', 'what channels do I watch most', 'my top topics'."),
+	mcp.WithDescription("Get statistics about the user's library: total count, breakdown by source, top channels and shows, top topics, and daily activity. Use for 'how many videos do I have', 'what channels do I watch most', 'my top topics'."),
+	mcp.WithString("source",
+		mcp.Description("Restrict the counts to 'youtube' or 'podcast'. Default: both."),
+	),
 )
 

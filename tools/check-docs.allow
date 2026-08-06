@@ -18,3 +18,8 @@ CLAUDE.md%%("Rolle" in the text
 # Skill descriptions carry literal trigger phrases in the languages they are
 # spoken in. Translating them would stop the skill from being found.
 .claude/skills/verify/SKILL.md%%description:
+
+# English "falls back" collides with German "falls". The sweep matches whole
+# words, so it cannot tell the two apart; these two lines are English.
+internal/summary/prompts.go%%falls back to the video prompts
+internal/summary/prompts_test.go%%unknown source falls back to video

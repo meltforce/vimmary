@@ -34,7 +34,7 @@ type mockSummarizer struct {
 	err     error
 }
 
-func (m *mockSummarizer) Summarize(_ context.Context, _, _, _, _, _, _ string) (*summary.Summary, error) {
+func (m *mockSummarizer) Summarize(_ context.Context, _ summary.Request) (*summary.Summary, error) {
 	return m.summary, m.err
 }
 
@@ -197,6 +197,8 @@ func TestNewService(t *testing.T) {
 		"claude",
 		nil, // registry
 		nil, // yt client
+		nil, // cast2md client
+		config.Cast2MDConfig{},
 		"https://karakeep.example.com",
 		"https://vimmary.example.com",
 		embedder,

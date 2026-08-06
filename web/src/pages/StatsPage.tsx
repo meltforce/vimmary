@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchStats, listVideos, retryVideo, deleteVideo } from "../api.ts";
+import type { ContentSource } from "../api.ts";
 import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
 
 function busiestWeekday(daily: { date: string; count: number }[]): string {
@@ -24,19 +26,22 @@ function shortDate(d: string): string {
   return new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+type StatsScope = ContentSource | "all";
+
 export default function StatsPage() {
   const queryClient = useQueryClient();
+  const [scope, setScope] = useState<StatsScope>("all");
 
   const { data: stats, isLoading, error } = useQuery({
-    queryKey: ["stats"],
-    queryFn: fetchStats,
+    queryKey: ["stats", scope],
+    queryFn: () => fetchStats(scope),
   });
 
   const failedCount = stats?.by_status?.failed ?? 0;
 
   const { data: failedVideos } = useQuery({
-    queryKey: ["videos", "failed"],
-    queryFn: () => listVideos({ status: "failed", limit: 20 }),
+    queryKey: ["videos", "failed", scope],
+    queryFn: () => listVideos({ status: "failed", source: scope, limit: 20 }),
     enabled: failedCount > 0,
   });
 
@@ -103,6 +108,38 @@ export default function StatsPage() {
         — Reading habits
       </div>
       <h1 className="vim-h1-stats-settings">Stats</h1>
+
+      {/* Scope switch. by_source is always unfiltered, so the counts stay
+          visible whichever scope is selected. */}
+      <div style={{ display: "flex", gap: 6, margin: "16px 0 4px", flexWrap: "wrap" }}>
+        {(
+          [
+            { key: "all" as StatsScope, label: "Everything", count: stats.total_count },
+            {
+              key: "youtube" as StatsScope,
+              label: "Videos",
+              count: stats.by_source?.youtube ?? 0,
+            },
+            {
+              key: "podcast" as StatsScope,
+              label: "Podcasts",
+              count: stats.by_source?.podcast ?? 0,
+            },
+          ]
+        ).map((opt) => (
+          <button
+            key={opt.key}
+            onClick={() => setScope(opt.key)}
+            className={scope === opt.key ? "vim-btn primary" : "vim-btn ghost"}
+            style={{ padding: "6px 14px", fontSize: 12 }}
+          >
+            {opt.label}
+            <span style={{ opacity: 0.65, marginLeft: 6, fontFamily: "var(--font-mono)" }}>
+              {opt.count}
+            </span>
+          </button>
+        ))}
+      </div>
 
       {/* Headline grid */}
       <div className="vim-grid-stats-headline" style={{ marginBottom: 30 }}>

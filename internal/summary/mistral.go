@@ -26,17 +26,20 @@ func NewMistralSummarizer(apiKey string) *MistralSummarizer {
 	}
 }
 
-func (m *MistralSummarizer) Summarize(ctx context.Context, title, transcript, level, language, customPrompt, model string) (*Summary, error) {
-	template := promptForLevel(level)
-	if customPrompt != "" {
-		template = customPrompt
+func (m *MistralSummarizer) Summarize(ctx context.Context, req Request) (*Summary, error) {
+	template := promptFor(req.Source, req.Level)
+	if req.CustomPrompt != "" {
+		template = req.CustomPrompt
 	}
-	prompt := BuildPrompt(template, title, language, truncateTranscript(transcript))
+	prompt := BuildPrompt(template, req.Title, req.Language, truncateTranscript(req.Transcript))
 
+	model := req.Model
 	if model == "" {
 		model = "mistral-large-latest"
 	}
 
+	// max_tokens is set explicitly rather than left to the provider default, so
+	// both providers cut off at the same point or not at all.
 	body := map[string]any{
 		"model": model,
 		"messages": []map[string]string{
@@ -44,6 +47,7 @@ func (m *MistralSummarizer) Summarize(ctx context.Context, title, transcript, le
 		},
 		"response_format": map[string]string{"type": "json_object"},
 		"temperature":     0,
+		"max_tokens":      maxOutputTokens(req.Level),
 	}
 
 	jsonBody, err := json.Marshal(body)
@@ -51,14 +55,14 @@ func (m *MistralSummarizer) Summarize(ctx context.Context, title, transcript, le
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", mistralAPIURL, bytes.NewReader(jsonBody))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", mistralAPIURL, bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+m.apiKey)
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+m.apiKey)
 
-	resp, err := m.http.Do(req)
+	resp, err := m.http.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("mistral API request: %w", err)
 	}

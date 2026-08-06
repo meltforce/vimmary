@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -56,44 +55,24 @@ func (s *Service) Resummarize(ctx context.Context, userID int, videoID uuid.UUID
 		lang = language
 	}
 
-	// Generate new summary
-	summarizer, providerName, err := s.getSummarizer(provider)
+	summaryText, err := s.summarizeAndStore(ctx, summarizeRequest{
+		userID:     userID,
+		video:      video,
+		transcript: video.Transcript,
+		title:      video.Title,
+		language:   lang,
+		level:      level,
+		provider:   provider,
+	})
 	if err != nil {
-		return fmt.Errorf("get summarizer: %w", err)
-	}
-	model := s.getModelForProvider(ctx, userID, providerName)
-	customPrompt := s.getUserPrompt(ctx, userID, level)
-	sum, err := summarizer.Summarize(ctx, video.Title, video.Transcript, level, lang, customPrompt, model)
-	if err != nil {
-		return fmt.Errorf("generate summary: %w", err)
+		return err
 	}
 
-	// Generate embedding
-	embeddingText := video.Title + "\n\n" + sum.Text
-	embedding, err := s.embedder.Embed(ctx, embeddingText)
-	if err != nil {
-		s.log.Warn("embedding failed during resummarize", "video_id", videoID, "error", err)
-	}
-
-	metadata := map[string]any{
-		"topics":       sum.Topics,
-		"key_points":   sum.KeyPoints,
-		"action_items": sum.ActionItems,
-	}
-	metaJSON, err := json.Marshal(metadata)
-	if err != nil {
-		return fmt.Errorf("marshal metadata: %w", err)
-	}
-
-	if err := s.db.UpdateVideoSummary(ctx, videoID, sum.Text, level, providerName, model, sum.Usage.InputTokens, sum.Usage.OutputTokens, embedding, metaJSON); err != nil {
-		return fmt.Errorf("update summary: %w", err)
-	}
-
-	s.log.Info("video resummarized", "video_id", videoID, "level", level)
+	s.log.Info("video resummarized", "video_id", videoID, "source", video.Source, "level", level)
 
 	// Update Karakeep if applicable
 	if video.KarakeepBookmarkID != "" {
-		s.writeBackToKarakeep(ctx, userID, video.KarakeepBookmarkID, videoID, video.Title, sum.Text)
+		s.writeBackToKarakeep(ctx, userID, video.KarakeepBookmarkID, videoID, video.Title, summaryText)
 	}
 
 	return nil

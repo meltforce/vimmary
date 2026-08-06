@@ -14,6 +14,21 @@ import (
 	"github.com/meltforce/vimmary/internal/storage"
 )
 
+// sourceParam resolves the `source` query parameter. An empty value takes the
+// given default; "all" means no filter and yields an empty string.
+func sourceParam(value, fallback string) string {
+	switch value {
+	case "":
+		return fallback
+	case "all":
+		return ""
+	case storage.SourceYouTube, storage.SourcePodcast:
+		return value
+	default:
+		return fallback
+	}
+}
+
 func mustUserID(w http.ResponseWriter, r *http.Request) (int, bool) {
 	uid, ok := middleware.UserIDFromContext(r)
 	if !ok {
@@ -35,6 +50,10 @@ func (s *Server) handleListVideos(w http.ResponseWriter, r *http.Request) {
 		Language: q.Get("language"),
 		Topic:    q.Get("topic"),
 		Status:   q.Get("status"),
+		// The source default is youtube, not "everything". That is what keeps
+		// the videos page, MCP list_recent and every older client video-only
+		// once podcast rows exist. "all" opts out.
+		Source: sourceParam(q.Get("source"), storage.SourceYouTube),
 	}
 	limit, _ := strconv.Atoi(q.Get("limit"))
 	offset, _ := strconv.Atoi(q.Get("offset"))
@@ -279,8 +298,11 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	// Search defaults to both kinds; the results carry `source` so the caller
+	// can tell them apart.
+	source := sourceParam(r.URL.Query().Get("source"), "")
 
-	matches, warnings, err := s.svc.Search(r.Context(), uid, query, limit)
+	matches, warnings, err := s.svc.Search(r.Context(), uid, query, limit, source)
 	if err != nil {
 		s.log.Error("search failed", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "search failed"})
@@ -306,7 +328,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stats, err := s.svc.Stats(r.Context(), uid)
+	stats, err := s.svc.Stats(r.Context(), uid, sourceParam(r.URL.Query().Get("source"), ""))
 	if err != nil {
 		s.log.Error("stats failed", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stats failed"})
@@ -329,8 +351,14 @@ func (s *Server) handleGetFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{
+	base := "https://" + r.Host + "/feed/atom/" + token
+	writeJSON(w, http.StatusOK, map[string]any{
 		"token": token,
+		"urls": map[string]string{
+			"videos":   base,
+			"podcasts": base + "/podcasts",
+			"all":      base + "/all",
+		},
 	})
 }
 
@@ -416,7 +444,8 @@ func (s *Server) handleGetPrompts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	info, err := s.svc.GetSummaryPrompts(r.Context(), uid)
+	info, err := s.svc.GetSummaryPrompts(r.Context(), uid,
+		sourceParam(r.URL.Query().Get("source"), storage.SourceYouTube))
 	if err != nil {
 		s.log.Error("get prompts failed", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get prompts"})
@@ -433,6 +462,7 @@ func (s *Server) handleSetPrompt(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
+		Source string `json:"source"`
 		Level  string `json:"level"`
 		Prompt string `json:"prompt"`
 	}
@@ -440,8 +470,12 @@ func (s *Server) handleSetPrompt(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "level is required"})
 		return
 	}
+	if body.Source == "" {
+		body.Source = r.URL.Query().Get("source")
+	}
+	body.Source = sourceParam(body.Source, storage.SourceYouTube)
 
-	if err := s.svc.SetSummaryPrompt(r.Context(), uid, body.Level, body.Prompt); err != nil {
+	if err := s.svc.SetSummaryPrompt(r.Context(), uid, body.Source, body.Level, body.Prompt); err != nil {
 		s.log.Error("set prompt failed", "error", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return

@@ -10,6 +10,21 @@ import (
 	"github.com/meltforce/vimmary/internal/storage"
 )
 
+// normalizeSource resolves the optional `source` argument. "all" means both
+// kinds and yields an empty filter.
+func normalizeSource(value, fallback string) string {
+	switch value {
+	case "":
+		return fallback
+	case "all":
+		return ""
+	case storage.SourceYouTube, storage.SourcePodcast:
+		return value
+	default:
+		return fallback
+	}
+}
+
 func (h *handlers) searchVideos(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	query, err := req.RequireString("query")
 	if err != nil {
@@ -17,9 +32,10 @@ func (h *handlers) searchVideos(ctx context.Context, req mcp.CallToolRequest) (*
 	}
 
 	limit := req.GetInt("limit", 0)
+	source := normalizeSource(req.GetString("source", ""), "")
 
 	userID := UserIDFromContext(ctx)
-	matches, warnings, err := h.svc.Search(ctx, userID, query, limit)
+	matches, warnings, err := h.svc.Search(ctx, userID, query, limit, source)
 	if err != nil {
 		h.log.Error("search failed", "error", err)
 		return mcp.NewToolResultError(fmt.Sprintf("search failed: %v", err)), nil
@@ -95,6 +111,8 @@ func (h *handlers) listRecent(ctx context.Context, req mcp.CallToolRequest) (*mc
 		Channel:  req.GetString("channel", ""),
 		Language: req.GetString("language", ""),
 		Topic:    req.GetString("topic", ""),
+		// Same default as the REST route: videos unless asked otherwise.
+		Source: normalizeSource(req.GetString("source", ""), storage.SourceYouTube),
 	}
 	limit := req.GetInt("limit", 0)
 	offset := req.GetInt("offset", 0)
@@ -119,7 +137,7 @@ func (h *handlers) listRecent(ctx context.Context, req mcp.CallToolRequest) (*mc
 
 func (h *handlers) stats(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	userID := UserIDFromContext(ctx)
-	stats, err := h.svc.Stats(ctx, userID)
+	stats, err := h.svc.Stats(ctx, userID, normalizeSource(req.GetString("source", ""), ""))
 	if err != nil {
 		h.log.Error("stats failed", "error", err)
 		return mcp.NewToolResultError(fmt.Sprintf("stats failed: %v", err)), nil

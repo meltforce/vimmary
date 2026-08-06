@@ -1,13 +1,16 @@
-# vimmary — YouTube video summary service
+# vimmary — video and podcast summary service
 
-A Go service that turns bookmarked YouTube videos into searchable LLM summaries.
-Transcripts come from YouTube's InnerTube API, summaries from Claude or Mistral,
-storage is Postgres + pgvector. Triggers are Karakeep webhooks and manual URL
-submission; results are served over a web UI, an MCP endpoint and an Atom feed.
+A Go service that turns bookmarked YouTube videos and transcribed podcast
+episodes into searchable LLM summaries. Video transcripts come from YouTube's
+InnerTube API, podcast transcripts from cast2md, summaries from Claude or
+Mistral, storage is Postgres + pgvector. Triggers are Karakeep webhooks, manual
+URL submission, cast2md feed subscriptions and a deep link from cast2md; results
+are served over a web UI, an MCP endpoint and three Atom feeds.
 
-It is not a general transcription service — the domain is classic YouTube videos
-(talks, tutorials), and livestreams, Shorts and playlists are out of scope by
-decision.
+It is not a transcription service — the domain is classic YouTube videos (talks,
+tutorials) plus podcast episodes cast2md has already transcribed. Livestreams,
+Shorts and playlists are out of scope by decision, and vimmary never downloads
+audio for podcasts.
 
 ## Gotchas
 
@@ -54,6 +57,49 @@ working as intended.
 the Settings page — they are not setec secrets. The global secrets are exactly
 `vimmary/postgres-password`, `vimmary/mistral-api-key` and
 `vimmary/claude-api-key`.
+
+**`videos` holds both kinds of row, and source-blind queries are bugs.** A
+`source` column discriminates `youtube` from `podcast`; podcast rows carry NULL
+in `youtube_id` (that is why `InsertVideo` passes `nil`, not `""` — the
+`UNIQUE(user_id, youtube_id)` index from `000003` treats NULLs as distinct but
+not empty strings). `ListFailedVideos`, `ListVideosWithoutMetadata` and
+`ListNoCaptionsVideos` therefore carry `AND source = 'youtube'`: their callers
+hand `v.YouTubeID` to the YouTube pipeline, and a podcast row there produces a
+job with an empty ID.
+
+**The separation between videos and podcasts is a default, not a filter the
+caller must remember.** `GET /api/v1/videos` and MCP `list_recent` default to
+`source=youtube`; `/feed/atom/{token}` stays videos-only and the combined feed is
+a separate path. Anything that changes those defaults changes what existing
+clients and existing RSS subscriptions see.
+
+**The cast2md watermark is opaque text, deliberately.** cast2md writes naive
+local timestamps (`TIMESTAMP` without zone, from `datetime.now().isoformat()`).
+`podcast_subscriptions.watermark` stores the string as it came back and always
+takes it from cast2md's response, never from vimmary's clock — a round trip
+through Go's timezone handling is the one place episodes would be skipped
+without any error.
+
+**A new podcast subscription starts uninitialized on purpose.** The first poll
+reads one episode with `order=updated_desc&limit=1`, adopts its timestamp and
+processes nothing. That is the "from now on" guarantee; backfill is the explicit
+way to reach older episodes and never moves the watermark.
+
+**Two queues, two workers** (`internal/service/service.go`). `adaptiveDelay()`
+compensates for YouTube's rate limit, which does not apply to cast2md, and a
+three-hour episode on a shared worker would block every YouTube job for the
+length of its LLM call.
+
+**`PodcastSource` must be a nil interface, not a nil `*cast2md.Client`.** Every
+podcast entry point tests `s.cast2md == nil`; a typed nil pointer stored in the
+interface is not nil and would turn "podcasts disabled" into a nil dereference.
+`cmd/vimmary/main.go` declares the variable with the interface type for exactly
+that reason.
+
+**`max_tokens` is level-dependent** (`internal/summary/claude.go`): 4096 for
+`medium`, 16000 for `deep`. A truncated response ends inside its JSON object, and
+`parseSummaryJSON` returns an error for that instead of falling back to raw text
+— the old fallback stored cut-off summaries as if they were complete.
 
 **`meltkit` is a separate repo, not a vendored directory.**
 `github.com/meltforce/meltkit` supplies db, config, secrets, middleware, server

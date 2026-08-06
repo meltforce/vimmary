@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -183,43 +182,19 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 		return fmt.Errorf("update transcript: %w", err)
 	}
 
-	// Generate summary
-	summarizer, providerName, err := s.getSummarizer("")
-	if err != nil {
-		errMsg := fmt.Sprintf("no summarizer available: %v", err)
-		_ = s.db.UpdateVideoStatus(ctx, video.ID, "failed", errMsg)
-		return fmt.Errorf("get summarizer: %w", err)
-	}
-	model := s.getModelForProvider(ctx, userID, providerName)
-	customPrompt := s.getUserPrompt(ctx, userID, video.DetailLevel)
-	sum, err := summarizer.Summarize(ctx, title, transcriptText, video.DetailLevel, language, customPrompt, model)
+	// Generate summary, embedding and metadata — the source-independent tail.
+	summaryText, err := s.summarizeAndStore(ctx, summarizeRequest{
+		userID:     userID,
+		video:      video,
+		transcript: transcriptText,
+		title:      title,
+		language:   language,
+		level:      video.DetailLevel,
+	})
 	if err != nil {
 		errMsg := fmt.Sprintf("summary generation failed: %v", err)
 		_ = s.db.UpdateVideoStatus(ctx, video.ID, "failed", errMsg)
-		return fmt.Errorf("generate summary: %w", err)
-	}
-
-	// Generate embedding from summary + title
-	embeddingText := title + "\n\n" + sum.Text
-	embedding, err := s.embedder.Embed(ctx, embeddingText)
-	if err != nil {
-		s.log.Warn("embedding generation failed, saving without embedding", "youtube_id", youtubeID, "error", err)
-	}
-
-	// Build metadata JSON
-	metadata := map[string]any{
-		"topics":       sum.Topics,
-		"key_points":   sum.KeyPoints,
-		"action_items": sum.ActionItems,
-	}
-	metaJSON, err := json.Marshal(metadata)
-	if err != nil {
-		return fmt.Errorf("marshal metadata: %w", err)
-	}
-
-	// Store summary + embedding
-	if err := s.db.UpdateVideoSummary(ctx, video.ID, sum.Text, video.DetailLevel, providerName, model, sum.Usage.InputTokens, sum.Usage.OutputTokens, embedding, metaJSON); err != nil {
-		return fmt.Errorf("update summary: %w", err)
+		return err
 	}
 
 	s.log.Info("video processed successfully", "youtube_id", youtubeID, "title", title)
@@ -229,7 +204,7 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 	if bookmarkID != "" {
 		go func() {
 			time.Sleep(30 * time.Second)
-			s.writeBackToKarakeep(context.Background(), userID, bookmarkID, video.ID, title, sum.Text)
+			s.writeBackToKarakeep(context.Background(), userID, bookmarkID, video.ID, title, summaryText)
 		}()
 	}
 

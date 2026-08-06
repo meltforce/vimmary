@@ -53,16 +53,108 @@ Return ONLY valid JSON with these fields:
 Transcript:
 {{TRANSCRIPT}}`
 
-func promptForLevel(level string) string {
+// The podcast prompts differ from the video ones in what they have to cope
+// with: conversation rather than presentation, 30 minutes to 3 hours of it, no
+// chapter marks, and speaker labels that cannot be relied on. The JSON shape is
+// identical so parseSummaryJSON needs no special case.
+
+const podcastMediumPrompt = `You are a podcast summary assistant. Summarize the following podcast episode transcript.
+
+Episode: {{TITLE}}
+
+{{LANGUAGE}}
+
+This is a conversation, not a presentation. The transcript has no chapter marks
+and any speaker labels in it may be wrong or missing. Work out from the content
+who is speaking.
+
+Skip entirely: advertising and sponsor reads, subscription and review appeals,
+and the recurring intro and outro banter. They carry no content.
+
+Create a summary with:
+- 3-5 paragraphs covering what was actually discussed
+- The hosts and any guests, introduced by name and by what they do
+- Positions attributed to the person who held them, by name
+- Disagreements left standing as disagreements rather than smoothed into consensus
+- Key points as a bullet list
+- Action items or takeaways (if applicable)
+- Topic tags (3-7 lowercase tags)
+
+Formatting: Use **bold** for emphasis. Do not use *italic*.
+
+Return ONLY valid JSON with these fields:
+{
+  "text": "The summary text in markdown format",
+  "topics": ["tag1", "tag2"],
+  "key_points": ["point 1", "point 2"],
+  "action_items": ["item 1"]
+}
+
+Transcript:
+{{TRANSCRIPT}}`
+
+const podcastDeepPrompt = `You are a podcast summary assistant. Create a detailed, segment-by-segment summary of the following podcast episode transcript.
+
+Episode: {{TITLE}}
+
+{{LANGUAGE}}
+
+This is a conversation, not a presentation. The transcript has no chapter marks
+and any speaker labels in it may be wrong or missing. Work out from the content
+who is speaking, and derive the segment boundaries from where the subject
+changes.
+
+Skip entirely: advertising and sponsor reads, subscription and review appeals,
+and the recurring intro and outro banter. They carry no content.
+
+Create a comprehensive summary with:
+- A segment-by-segment breakdown with ## headers, one per subject
+- The hosts and any guests, introduced by name and by what they do
+- Positions attributed to the person who held them, by name
+- Disagreements left standing as disagreements, with both sides stated
+- Key quotes where they carry the argument (use blockquotes, name the speaker)
+- Detailed key points
+- Specific action items and takeaways
+- A final "## References" section listing every person, book, paper, tool,
+  company and link mentioned. Omit the section if nothing was mentioned.
+- Topic tags (5-10 lowercase tags)
+
+Formatting: Use **bold** for emphasis. Do not use *italic*.
+
+Return ONLY valid JSON with these fields:
+{
+  "text": "The detailed summary in markdown format with ## segment headers",
+  "topics": ["tag1", "tag2"],
+  "key_points": ["point 1", "point 2"],
+  "action_items": ["item 1"]
+}
+
+Transcript:
+{{TRANSCRIPT}}`
+
+// LangSameAsTranscript asks for the transcript's own language. cast2md reports
+// no language for an episode, so the podcast path passes this rather than an
+// empty string, which would mean English.
+const LangSameAsTranscript = "same"
+
+// promptFor returns the built-in prompt template for a source and level.
+// An unknown source falls back to the video prompts.
+func promptFor(source, level string) string {
+	if source == "podcast" {
+		if level == "deep" {
+			return podcastDeepPrompt
+		}
+		return podcastMediumPrompt
+	}
 	if level == "deep" {
 		return deepPrompt
 	}
 	return mediumPrompt
 }
 
-// DefaultPrompt returns the default prompt template for a given level.
-func DefaultPrompt(level string) string {
-	return promptForLevel(level)
+// DefaultPromptFor returns the default prompt template for a source and level.
+func DefaultPromptFor(source, level string) string {
+	return promptFor(source, level)
 }
 
 // BuildPrompt replaces named placeholders in a prompt template with actual values.

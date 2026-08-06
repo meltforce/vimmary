@@ -17,8 +17,23 @@ type Summary struct {
 	Usage       Usage    `json:"usage"`
 }
 
-// Summarizer generates summaries from video transcripts.
-// The model parameter selects the model; empty string means use provider default.
+// Request is one summarization call.
+type Request struct {
+	// Source is "youtube" or "podcast" and selects the built-in prompt.
+	Source string
+	Title  string
+	// Transcript is the full text; the summarizer truncates it if needed.
+	Transcript string
+	// Level is "medium" or "deep" and also drives the output token budget.
+	Level    string
+	Language string
+	// CustomPrompt overrides the built-in prompt when non-empty.
+	CustomPrompt string
+	// Model is empty to use the provider default.
+	Model string
+}
+
+// Summarizer generates summaries from transcripts.
 type Summarizer interface {
-	Summarize(ctx context.Context, title, transcript, level, language, customPrompt, model string) (*Summary, error)
+	Summarize(ctx context.Context, req Request) (*Summary, error)
 }
