@@ -8,6 +8,23 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Queue runs per ref instead of letting the next push abort the one in flight.
+# Forgejo did that unconditionally up to v12 (forgejo#5914, "can lead to partial
+# and broken deploys"); the block became configurable in v14 and the instance
+# runs 16.0.2.
+#
+# `cancel-in-progress: false`, because a cancelled run leaves the target on the
+# previous image and reports `cancelled` — which is neither success nor failure,
+# so `notify-deploy-failure` below (if: failure()) stays silent. A lost deploy
+# would look exactly like a quiet one. See homelab/INCIDENTS.md, 2026-08-01
+# (afternoon).
+#
+# The ref is part of the group, so a tag push (release) never queues behind main
+# and a pull request never queues behind either.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   go-build-test:
     runs-on: docker
