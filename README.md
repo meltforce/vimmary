@@ -40,6 +40,17 @@ Web UI ──manual URL──▶    │                                   │
 - **Bidirectional sync** — summaries written back to Karakeep notes; bookmark deletions in Karakeep remove videos from vimmary
 - **Karakeep writeback** — plain-text summary with vimmary detail link, `video-summarized` tag added (preserves existing Karakeep AI tags)
 
+## Scope
+
+vimmary targets classic YouTube videos — talks, tutorials, conference recordings.
+Livestreams, Shorts and playlists are deliberately not supported: their
+transcripts are either absent or too unstructured for a useful summary.
+
+It is sized for personal use, roughly ten videos per day at the upper end. That
+assumption shows up in a few places on purpose — the feed serves 50 entries
+without paging, there is no conditional GET, and processing runs through a single
+worker. Summaries are primarily English with occasional German.
+
 ## Architecture
 
 | Component    | Technology                            |
@@ -209,6 +220,15 @@ docker buildx build --platform linux/amd64 -t vimmary:local .
 | `resummarize`     | Regenerate summary with different detail level   |
 | `stats`           | Aggregate statistics                             |
 | `delete_video`    | Delete a video and its data                      |
+
+## Repository documents
+
+| File | Holds |
+|---|---|
+| [`CLAUDE.md`](CLAUDE.md) | What the repo is, and the gotchas the file tree does not show. |
+| [`DECISIONS.md`](DECISIONS.md) | Decisions taken, with their reasoning and the condition that would re-open them. |
+| [`ROADMAP.md`](ROADMAP.md) | Open work only. |
+| [`INCIDENTS.md`](INCIDENTS.md) | Postmortems. |
 
 ## Related projects
 
