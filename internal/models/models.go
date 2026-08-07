@@ -184,7 +184,7 @@ func (r *Registry) fetchMistralModels(ctx context.Context, apiKey string) ([]Mod
 
 	var result struct {
 		Data []struct {
-			ID           string   `json:"id"`
+			ID           string `json:"id"`
 			Capabilities struct {
 				CompletionChat bool `json:"completion_chat"`
 			} `json:"capabilities"`
@@ -226,4 +226,3 @@ func (r *Registry) fetchMistralModels(ctx context.Context, apiKey string) ([]Mod
 	}
 	return models, nil
 }
-

@@ -22,15 +22,27 @@ or create the stub CI uses:
 mkdir -p web/dist && touch web/dist/.gitkeep
 ```
 
-## 2. Build and vet
+## 2. Build, format and vet
 
 ```bash
 CGO_ENABLED=0 go build -o /tmp/vimmary ./cmd/vimmary
+gofmt -l internal/ cmd/
 go vet ./...
 ```
 
 `CGO_ENABLED=0` matches the Docker image, which is built without a C toolchain.
 A build that only passes with cgo enabled will fail in CI.
+
+**`gofmt -l` prints the files that are not formatted and nothing else** — empty
+output is the pass. Nothing else in this chain checks it: golangci-lint's
+default set has no formatting linter, and CI runs neither. An unformatted file
+was committed on 2026-08-07 (`9afc86a`, a misaligned struct tag in
+`internal/models/models.go`) and no step objected.
+
+Two files predate this step and stay listed until someone fixes them:
+`internal/mcp/server.go` (import order) and
+`internal/storage/videos_integration_test.go`. Only act on files your change
+touched — reformatting the others widens an unrelated diff.
 
 ## 3. Tests
 

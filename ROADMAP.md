@@ -24,7 +24,7 @@ each becomes its own `[open]` row before the entry is moved out.
 | Status | Item | Where | Trigger | Notes |
 |---|---|---|---|---|
 | `[open]` | Remove the tsnet startup race | `cmd/vimmary/main.go`, or upstream | | Measured on 2026-08-07 over 15 starts: `AuthLoop: state is Running; done` lost 4 of 4, `Starting; done` won 11 of 11. **vimmary no longer gives the race a way to stop the process** — nothing dials over the node during startup since the setec client was removed — so this is no longer an availability item. It still costs a lost start on any future component that does dial early. `tsServer.Up()` cannot serve as the readiness condition, because the AuthLoop short-circuits to `Running` from persisted state before a current netmap exists; a condition that reflects the netmap would be needed. See INCIDENTS.md, 2026-08-07. |
-| `[open]` | Give the summarizer path a test seam again | `internal/service` | | `getSummarizer` builds from the database, so a fake summarizer can no longer be injected through the constructor; `mockSummarizer` was removed with the change. Nothing tested that path before either, so this is a gap that became visible rather than one that opened. |
+| `[open]` | Cover `summarizeAndStore` end to end | `internal/service` | | The seam added on 2026-08-07 covers provider and key resolution without a database. What it does not reach is the funnel below it: model resolution, custom prompts, token accounting and the embedding call all read `storage.DB` directly, which is a concrete struct with no interface. A test there needs the local test database, and would therefore skip in CI the way `internal/storage` already does. |
 
 ## Podcasts
 

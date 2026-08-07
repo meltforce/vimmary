@@ -57,7 +57,12 @@ type episodeJob struct {
 
 // Service contains all business logic for vimmary.
 type Service struct {
-	db              *storage.DB
+	db *storage.DB
+	// settings and newSummarizer are the seams for the summarizer path; New
+	// wires both to the real implementations. Everything else reaches storage
+	// through db directly.
+	settings        settingsSource
+	newSummarizer   summarizerFactory
 	registry        *models.Registry
 	yt              *youtube.Client
 	cast2md         PodcastSource
@@ -90,6 +95,8 @@ func New(
 ) *Service {
 	s := &Service{
 		db:              db,
+		settings:        db,
+		newSummarizer:   newSummarizer,
 		registry:        registry,
 		yt:              yt,
 		cast2md:         c2m,
@@ -231,9 +238,35 @@ func (s *Service) episodeWorker() {
 	}
 }
 
+// settingsSource is the part of storage.DB that the summarizer path reads. It
+// exists as a seam: getSummarizer builds its summarizer from a key in the
+// database, so without this a test of provider selection would need a live
+// database and a live API key. storage.DB satisfies it.
+type settingsSource interface {
+	GetLLMKey(ctx context.Context, provider string) (string, error)
+	GetAppSetting(ctx context.Context, key string) (string, error)
+}
+
+// summarizerFactory builds a summarizer for a provider from its API key. The
+// second seam: it is what a test replaces to exercise the path without calling
+// a provider API.
+type summarizerFactory func(provider, apiKey string) (summary.Summarizer, error)
+
+// newSummarizer is the production factory. Provider names are matched here and
+// in models.Providers; a name in one and not the other is a bug.
+func newSummarizer(provider, apiKey string) (summary.Summarizer, error) {
+	switch provider {
+	case "claude":
+		return summary.NewClaudeSummarizer(apiKey, "", nil), nil
+	case "mistral":
+		return summary.NewMistralSummarizer(apiKey), nil
+	}
+	return nil, fmt.Errorf("unknown provider: %q", provider)
+}
+
 // LLMKey returns a provider's API key, empty when it is not configured.
 func (s *Service) LLMKey(ctx context.Context, provider string) (string, error) {
-	return s.db.GetLLMKey(ctx, provider)
+	return s.settings.GetLLMKey(ctx, provider)
 }
 
 // LLMSettings is what the Settings page shows. It reports whether each key is
@@ -341,13 +374,11 @@ func (s *Service) getSummarizer(ctx context.Context, provider string) (summary.S
 		return nil, "", fmt.Errorf("provider %q has no API key configured — set one under Settings", provider)
 	}
 
-	switch provider {
-	case "claude":
-		return summary.NewClaudeSummarizer(apiKey, "", nil), provider, nil
-	case "mistral":
-		return summary.NewMistralSummarizer(apiKey), provider, nil
+	sum, err := s.newSummarizer(provider, apiKey)
+	if err != nil {
+		return nil, "", err
 	}
-	return nil, "", fmt.Errorf("unknown provider: %q", provider)
+	return sum, provider, nil
 }
 
 // SummaryProvider returns the provider used when a request names none: the
@@ -355,7 +386,7 @@ func (s *Service) getSummarizer(ctx context.Context, provider string) (summary.S
 // as the initial value for an unattended deployment, and the Settings page
 // overrides it — the same shape as user_prompts over the built-in defaults.
 func (s *Service) SummaryProvider(ctx context.Context) (string, error) {
-	provider, err := s.db.GetAppSetting(ctx, storage.SettingSummaryProvider)
+	provider, err := s.settings.GetAppSetting(ctx, storage.SettingSummaryProvider)
 	if err != nil {
 		return "", err
 	}
