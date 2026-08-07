@@ -50,7 +50,7 @@ func (s *Service) Search(ctx context.Context, userID int, query string, limit in
 	semCh := make(chan semanticResult, 1)
 
 	go func() {
-		matches, err := s.db.TextSearchVideos(ctx, userID, query, fetchLimit, source)
+		matches, err := s.search.TextSearchVideos(ctx, userID, query, fetchLimit, source)
 		textCh <- textResult{matches, err}
 	}()
 
@@ -60,7 +60,7 @@ func (s *Service) Search(ctx context.Context, userID int, query string, limit in
 			semCh <- semanticResult{nil, err}
 			return
 		}
-		matches, err := s.db.SearchVideos(ctx, userID, embedding, s.searchCfg.DefaultThreshold, fetchLimit, source)
+		matches, err := s.search.SearchVideos(ctx, userID, embedding, s.searchCfg.DefaultThreshold, fetchLimit, source)
 		semCh <- semanticResult{matches, err}
 	}()
 

@@ -57,11 +57,14 @@ type episodeJob struct {
 // Service contains all business logic for vimmary.
 type Service struct {
 	db *storage.DB
-	// settings and newSummarizer are the seams for the summarizer path; New
-	// wires both to the real implementations. Everything else reaches storage
-	// through db directly.
+	// settings, newSummarizer and search are the seams: New wires all three to
+	// the real implementations, and a test replaces the ones its path needs.
+	// Everything else reaches storage through db directly. Each is a narrow
+	// interface over the methods one path uses, not one abstraction over
+	// storage.DB — see DECISIONS.md, 2026-08-07.
 	settings        settingsSource
 	newSummarizer   summarizerFactory
+	search          searchSource
 	registry        *models.Registry
 	yt              *youtube.Client
 	cast2md         PodcastSource
@@ -96,6 +99,7 @@ func New(
 		db:              db,
 		settings:        db,
 		newSummarizer:   newSummarizer,
+		search:          db,
 		registry:        registry,
 		yt:              yt,
 		cast2md:         c2m,
@@ -250,6 +254,17 @@ type settingsSource interface {
 // second seam: it is what a test replaces to exercise the path without calling
 // a provider API.
 type summarizerFactory func(provider, apiKey string) (summary.Summarizer, error)
+
+// searchSource is the part of storage.DB that Search reads — the same kind of
+// seam as settingsSource, over the two queries and nothing else. What sits
+// between them is RRF fusion, a score cutoff and a sort, none of which needs
+// Postgres to exercise; before this the whole 133-line function was at 0%
+// coverage because its two queries were reached through a concrete type.
+// storage.DB satisfies it.
+type searchSource interface {
+	TextSearchVideos(ctx context.Context, userID int, query string, limit int, source string) ([]storage.VideoMatch, error)
+	SearchVideos(ctx context.Context, userID int, embedding []float32, threshold float64, limit int, source string) ([]storage.VideoMatch, error)
+}
 
 // newSummarizer is the production factory. Provider names are matched here and
 // in models.Providers; a name in one and not the other is a bug.
