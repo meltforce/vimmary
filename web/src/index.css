@@ -5,10 +5,11 @@
    route to the CDN. */
 @import "@fontsource-variable/archivo/wght.css";
 
-/* The design system, shared with every other meltforce homelab app. It is
-   copied in verbatim and never edited here — a change belongs upstream in
-   FreeReps, which is where homelab.css is derived from. Anything vimmary needs
-   on its own goes below this import. */
+/* The Modernist stylesheet. The design language is shared with the other
+   homelab apps and steered in Claude Design, which issues changes as a handoff
+   package; this file is vimmary's copy of it and is edited when a handoff
+   assigns a rule to the system. Anything only vimmary ever needs goes below
+   this import. */
 @import "./homelab.css";
 
 /* Expose the tokens to Tailwind so `bg-bg`, `text-neutral-600` and friends

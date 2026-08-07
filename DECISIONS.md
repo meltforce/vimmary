@@ -21,15 +21,111 @@ identifier rather than estimated.
 
 ---
 
+## 2026-08-07 — the two library screens are a media feed, not a table
+
+**Decided:** 2026-08-07
+
+**Decision.** `/` and `/podcasts` render one centred `--reading-w` (820px)
+column with artwork on every row and the summary's opening lines as the row's
+body. `web/src/components/FeedList.tsx` is that component and serves both
+screens; it replaces `RowTable` and `RowList` in `VideoListPage.tsx` and the
+equivalent inline pair in `PodcastListPage.tsx`. The desktop/mobile fork is gone
+for these two pages — a feed row is already a stacked layout, so it needs no
+second version — and `useIsDesktop()` survives there only for the filter bar's
+flex basis. `VideoDetailPage`, `StatsPage`, everything under `pages/settings/`,
+the API, the Go packages and the Atom feeds are untouched.
+
+**Reasoning.** The table was built for a queue: eight columns, one line per row,
+a status in every one of them. But these are things to watch and listen to, and
+the two fields that tell you whether you want one — the thumbnail and the first
+sentence of the summary — are exactly the two a table row could not carry.
+Meanwhile the status column repeated `done` several hundred times.
+
+**A `completed` row therefore shows no status mark.** `running`, `queued`,
+`failed` and `no captions` do, right-aligned, with `statusClass` and
+`statusLabel` from `display.ts` unchanged. When `error_message` is set it
+replaces the excerpt in `--color-accent-700`.
+
+**The lead item is promoted only on page 1 of an unfiltered, unsearched list.**
+On page 2 the newest row is not new, and in a filtered or searched list the
+first hit is not more important than the second — promoting it would be a claim
+about ranking that the query does not support. Topics appear on the lead item
+and nowhere else: on every row they become a fourth column of noise.
+
+**`excerpt(summary, title)` is in `display.ts`, not in the component.** Stored
+summaries open with `## Summary of <title>` or `Chapter-by-Chapter Summary of
+…`, which is worth nothing to a reader who read the title two lines above. It
+strips fenced blocks, leading headings and a leading line that restates the
+title, then returns the first paragraph whole — the CSS clamp truncates, so the
+line count follows the column width rather than a guessed character count.
+
+**Thumbnails are not desaturated.** The system reserves `.grayscale` for
+editorial photography; a thumbnail here is an identifier, and desaturating it
+removes what makes it recognizable. This is the one deliberate exception to the
+imagery rule.
+
+**No Go change was needed.** The handoff named one precondition — that the list
+endpoint return `summary` and `thumbnail_url`, not only the detail endpoint.
+`videoColumnsNoTranscript` (`internal/storage/videos.go:100`) trims the
+transcript and nothing else, so both fields were already there.
+
+**Two places where the handoff and the reference disagreed with the code:**
+
+1. *The first day band carries no 2px rule.* The reference closes the filter bar
+   with a 2px line and opens the band without one; `.filters` in the stylesheet
+   ends in a 1px hair rule. Stacking both would show a 3px edge, and changing
+   `.filters` would move every other screen, so `.feed-band:first-child` drops
+   its own rule instead.
+2. *The search field refuses to shrink below 768px.* The chip row does not wrap
+   there — it scrolls sideways, per the handoff — and with `flex: 1 1 100%` four
+   chips squeezed the field to 46px. It is `flex: 0 0 100%`, so the field takes
+   the full width and the chips run off the right edge.
+
+**Trigger to re-open.** A third screen needs the same feed, at which point the
+`variant` prop is doing work a component boundary should do instead. Or search
+starts returning `thumbnail_url`, which would remove the one case where a row
+shows the neutral block for a record that does have artwork.
+
+---
+
+## 2026-08-07 — the frontend gets a test runner
+
+**Decided:** 2026-08-07
+
+**Decision.** `web/` has vitest as a devDependency, `npm test` is `vitest run`,
+and CI runs it after `npm run build` (`.forgejo/workflows/ci.yml`). It covers the
+pure helpers in `web/src/display.ts` and nothing else. There is no component
+renderer, no jsdom and no browser: adding one is a separate decision.
+
+**Reasoning.** This closes the roadmap item that asked for a runner or a
+decision against one. What settled it was `excerpt()` — the media feed handoff
+specified it in prose with five ordered rules and asked for a test against one
+real summary of each shape, and it is exactly the kind of function `tsc -b`
+cannot judge. The first implementation passed the type check and failed two of
+the five cases: the fenced-block regex used `$` under the `m` flag and matched
+at the end of the first line, so a summary opening with a code fence returned
+the fence's contents as its excerpt. Nothing else in the chain would have caught
+that before it reached a row.
+
+The scope stays narrow on purpose. A component renderer buys little here — the
+two layout defects the Modernist migration introduced were found by looking at
+screenshots, and they still would be.
+
+**Trigger to re-open.** A UI regression that a pure-function test could not have
+caught, which is the argument for a renderer and a DOM.
+
+---
+
 ## 2026-08-07 — the web UI runs on the shared Modernist design language
 
 **Decided:** 2026-08-07
 
-**Decision.** `web/src/homelab.css` is the design system, copied verbatim from
-the handoff bundle and never edited per app; anything vimmary needs on its own
-goes in `web/src/index.css` below the import. The reference implementation is
-FreeReps (`server/web/src/index.css`), which is the authority whenever the
-handoff and the code disagree. `index.css` is now the Tailwind import, the
+**Decision.** `web/src/homelab.css` is vimmary's copy of the Modernist
+stylesheet. The design language is shared across the homelab apps, but each app
+holds its own copy and edits it; no app is the authority over the others. What
+says where a rule belongs is the handoff package, which is issued from Claude
+Design. A rule that is only ever vimmary's goes in `web/src/index.css` below the
+import. `index.css` is now the Tailwind import, the
 Archivo import, the `homelab.css` import, an `@theme inline` bridge and about
 thirty lines of vimmary-only rules. The `--vim-*` token layer and the `.vim-*`
 class layer are gone, along with Fraunces, Geist, JetBrains Mono, every radius,
@@ -102,9 +198,22 @@ for as long as the service exists.
 package to depend on — the bundle is a handoff, and FreeReps carries its own
 inlined copy for the same reason.
 
-**Trigger to re-open.** FreeReps changes `homelab.css`, at which point the copy
-here has to be refreshed rather than edited. Or the handoff bundle becomes a
-published package, which would make the copy unnecessary.
+**Trigger to re-open.** The handoff bundle becomes a published package, which
+would make the per-app copy unnecessary.
+
+**Revisions.**
+
+- *2026-08-07* — the stylesheet is editable per app. The original form of this
+  decision was that `homelab.css` is copied verbatim, never edited here, and
+  that FreeReps' `server/web/src/index.css` is the authority when the two
+  disagree; a system change was to be made in FreeReps and re-copied. That rule
+  was dropped the same day, on two grounds. It described a synchronisation
+  nothing performed: FreeReps has no `homelab.css`, the two files had already
+  diverged (650 lines against 638), and no step in either repo compares them.
+  And it had no owner — the design is steered in Claude Design and issued as a
+  handoff, so a repo has nothing to police. The immediate case was the media
+  feed handoff, which assigns `--reading-w` and the `.feed*` block to the
+  stylesheet because cast2md renders the same feed.
 
 ---
 

@@ -1,28 +1,15 @@
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchFeedInfo, fetchStats, listVideos, searchVideos } from "../api.ts";
 import PageHeader from "../components/PageHeader.tsx";
+import FeedList, { type Row } from "../components/FeedList.tsx";
 import { Skel } from "../components/LoadingSkeleton.tsx";
 import { AlertIcon, SearchIcon } from "../components/icons.tsx";
 import { useIsDesktop } from "../hooks/useMediaQuery.ts";
-import { formatDuration } from "../utils.ts";
-import { clock, groupByDay, isInFlight, longDate, statusClass, statusLabel } from "../display.ts";
+import { isInFlight, longDate } from "../display.ts";
 
 const PAGE_SIZE = 20;
-
-/** One shape for both the list and the search results. */
-interface Row {
-  id: string;
-  title: string;
-  channel: string;
-  created_at: string;
-  score?: number;
-  status?: string;
-  detail_level?: string;
-  duration_seconds?: number;
-  error_message?: string;
-}
 
 /**
  * The podcast half of the library. It mirrors the video list minus the two
@@ -67,6 +54,9 @@ export default function PodcastListPage() {
         title: m.title,
         channel: m.channel,
         created_at: m.created_at,
+        source: m.source,
+        summary: m.summary,
+        topics: m.metadata?.topics,
         score: m.score,
       }))
     : list.data?.videos.map((v) => ({
@@ -74,15 +64,18 @@ export default function PodcastListPage() {
         title: v.title,
         channel: v.channel,
         created_at: v.created_at,
+        source: v.source,
         status: v.status,
         detail_level: v.detail_level,
         duration_seconds: v.duration_seconds,
         error_message: v.error_message,
+        summary: v.summary,
+        thumbnail_url: v.thumbnail_url,
+        topics: v.metadata?.topics,
       }));
 
   const loading = searching ? search.isLoading : list.isLoading;
   const error = (searching ? search.error : list.error) as Error | null;
-  const groups = rows ? groupByDay(rows, (r) => r.created_at) : [];
   const totalPages = list.data ? Math.ceil(list.data.total / PAGE_SIZE) : 1;
 
   const setPage = (n: number) => {
@@ -94,10 +87,11 @@ export default function PodcastListPage() {
   const hours = (stats.data?.total_duration_seconds ?? 0) / 3600;
 
   return (
-    <>
+    <div className="feed-page">
       <PageHeader kicker={longDate(new Date())} title="Podcasts" />
 
-      <div className="hero">
+      {/* Two cells, side by side at every width — the strip's default is four. */}
+      <div className="hero" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <div>
           <div className="kick">Episodes</div>
           <div className="value">
@@ -122,7 +116,7 @@ export default function PodcastListPage() {
       <div className="filters">
         <form
           className="search"
-          style={{ flex: isDesktop ? "0 1 320px" : "1 1 100%" }}
+          style={{ flex: isDesktop ? "0 1 320px" : "0 0 100%" }}
           onSubmit={(e) => {
             e.preventDefault();
             const next = new URLSearchParams();
@@ -176,113 +170,14 @@ export default function PodcastListPage() {
             {searching ? "Show all episodes" : "Open podcast settings"}
           </Link>
         </div>
-      ) : isDesktop ? (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Episode</th>
-              <th style={{ width: 220 }}>Show</th>
-              <th style={{ width: 96 }}>Detail</th>
-              <th style={{ width: 130 }}>{searching ? "Match" : "Status"}</th>
-              <th className="right" style={{ width: 90 }}>Length</th>
-              <th className="right" style={{ width: 110 }}>{searching ? "Score" : "Added"}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading
-              ? Array.from({ length: 8 }, (_, i) => (
-                  <tr key={i}>
-                    <td><Skel w={`${70 - (i % 4) * 8}%`} /></td>
-                    <td><Skel w={120} /></td>
-                    <td><Skel w={48} /></td>
-                    <td><Skel w={64} h={18} /></td>
-                    <td className="right"><Skel w={44} /></td>
-                    <td className="right"><Skel w={62} /></td>
-                  </tr>
-                ))
-              : groups.map((g) => (
-                  <Fragment key={g.key}>
-                    <tr className="grp">
-                      <td colSpan={6} className="kick">{g.label}</td>
-                    </tr>
-                    {g.items.map((r) => (
-                      <tr key={r.id}>
-                        <td style={{ fontWeight: 500 }}>
-                          <Link to={`/podcast/${r.id}`} style={{ color: "inherit" }}>
-                            {r.title}
-                          </Link>
-                          {r.error_message ? (
-                            <div style={{ font: "400 11.5px var(--font-body)", color: "var(--color-neutral-600)", marginTop: 3 }}>
-                              {r.error_message}
-                            </div>
-                          ) : null}
-                        </td>
-                        <td style={{ color: "var(--color-neutral-700)" }}>{r.channel}</td>
-                        <td>{r.detail_level ? <span className="tag tag-neutral">{r.detail_level}</span> : null}</td>
-                        <td>
-                          {r.status ? (
-                            <span className={`status ${statusClass(r.status)}`}>
-                              {statusLabel(r.status)}
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="num right">
-                          {r.duration_seconds ? formatDuration(r.duration_seconds) : ""}
-                        </td>
-                        <td className="num right" style={{ fontSize: 12.5, color: "var(--color-neutral-600)" }}>
-                          {r.score !== undefined ? r.score.toFixed(2) : clock(r.created_at)}
-                        </td>
-                      </tr>
-                    ))}
-                  </Fragment>
-                ))}
-          </tbody>
-        </table>
       ) : (
-        <div style={{ borderTop: "var(--rule-strong)" }}>
-          {loading
-            ? Array.from({ length: 6 }, (_, i) => (
-                <div key={i} className="row">
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <Skel w={`${74 - (i % 3) * 11}%`} />
-                    <div style={{ marginTop: 5 }}><Skel w={128} h={11} /></div>
-                  </div>
-                  <Skel w={52} h={18} />
-                </div>
-              ))
-            : groups.map((g) => (
-                <Fragment key={g.key}>
-                  <div className="kick row-group">{g.label}</div>
-                  {g.items.map((r) => (
-                    <Link
-                      key={r.id}
-                      to={`/podcast/${r.id}`}
-                      className="row"
-                      style={{ color: "inherit", minHeight: 44 }}
-                    >
-                      <span style={{ flex: 1, minWidth: 0 }}>
-                        <span className="row-title" style={{ display: "block" }}>{r.title}</span>
-                        <span className="row-meta" style={{ display: "block" }}>
-                          {r.error_message ??
-                            [
-                              r.channel,
-                              r.duration_seconds ? formatDuration(r.duration_seconds) : null,
-                              r.detail_level,
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
-                        </span>
-                      </span>
-                      {r.status ? (
-                        <span className={`status ${statusClass(r.status)}`}>
-                          {statusLabel(r.status)}
-                        </span>
-                      ) : null}
-                    </Link>
-                  ))}
-                </Fragment>
-              ))}
-        </div>
+        <FeedList
+          rows={rows}
+          loading={loading}
+          searching={searching}
+          variant="podcast"
+          lead={page === 1 && !searching}
+        />
       )}
 
       {!searching && list.data && list.data.total > PAGE_SIZE ? (
@@ -324,6 +219,6 @@ export default function PodcastListPage() {
           {stats.data ? `${stats.data.total_count} episodes` : ""}
         </span>
       </div>
-    </>
+    </div>
   );
 }

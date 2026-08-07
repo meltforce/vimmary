@@ -69,16 +69,31 @@ away from being wrong and one of them was, answering 500 where the handler
 intended 404. Only `internal/storage` imports `jackc/pgx`, and a `grep` for it
 outside that package is the check.
 
-**`web/src/homelab.css` is the shared design system and is not edited here.**
-It is a verbatim copy of the meltforce homelab stylesheet, derived from
-FreeReps' `server/web/src/index.css`, which is the authority when the two
-disagree. A vimmary-only rule goes in `web/src/index.css` below the import; a
-change to the system itself is a change in FreeReps and a fresh copy. The why:
-five apps read the same file, and a local edit is a divergence nothing detects.
+**`web/src/homelab.css` is vimmary's own copy of the Modernist stylesheet, and it
+is edited here.** The design language is shared across the homelab apps, but no
+app polices another's copy and none is the authority over the others: the design
+is steered in Claude Design and arrives as a handoff package, which is what says
+where a rule belongs. A rule the handoff assigns to the system goes in this file
+next to the rules it belongs with — `--reading-w` and the `.feed*` block came
+that way on 2026-08-07. A rule that is only ever vimmary's goes in
+`web/src/index.css` below the import. The why: the earlier form of this rule
+("never edit; change FreeReps and re-copy") described a synchronisation nothing
+performed — FreeReps has no `homelab.css` at all, its system lives in
+`server/web/src/index.css`, and the two files had already diverged.
 Archivo is self-hosted through `@fontsource-variable/archivo` — a font CDN is
 unreachable for a client with no route to it, and the whole UI then renders in
 `system-ui`. One breakpoint, 768px, read in JS by `useIsDesktop()`, because
 desktop and phone are different component trees rather than one reflowed.
+
+**The two library screens are a media feed, not a table.** `/` and `/podcasts`
+both render `web/src/components/FeedList.tsx` — one centred `--reading-w` column,
+artwork on every row, `excerpt(summary, title)` as the row's body — and the
+desktop/mobile fork is gone for those two, because a feed row is already a
+stacked layout. A `completed` row shows no status mark: that is the norm, and the
+column it replaced repeated `done` several hundred times. The lead item is
+promoted only on page 1 of an unfiltered, unsearched list, since promoting the
+first row of a filtered list would be a claim about ranking that the query does
+not support.
 
 **The app icon's mark must stay lighter than its field.**
 `web/scripts/build-icons.mjs` (`npm run icons`, needs Chrome and ImageMagick, not

@@ -73,6 +73,9 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npm run build
+      # `tsc -b` is not the whole gate any more: display.ts carries logic a type
+      # check cannot judge — see DECISIONS.md, 2026-08-07.
+      - run: npm test
 
   build-deploy:
     needs: [go-build-test, web-build]

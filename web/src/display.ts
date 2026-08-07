@@ -89,6 +89,70 @@ export function clock(iso: string): string {
   });
 }
 
+/**
+ * The first prose of a summary, for a feed row. Strips the Markdown scaffolding
+ * and the restated title most summaries open with, so the excerpt starts at the
+ * first sentence that says something.
+ *
+ * The paragraph is returned whole and the CSS clamp does the truncating, so the
+ * line count follows the column width rather than a guessed character count.
+ */
+export function excerpt(summary: string | undefined, title: string): string {
+  if (!summary) return "";
+
+  // Fenced blocks go first: a fence may contain anything, including lines that
+  // would otherwise read as a heading or as prose. Tracked as state rather than
+  // matched as one expression, because an unclosed fence runs to the end.
+  const lines: string[] = [];
+  let fenced = false;
+  for (const line of summary.split("\n")) {
+    if (/^ {0,3}(?:```|~~~)/.test(line)) {
+      fenced = !fenced;
+      continue;
+    }
+    if (!fenced) lines.push(line);
+  }
+
+  const heading = (line: string) => /^ {0,3}#{1,6}\s/.test(line);
+
+  const needle = title.trim().toLowerCase();
+  const restatesTitle = (line: string) => {
+    const l = line.trim().toLowerCase().replace(/[*_`#]/g, "").trim();
+    if (!l || !needle) return false;
+    return l.includes(`summary of ${needle}`) || l.startsWith(needle);
+  };
+
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.trim() === "" || heading(line) || restatesTitle(line)) {
+      i++;
+      continue;
+    }
+    break;
+  }
+
+  const paragraph: string[] = [];
+  for (; i < lines.length && lines[i].trim() !== ""; i++) {
+    paragraph.push(
+      lines[i]
+        // A leading list bullet, ordinal or quote mark is scaffolding too.
+        .replace(/^\s*(?:[-*+]|\d+\.)\s+/, "")
+        .replace(/^\s*>\s?/, ""),
+    );
+  }
+
+  return paragraph
+    .join(" ")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/(\*\*|__)(.+?)\1/g, "$2")
+    .replace(/(\*|_)(?=\S)(.+?\S)\1/g, "$2")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Splits an ordered list into day bands without reordering it. */
 export function groupByDay<T>(items: T[], at: (item: T) => string) {
   const groups: { key: string; label: string; items: T[] }[] = [];

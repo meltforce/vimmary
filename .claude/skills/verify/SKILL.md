@@ -84,11 +84,15 @@ finding.
 Required when anything under `web/` changed, and it replaces the stub from step 1.
 
 ```bash
-cd web && npm ci --no-audit --no-fund && npm run build
+cd web && npm ci --no-audit --no-fund && npm run build && npm test
 ```
 
 `npm run build` is `tsc -b && vite build`, so a type error fails the build. CI
 pins Node 22.23.2.
+
+`npm test` is `vitest run`. It covers the pure helpers in `web/src/display.ts`
+and nothing else — there is no component renderer and no browser here. A layout
+change is still verified by looking at it, not by this step.
 
 ## What this does not cover
 

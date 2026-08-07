@@ -1,5 +1,5 @@
-import { Fragment, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchFeedInfo,
@@ -14,18 +14,11 @@ import {
 } from "../api.ts";
 import PageHeader from "../components/PageHeader.tsx";
 import Toast, { useToast } from "../components/Toast.tsx";
+import FeedList, { type Row } from "../components/FeedList.tsx";
 import { Skel } from "../components/LoadingSkeleton.tsx";
 import { AlertIcon, SearchIcon } from "../components/icons.tsx";
 import { useIsDesktop } from "../hooks/useMediaQuery.ts";
-import { formatDuration } from "../utils.ts";
-import {
-  clock,
-  groupByDay,
-  isInFlight,
-  longDate,
-  statusClass,
-  statusLabel,
-} from "../display.ts";
+import { isInFlight, longDate } from "../display.ts";
 
 const PAGE_SIZE = 20;
 
@@ -39,20 +32,6 @@ const FILTERS = [
   { key: "no_captions", label: "No captions" },
 ] as const;
 
-/** The list and the search results are rendered by one table. */
-interface Row {
-  id: string;
-  title: string;
-  channel: string;
-  created_at: string;
-  source: string;
-  status?: string;
-  detail_level?: string;
-  duration_seconds?: number;
-  error_message?: string;
-  score?: number;
-}
-
 function toRow(v: Video): Row {
   return {
     id: v.id,
@@ -64,9 +43,14 @@ function toRow(v: Video): Row {
     detail_level: v.detail_level,
     duration_seconds: v.duration_seconds,
     error_message: v.error_message,
+    summary: v.summary,
+    thumbnail_url: v.thumbnail_url,
+    topics: v.metadata?.topics,
   };
 }
 
+/* Search returns neither a thumbnail nor a length, so those rows carry the
+   neutral block and no duration badge. */
 function matchToRow(m: HybridMatch): Row {
   return {
     id: m.id,
@@ -74,13 +58,14 @@ function matchToRow(m: HybridMatch): Row {
     channel: m.channel,
     created_at: m.created_at,
     source: m.source,
+    summary: m.summary,
+    topics: m.metadata?.topics,
     score: m.score,
   };
 }
 
 export default function VideoListPage() {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const isDesktop = useIsDesktop();
   const toast = useToast();
 
@@ -180,7 +165,7 @@ export default function VideoListPage() {
   const isEmpty = !loading && rows && rows.length === 0;
 
   return (
-    <>
+    <div className="feed-page">
       <PageHeader kicker={longDate(new Date())} title="Videos" />
 
       <form
@@ -221,7 +206,10 @@ export default function VideoListPage() {
       <div className="filters">
         <form
           className="search"
-          style={{ flex: isDesktop ? "0 1 320px" : "1 1 100%" }}
+          /* Below 768px the bar does not wrap, so the field must refuse to
+             shrink — otherwise four chips squeeze it to a stub. It takes the
+             full width and the chips scroll off the right edge. */
+          style={{ flex: isDesktop ? "0 1 320px" : "0 0 100%" }}
           onSubmit={(e) => {
             e.preventDefault();
             setParam("q", searchInput.trim());
@@ -275,10 +263,14 @@ export default function VideoListPage() {
 
       {isEmpty ? (
         <EmptyState searching={searching} query={query} filtered={status !== ""} />
-      ) : isDesktop ? (
-        <RowTable rows={rows} loading={loading} searching={searching} onOpen={(r) => navigate(detailPath(r))} />
       ) : (
-        <RowList rows={rows} loading={loading} searching={searching} />
+        <FeedList
+          rows={rows}
+          loading={loading}
+          searching={searching}
+          variant="video"
+          lead={page === 1 && !searching && status === ""}
+        />
       )}
 
       {!searching && list.data && list.data.total > PAGE_SIZE ? (
@@ -341,12 +333,8 @@ export default function VideoListPage() {
       </div>
 
       <Toast message={toast.message} onDismiss={toast.dismiss} />
-    </>
+    </div>
   );
-}
-
-function detailPath(r: Row): string {
-  return r.source === "podcast" ? `/podcast/${r.id}` : `/video/${r.id}`;
 }
 
 function HeroCell({
@@ -367,140 +355,6 @@ function HeroCell({
       <div className="value" style={accent ? { color: "var(--color-accent)" } : undefined}>
         {known ? value?.toLocaleString() : <Skel w={92} h={44} />}
       </div>
-    </div>
-  );
-}
-
-/* Desktop. The head, the rules and the day bands paint before the data does;
-   only the values are placeholders, so nothing reflows on arrival. */
-function RowTable({
-  rows,
-  loading,
-  searching,
-  onOpen,
-}: {
-  rows?: Row[];
-  loading: boolean;
-  searching: boolean;
-  onOpen: (row: Row) => void;
-}) {
-  const groups = rows ? groupByDay(rows, (r) => r.created_at) : [];
-
-  return (
-    <table className="table">
-      <thead>
-        <tr>
-          <th>Video</th>
-          <th style={{ width: 200 }}>Channel</th>
-          <th style={{ width: 96 }}>Detail</th>
-          <th style={{ width: 130 }}>{searching ? "Match" : "Status"}</th>
-          <th className="right" style={{ width: 90 }}>Length</th>
-          <th className="right" style={{ width: 110 }}>{searching ? "Score" : "Added"}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {loading
-          ? Array.from({ length: 8 }, (_, i) => (
-              <tr key={i}>
-                <td><Skel w={`${72 - (i % 4) * 9}%`} /></td>
-                <td><Skel w={110} /></td>
-                <td><Skel w={48} /></td>
-                <td><Skel w={64} h={18} /></td>
-                <td className="right"><Skel w={44} /></td>
-                <td className="right"><Skel w={62} /></td>
-              </tr>
-            ))
-          : groups.map((g) => (
-              <Fragment key={g.key}>
-                <tr className="grp">
-                  <td colSpan={6} className="kick">{g.label}</td>
-                </tr>
-                {g.items.map((r) => (
-                  <tr key={r.id} style={{ cursor: "pointer" }} onClick={() => onOpen(r)}>
-                    <td style={{ fontWeight: 500 }}>
-                      <Link to={detailPath(r)} style={{ color: "inherit" }}>{r.title}</Link>
-                      {r.error_message ? (
-                        <div style={{ font: "400 11.5px var(--font-body)", color: "var(--color-neutral-600)", marginTop: 3 }}>
-                          {r.error_message}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td style={{ color: "var(--color-neutral-700)" }}>{r.channel}</td>
-                    <td>{r.detail_level ? <span className="tag tag-neutral">{r.detail_level}</span> : null}</td>
-                    <td>
-                      {r.status ? (
-                        <span className={`status ${statusClass(r.status)}`}>{statusLabel(r.status)}</span>
-                      ) : (
-                        <span className="tag tag-neutral">{r.source}</span>
-                      )}
-                    </td>
-                    <td className="num right">
-                      {r.duration_seconds ? formatDuration(r.duration_seconds) : ""}
-                    </td>
-                    <td className="num right" style={{ fontSize: 12.5, color: "var(--color-neutral-600)" }}>
-                      {r.score !== undefined ? r.score.toFixed(2) : clock(r.created_at)}
-                    </td>
-                  </tr>
-                ))}
-              </Fragment>
-            ))}
-      </tbody>
-    </table>
-  );
-}
-
-/* Phone. One row is one target: the whole row opens the detail page, and the
-   per-row actions live there rather than as five buttons under a thumbnail. */
-function RowList({ rows, loading, searching }: { rows?: Row[]; loading: boolean; searching: boolean }) {
-  if (loading) {
-    return (
-      <div style={{ borderTop: "var(--rule-strong)" }}>
-        {Array.from({ length: 6 }, (_, i) => (
-          <div key={i} className="row">
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <Skel w={`${74 - (i % 3) * 11}%`} />
-              <div style={{ marginTop: 5 }}><Skel w={128} h={11} /></div>
-            </div>
-            <Skel w={52} h={18} />
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  const groups = rows ? groupByDay(rows, (r) => r.created_at) : [];
-
-  return (
-    <div style={{ borderTop: "var(--rule-strong)" }}>
-      {groups.map((g) => (
-        <Fragment key={g.key}>
-          <div className="kick row-group">{g.label}</div>
-          {g.items.map((r) => (
-            <Link key={r.id} to={detailPath(r)} className="row" style={{ color: "inherit", minHeight: 44 }}>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span className="row-title" style={{ display: "block" }}>{r.title}</span>
-                <span className="row-meta" style={{ display: "block" }}>
-                  {r.error_message ??
-                    [
-                      r.channel,
-                      r.duration_seconds ? formatDuration(r.duration_seconds) : null,
-                      r.detail_level,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                </span>
-              </span>
-              {r.status ? (
-                <span className={`status ${statusClass(r.status)}`}>{statusLabel(r.status)}</span>
-              ) : searching && r.score !== undefined ? (
-                <span className="num row-value" style={{ fontSize: 12.5, color: "var(--color-neutral-600)" }}>
-                  {r.score.toFixed(2)}
-                </span>
-              ) : null}
-            </Link>
-          ))}
-        </Fragment>
-      ))}
     </div>
   );
 }

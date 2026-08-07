@@ -58,6 +58,11 @@
      all align to this one value. */
   --page-x: 40px;
 
+  /* The centred reading column a media feed sits in, --page-x included. A
+     feed row carries artwork and two lines of prose, and both stop being
+     readable when the line runs the full width of a desktop window. */
+  --reading-w: 820px;
+
   /* The two rule weights. 2px separates sections and carries structure;
      1px separates records inside a section. There is no third weight. */
   --rule-strong: 2px solid var(--color-text);
@@ -479,6 +484,185 @@ a:hover { color: var(--color-accent); }
 .row-title { font: 500 14px var(--font-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-meta { font: 400 11px var(--font-body); color: var(--color-neutral-600); margin-top: 3px; }
 .row-value { text-align: right; flex: none; }
+
+/* ── Media feed — artwork, title, and the summary's opening lines ────────── */
+
+/* A feed replaces a table where the records are things to watch and listen to
+   rather than jobs to supervise: the two fields that decide whether you want
+   one — the artwork and the first sentence — are the two a table row cannot
+   carry, and a status column repeating `done` carries nothing.
+
+   The column governs the whole page, not only the list. Header, hero, filters,
+   feed, pagination and footer all sit inside --reading-w with --page-x as
+   their inner padding, so every block aligns to one pair of edges. */
+.feed-page {
+  width: 100%;
+  max-width: var(--reading-w);
+  margin-inline: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The rule under the nav stays full-bleed; its contents join the column. */
+body:has(.feed-page) .nav {
+  padding-inline: max(var(--page-x), calc((100% - var(--reading-w)) / 2 + var(--page-x)));
+}
+
+.feed {
+  max-width: var(--reading-w);
+  margin-inline: auto;
+  padding-inline: var(--page-x);
+}
+
+/* Day band. The 2px rule separates one day from the next; above the first
+   band the filter bar has already closed the section. */
+.feed-band {
+  font: 600 10px var(--font-body);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+  padding: 24px 0 12px;
+  border-top: var(--rule-strong);
+}
+.feed-band:first-child { border-top: 0; padding-top: 18px; }
+
+.feed-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 22px 0;
+  border-top: var(--rule-hair);
+  color: inherit;
+  min-height: 44px;
+}
+.feed-item:hover .feed-title { color: var(--color-accent-700); }
+
+/* The newest record, and only under the conditions the list is actually
+   ordered by recency — see FeedList. No rule above it: it opens the band. */
+.feed-lead { border-top: 0; padding-top: 0; }
+.feed[data-variant="video"] .feed-lead { display: block; padding-bottom: 20px; }
+.feed[data-variant="video"] .feed-lead .feed-body { padding-top: 14px; }
+
+/* Square artwork leaves a narrower column, so the podcast lead is a grid: the
+   tag row can drop below the cover at 390px instead of crowding it. */
+.feed[data-variant="podcast"] .feed-lead {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 22px;
+  padding-bottom: 24px;
+}
+.feed[data-variant="podcast"] .feed-lead > .feed-topics { grid-column: 2; margin-top: 11px; }
+
+.feed-body { min-width: 0; flex: 1; }
+
+.feed-art {
+  flex: none;
+  position: relative;
+  overflow: hidden;
+  background: var(--color-neutral-300);
+}
+.feed-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.feed-art.is-wide { width: 248px; aspect-ratio: 16 / 9; }
+.feed-art.is-square { width: 88px; aspect-ratio: 1; }
+.feed-lead .feed-art.is-wide { width: 100%; }
+.feed-lead .feed-art.is-square { width: 150px; }
+
+/* No artwork is a block of the identical size, so the column stays flush. */
+.feed-art.is-empty {
+  background: var(--color-neutral-200);
+  box-shadow: inset 0 0 0 1px var(--color-neutral-300);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Length over wide artwork. Square art gets none — a square badge on a square
+   cover reads as a second corner, so the podcast length goes in the kicker. */
+.dur {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  font: 500 11px var(--font-body);
+  font-variant-numeric: tabular-nums;
+  padding: 5px 6px;
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+.feed-lead .dur { font-size: 11.5px; padding: 6px 8px; }
+
+.feed-title {
+  margin: 7px 0 0;
+  font: 700 19px/1.22 var(--font-heading);
+  letter-spacing: -0.018em;
+  color: var(--color-text);
+  text-wrap: pretty;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.feed-lead .feed-title {
+  margin-top: 9px;
+  font: 800 27px/1.13 var(--font-heading);
+  letter-spacing: -0.028em;
+}
+.feed[data-variant="podcast"] .feed-lead .feed-title {
+  font-size: 24px;
+  line-height: 1.16;
+  letter-spacing: -0.026em;
+}
+
+.feed-excerpt {
+  margin: 7px 0 0;
+  font: 400 13.5px/1.58 var(--font-body);
+  color: var(--color-neutral-700);
+  text-wrap: pretty;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.feed-lead .feed-excerpt { margin-top: 10px; font-size: 14.5px; line-height: 1.6; -webkit-line-clamp: 3; }
+.feed-excerpt.is-error { color: var(--color-accent-700); }
+
+/* Only inside .feed-lead: on every row the tags become a fourth column of
+   noise, on one row they read. */
+.feed-topics { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 13px; }
+
+@media (max-width: 767px) {
+  /* The filter bar keeps the search field at full width and lets the chips run
+     off the right edge. Wrapping them to a second line costs a row of height on
+     every screen; a <select> hides which filter is even available. */
+  .feed-page .filters { flex-wrap: nowrap; overflow-x: auto; }
+  .feed-page .filters .chip { flex: none; }
+
+  .feed-item { gap: 14px; padding: 16px 0; }
+  .feed[data-variant="video"] .feed-lead { padding-bottom: 16px; }
+  .feed[data-variant="video"] .feed-lead .feed-body { padding-top: 11px; }
+  .feed[data-variant="podcast"] .feed-lead { column-gap: 14px; padding-bottom: 18px; }
+  /* At 72px the text column is too narrow to carry a tag row beside it. */
+  .feed[data-variant="podcast"] .feed-lead > .feed-topics { grid-column: 1 / -1; margin-top: 16px; }
+
+  .feed-art.is-wide { width: 140px; }
+  .feed-art.is-square { width: 72px; }
+  .feed-lead .feed-art.is-square { width: 118px; }
+
+  .feed-title { margin-top: 6px; font-size: 15px; line-height: 1.24; letter-spacing: -0.015em; }
+  .feed-lead .feed-title { margin-top: 7px; font-size: 20px; line-height: 1.16; letter-spacing: -0.026em; }
+  .feed[data-variant="podcast"] .feed-lead .feed-title {
+    font-size: 17px;
+    line-height: 1.18;
+    letter-spacing: -0.022em;
+    -webkit-line-clamp: 3;
+  }
+
+  .feed-excerpt { margin-top: 6px; font-size: 12.5px; line-height: 1.5; }
+  .feed-lead .feed-excerpt { margin-top: 6px; font-size: 12.5px; line-height: 1.5; }
+
+  .dur { font-size: 10px; padding: 4px 5px; }
+  .feed-lead .dur { font-size: 11px; padding: 5px 6px; }
+}
 
 /* ── Rail (settings, metric pickers, long tables of contents) ────────────── */
 
