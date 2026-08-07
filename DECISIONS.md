@@ -21,6 +21,88 @@ identifier rather than estimated.
 
 ---
 
+## 2026-08-07 — no secret is fetched over the network during startup
+
+**Decided:** 2026-08-07
+
+**Decision.** vimmary links no setec client. The database password is resolved
+from `VIMMARY_POSTGRES_PASSWORD` in the environment, and the LLM API keys and
+the summary provider live in `app_settings` and are read at the moment they are
+used. setec keeps the database password for the *deploy*: Ansible reads
+`docker/vimmary/db-password` and renders the stack's `.env`.
+
+**Reasoning.** Every startup network call is a way for the process to hang
+before it opens its listener, and one of them did — 6h23min on 2026-08-07, with
+the container reporting up. Bounding the call turns that outage into a restart
+loop, which is better and still leaves the class alive. Removing the call
+removes the class. What is left in the startup path is tsnet, which cannot be
+removed because it *is* the listener.
+
+Deliberately not kept: a one-release bootstrap that copies the keys out of setec
+into the database on first start. It would have avoided a manual step at the
+cost of keeping the exact code path that caused the outage alive for one more
+release. The keys were entered by hand instead.
+
+**Trigger to re-open.** A secret that has to be current at startup and cannot be
+supplied by the deployment — none exists today.
+
+---
+
+## 2026-08-07 — API keys are stored in plain text, knowingly
+
+**Decided:** 2026-08-07
+
+**Decision.** The LLM API keys in `app_settings`, like `users.karakeep_api_key`
+before them, are stored unencrypted. No application-level encryption is added.
+
+**Reasoning.** This is a reduction, and naming it is the point of this entry.
+The Mistral key previously lived in setec, encrypted at rest under the KMS key
+in setec's unit on tsidp. It now sits in a Postgres column in the clear.
+
+Measured on 2026-08-07 on the Proxmox node `walter`: the only backup job,
+`backup-lebowski-daily`, runs with `all=1` to the `lebowski-pbs` store, Mon–Fri
+at 01:00. `vimmary-lxc` and its `pgdata` volume are included, so the keys leave
+the host daily.
+
+Accepted anyway, because application-level encryption would put the decryption
+key on the same host as the data — and host access already yields the database
+password from `/opt/docker/stacks/vimmary/.env`. It would protect only the
+off-host copy, and the effective place to protect that is the backup store,
+where it covers every service rather than one column in one application.
+
+A code comment on `SetKarakeepAPIKey` claimed the key was encrypted. It was
+never true and has been corrected; that claim is the reason this entry exists
+rather than a note.
+
+**Trigger to re-open.** An unencrypted PBS datastore combined with a key whose
+misuse costs money, or a key belonging to someone other than the operator.
+
+---
+
+## 2026-08-07 — a failed deploy alerts, and nothing acts on it overnight
+
+**Decided:** 2026-08-07
+
+**Decision.** No unattended remediation is added for a service that is down and
+stays down. The alerting path is left as it is.
+
+**Reasoning.** The 2026-08-07 outage looked like a missing alert and was not.
+Uptime Kuma published `vimmary Down` at 22:27:29 at priority 5 on the `kuma`
+topic, which is `isDefault` and reaches the phone; the parent group followed at
+22:29:05, and CI's own deploy-failure message at 22:29:30. Three notifications
+within three minutes, and the outage ran another six hours. Nothing about the
+routing was wrong — the operator was asleep.
+
+Since the failure class that produced it no longer exists, and any remaining
+class is covered by the container restarting itself, building an agent that
+restarts services at night would add a moving part to guard against something
+that has not recurred.
+
+**Trigger to re-open.** A second overnight outage in a class the restart policy
+does not cover.
+
+---
+
 ## 2026-08-06 — an unconfigured integration is invisible, not disabled
 
 **Decided:** 2026-08-06

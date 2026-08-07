@@ -26,7 +26,6 @@ import (
 	"github.com/meltforce/vimmary/internal/server"
 	"github.com/meltforce/vimmary/internal/service"
 	"github.com/meltforce/vimmary/internal/storage"
-	"github.com/meltforce/vimmary/internal/summary"
 	"github.com/meltforce/vimmary/internal/youtube"
 	"tailscale.com/tsnet"
 )
@@ -52,7 +51,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Start tsnet — setec needs it.
+	// Start tsnet — it carries the public listener.
 	var listener net.Listener
 	var tsServer *tsnet.Server
 	var tsnetHTTPClient *http.Client
@@ -68,13 +67,17 @@ func main() {
 		}
 		defer func() { _ = tsServer.Close() }()
 
-		// Start() only kicks the backend off — it returns while the node may
-		// still be without a current netmap. Everything below dials over this
-		// node, and setec answers a request from a node it cannot yet identify
-		// with a plain "access denied". Its store retries, but never recovers
-		// from that answer, so the process sits in a retry loop and never
-		// reaches its HTTP listener. Two outages on 2026-08-06 were this race
-		// lost; see INCIDENTS.md. Up() waits for the node to be running.
+		// Start() returns while the node may still be without a current netmap.
+		// Up() waits for it to reach Running with an address, which is what
+		// ListenTLS below needs.
+		//
+		// It is kept for that reason alone. It was added on 2026-08-06 against
+		// the setec startup race and did not prevent it — when tsnet loads its
+		// persisted state the AuthLoop short-circuits to Running and Up()
+		// returns satisfied within milliseconds, before the tailnet knows the
+		// node. Nothing dials over this node during startup any more, so that
+		// race no longer has a way to stop the process; see INCIDENTS.md,
+		// 2026-08-07.
 		upCtx, cancelUp := context.WithTimeout(context.Background(), 90*time.Second)
 		tsStatus, err := tsServer.Up(upCtx)
 		cancelUp()
@@ -98,44 +101,22 @@ func main() {
 		tsnetHTTPClient = http.DefaultClient
 	}
 
-	// Init secrets resolver
+	// The database password is the only secret resolved at startup, and it comes
+	// from VIMMARY_POSTGRES_PASSWORD in the environment — the resolver checks
+	// the environment before anything else, so no secret backend is configured.
+	//
+	// There is no setec client here any more. Fetching secrets over the tailnet
+	// during startup is what left vimmary dead for 6h23min on 2026-08-07: setec
+	// answered "access denied" to a node the tailnet had not yet placed, and the
+	// store retried 16812 times without ever opening the listener. The LLM API
+	// keys now live in app_settings and are read when they are used. Nothing in
+	// this startup path touches the network except tsnet itself.
 	resolver := secrets.NewResolver(cfg.Secrets, "VIMMARY")
-	if cfg.SecretBackend.Type == "setec" {
-		// Bounded, because setec.NewStore retries for as long as its context
-		// lives and this call used to get context.Background(). A start that
-		// dials setec before the tailnet can identify this node gets a plain
-		// "access denied" — an answer the store never recovers from, so an
-		// unbounded context turns a lost race into a process that retries
-		// forever and never reaches its listener. That was 6h23min on
-		// 2026-08-07; see INCIDENTS.md. Up() above does not prevent it: it is
-		// satisfied by the persisted state that makes tsnet report Running
-		// before it has a current netmap.
-		//
-		// 30 s, against a resolution that takes under 100 ms when the race is
-		// won and a few seconds on the recoverable "backend in state NoState"
-		// path. Exiting non-zero hands recovery to `restart: unless-stopped`,
-		// and a restart is a fresh draw on a race that 11 of 15 starts won.
-		initCtx, cancelInit := context.WithTimeout(context.Background(), 30*time.Second)
-		err := resolver.InitSetecStore(initCtx, tsnetHTTPClient, cfg.SecretBackend.SetecURL)
-		cancelInit()
-		if err != nil {
-			log.Error("init setec store", "error", err)
-			os.Exit(1)
-		}
-	}
-
-	// Resolve secrets
 	dbPassword, err := resolver.ResolveSecret("postgres_password")
 	if err != nil {
 		log.Error("failed to resolve postgres password", "error", err)
 		os.Exit(1)
 	}
-	mistralKey, err := resolver.ResolveSecret("mistral_api_key")
-	if err != nil {
-		log.Warn("mistral api key not available", "error", err)
-		mistralKey = ""
-	}
-
 	dsn := cfg.Database.DSN(dbPassword)
 
 	// Run migrations
@@ -170,7 +151,18 @@ func main() {
 	store := storage.NewDB(database)
 
 	// Init clients
-	mc := mistral.NewClient(mistralKey)
+	//
+	// The LLM API keys are service-wide settings in app_settings, maintained in
+	// the Settings page, so everything that needs one takes a function rather
+	// than a value: a key entered in the UI has to work without a restart.
+	//
+	// This client is the embedder and the transcriber. It reads the same Mistral
+	// setting the Mistral summarizer uses, so changing that key in the UI changes
+	// all three — which is intended, and worth knowing before treating it as a
+	// summary-only setting.
+	mc := mistral.NewClient(func(ctx context.Context) (string, error) {
+		return store.GetLLMKey(ctx, "mistral")
+	})
 	ytClient := youtube.NewClient(cfg.YouTube.SubLangs)
 
 	// cast2md sits inside the tailnet, so it needs the tsnet transport. The
@@ -184,37 +176,17 @@ func main() {
 		log.Info("cast2md client configured", "base_url", cfg.Cast2MD.BaseURL)
 	}
 
-	// Init summarizers
-	summarizers := make(map[string]summary.Summarizer)
+	// Summarizers are built per summary from the key in app_settings, so there
+	// is nothing to register here and nothing to check.
+	//
+	// There used to be a gate that exited non-zero when the configured default
+	// provider had no key. It is gone on purpose: with the keys maintained in
+	// the UI, a fresh install has none, and a service that refuses to start
+	// cannot serve the page on which the key would be entered. A missing key is
+	// now a failed summary with a message that says so, not a dead process.
+	registry := models.NewRegistry(store.GetLLMKey, log)
 
-	// Claude summarizer
-	claudeKey, err := resolver.ResolveSecret("claude_api_key")
-	if err != nil {
-		log.Warn("claude api key not available, claude summarizer disabled", "error", err)
-	} else if claudeKey != "" {
-		summarizers["claude"] = summary.NewClaudeSummarizer(claudeKey, "", nil)
-		log.Info("summarizer registered", "provider", "claude")
-	}
-
-	// Mistral summarizer (uses the same key as embeddings)
-	if mistralKey != "" {
-		summarizers["mistral"] = summary.NewMistralSummarizer(mistralKey)
-		log.Info("summarizer registered", "provider", "mistral")
-	}
-
-	if _, ok := summarizers[cfg.Summary.Provider]; !ok {
-		available := make([]string, 0, len(summarizers))
-		for k := range summarizers {
-			available = append(available, k)
-		}
-		log.Error("default summary provider not available", "provider", cfg.Summary.Provider, "available", available)
-		os.Exit(1)
-	}
-
-	// Init model registry
-	registry := models.NewRegistry(claudeKey, mistralKey, log)
-
-	svc := service.New(store, summarizers, cfg.Summary.Provider, registry, ytClient,
+	svc := service.New(store, registry, ytClient,
 		podcastSrc, cfg.Cast2MD, cfg.Karakeep.BaseURL, cfg.ExternalURL, mc, mc,
 		cfg.Search, cfg.Summary, log)
 

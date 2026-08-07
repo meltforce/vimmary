@@ -68,7 +68,7 @@ worker. Summaries are primarily English with occasional German.
 | Embeddings  | Mistral (`mistral-embed`, 1024-dim)   |
 | Summaries   | Claude API or Mistral (configurable)  |
 | Auth        | Tailscale tsnet                       |
-| Secrets     | setec                                 |
+| Secrets     | API keys in the database, DB password from the environment |
 | Transcripts | YouTube InnerTube API (native Go)     |
 | Search      | Hybrid: keyword + semantic with RRF   |
 | MCP         | mcp-go, HTTP + stdio transports       |

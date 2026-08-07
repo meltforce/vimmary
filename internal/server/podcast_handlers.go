@@ -27,12 +27,22 @@ func (s *Server) writePodcastError(w http.ResponseWriter, err error, logMsg stri
 // The frontend hides everything belonging to an integration that is off, so an
 // installation without cast2md shows no trace of podcasts anywhere.
 func (s *Server) handleGetFeatures(w http.ResponseWriter, r *http.Request) {
-	if _, ok := mustUserID(w, r); !ok {
+	uid, ok := mustUserID(w, r)
+	if !ok {
 		return
+	}
+	// is_admin rides along here rather than on its own endpoint because the
+	// frontend already loads this once per session to decide what to render,
+	// and the admin-only LLM section is one more such decision. A failure to
+	// determine it hides the section rather than blocking the page.
+	admin, err := s.svc.IsAdmin(r.Context(), uid)
+	if err != nil {
+		s.log.Warn("admin check failed, hiding admin surfaces", "error", err)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"podcasts":    s.svc.PodcastEnabled(),
 		"cast2md_url": s.svc.Cast2MDBaseURL(),
+		"is_admin":    admin,
 	})
 }
 

@@ -27,7 +27,7 @@ type summarizeRequest struct {
 // where the transcript came from, so ProcessVideo, Resummarize and
 // ProcessEpisode all end here.
 func (s *Service) summarizeAndStore(ctx context.Context, req summarizeRequest) (string, error) {
-	summarizer, providerName, err := s.getSummarizer(req.provider)
+	summarizer, providerName, err := s.getSummarizer(ctx, req.provider)
 	if err != nil {
 		return "", fmt.Errorf("get summarizer: %w", err)
 	}

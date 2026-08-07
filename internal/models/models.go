@@ -23,37 +23,47 @@ type cachedModels struct {
 	fetchedAt time.Time
 }
 
+// Providers the registry knows how to query. It replaces iterating over the
+// configured keys: keys now come from the database and can appear or disappear
+// while the process runs, so the set of *possible* providers has to be stated
+// rather than derived from what happened to be configured at startup.
+var Providers = []string{"claude", "mistral"}
+
+// KeyFunc supplies a provider's API key at call time. Keys are service-wide
+// settings maintained in the Settings page, so they cannot be captured once at
+// construction. An unconfigured provider yields an empty string, not an error.
+type KeyFunc func(ctx context.Context, provider string) (string, error)
+
 // Registry discovers and caches available models from provider APIs.
 type Registry struct {
 	mu       sync.Mutex
 	cache    map[string]*cachedModels
 	cacheTTL time.Duration
-	apiKeys  map[string]string
+	keyFor   KeyFunc
 	http     *http.Client
 	log      *slog.Logger
 }
 
-// NewRegistry creates a model registry with API keys for each provider.
-func NewRegistry(claudeAPIKey, mistralAPIKey string, log *slog.Logger) *Registry {
-	keys := make(map[string]string)
-	if claudeAPIKey != "" {
-		keys["claude"] = claudeAPIKey
-	}
-	if mistralAPIKey != "" {
-		keys["mistral"] = mistralAPIKey
-	}
+// NewRegistry creates a model registry that resolves API keys per call.
+func NewRegistry(keyFor KeyFunc, log *slog.Logger) *Registry {
 	return &Registry{
 		cache:    make(map[string]*cachedModels),
 		cacheTTL: 5 * time.Minute,
-		apiKeys:  keys,
+		keyFor:   keyFor,
 		http:     &http.Client{Timeout: 10 * time.Second},
 		log:      log,
 	}
 }
 
-// ListModels returns available models for a provider, using a cached result if fresh.
+// ListModels returns available models for a provider, using a cached result if
+// fresh. A provider without a configured key returns nothing and no error —
+// that is how it stays out of the Settings page's model list.
 func (r *Registry) ListModels(ctx context.Context, provider string) ([]Model, error) {
-	if _, ok := r.apiKeys[provider]; !ok {
+	apiKey, err := r.keyFor(ctx, provider)
+	if err != nil {
+		return nil, fmt.Errorf("api key for %q: %w", provider, err)
+	}
+	if apiKey == "" {
 		return nil, nil
 	}
 
@@ -65,7 +75,7 @@ func (r *Registry) ListModels(ctx context.Context, provider string) ([]Model, er
 	}
 	r.mu.Unlock()
 
-	models, err := r.fetchModels(ctx, provider)
+	models, err := r.fetchModels(ctx, provider, apiKey)
 	if err != nil {
 		// Return stale cache on error
 		if cached != nil {
@@ -82,10 +92,11 @@ func (r *Registry) ListModels(ctx context.Context, provider string) ([]Model, er
 	return models, nil
 }
 
-// ListAllModels returns models from all configured providers, tagged with provider name.
+// ListAllModels returns models from every provider that has a key configured,
+// tagged with the provider name. Providers without a key contribute nothing.
 func (r *Registry) ListAllModels(ctx context.Context) []Model {
 	var all []Model
-	for provider := range r.apiKeys {
+	for _, provider := range Providers {
 		models, err := r.ListModels(ctx, provider)
 		if err != nil {
 			r.log.Warn("failed to list models for provider", "provider", provider, "error", err)
@@ -96,23 +107,23 @@ func (r *Registry) ListAllModels(ctx context.Context) []Model {
 	return all
 }
 
-func (r *Registry) fetchModels(ctx context.Context, provider string) ([]Model, error) {
+func (r *Registry) fetchModels(ctx context.Context, provider, apiKey string) ([]Model, error) {
 	switch provider {
 	case "claude":
-		return r.fetchClaudeModels(ctx)
+		return r.fetchClaudeModels(ctx, apiKey)
 	case "mistral":
-		return r.fetchMistralModels(ctx)
+		return r.fetchMistralModels(ctx, apiKey)
 	default:
 		return nil, fmt.Errorf("unknown provider: %q", provider)
 	}
 }
 
-func (r *Registry) fetchClaudeModels(ctx context.Context) ([]Model, error) {
+func (r *Registry) fetchClaudeModels(ctx context.Context, apiKey string) ([]Model, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.anthropic.com/v1/models?limit=100", nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("x-api-key", r.apiKeys["claude"])
+	req.Header.Set("x-api-key", apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	resp, err := r.http.Do(req)
@@ -150,12 +161,12 @@ func (r *Registry) fetchClaudeModels(ctx context.Context) ([]Model, error) {
 	return models, nil
 }
 
-func (r *Registry) fetchMistralModels(ctx context.Context) ([]Model, error) {
+func (r *Registry) fetchMistralModels(ctx context.Context, apiKey string) ([]Model, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.mistral.ai/v1/models", nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+r.apiKeys["mistral"])
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := r.http.Do(req)
 	if err != nil {

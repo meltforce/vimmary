@@ -49,10 +49,11 @@ EXPOSE 443
 # real listener is on the tsnet netstack, which nothing inside the container can
 # dial.
 #
-# start-period covers the bounded startup worst case: 90 s for tsnet Up plus
-# 30 s for the setec store plus migrations. A start that exceeds it has already
-# exited non-zero and is being restarted, so nothing waits on this check.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=150s --retries=3 \
+# start-period covers the startup worst case, which is now 90 s for tsnet Up
+# plus migrations — the 30 s setec budget it used to include is gone with the
+# setec client. A healthy start reaches the listener in well under a second
+# after tsnet; the margin is for migrations on a cold database.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
     CMD wget -q -O /dev/null http://127.0.0.1:8081/healthz || exit 1
 
 CMD ["./vimmary", "--config", "/data/config.yaml"]

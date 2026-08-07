@@ -92,6 +92,11 @@ func (s *Server) routes() {
 		r.Put("/api/v1/settings/model", s.handleSetModel)
 		r.Get("/api/v1/settings/prompts", s.handleGetPrompts)
 		r.Put("/api/v1/settings/prompts", s.handleSetPrompt)
+
+		// Service-wide, primary user only. These are the LLM API keys and the
+		// summary provider, which used to come from setec at startup.
+		r.Get("/api/v1/settings/llm", s.handleGetLLMSettings)
+		r.Put("/api/v1/settings/llm", s.handleSetLLMSettings)
 	})
 }
 

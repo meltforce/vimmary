@@ -218,6 +218,10 @@ export function fetchProviders(): Promise<ProvidersInfo> {
 export interface Features {
   podcasts: boolean;
   cast2md_url: string;
+  // True for the primary user — the first Tailscale login, which the server
+  // also treats as the owner that tagged devices resolve to. Gates the
+  // service-wide LLM settings.
+  is_admin: boolean;
 }
 
 export function fetchFeatures(): Promise<Features> {
@@ -280,6 +284,34 @@ export function setKarakeepAPIKey(
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ api_key: apiKey }),
+  });
+}
+
+export interface LLMSettings {
+  mistral_configured: boolean;
+  anthropic_configured: boolean;
+  provider: string;
+}
+
+/** Every field is optional: omitting one leaves it unchanged, sending an empty
+ * string clears it. That is how the Anthropic key is removed again. */
+export interface LLMSettingsUpdate {
+  mistral_api_key?: string;
+  anthropic_api_key?: string;
+  provider?: string;
+}
+
+export function fetchLLMSettings(): Promise<LLMSettings> {
+  return fetchJSON("/api/v1/settings/llm");
+}
+
+export function updateLLMSettings(
+  update: LLMSettingsUpdate
+): Promise<LLMSettings> {
+  return fetchJSON("/api/v1/settings/llm", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(update),
   });
 }
 

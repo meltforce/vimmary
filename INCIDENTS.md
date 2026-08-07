@@ -105,6 +105,22 @@ needs a readiness condition that reflects the netmap rather than the backend
 state, or a setec store that distinguishes "denied because the peer is not yet
 known" from "denied".
 
+**Closed the same day, by removing the dependency rather than the race.** The
+retries told the rest of the story: 16812 of them, evenly spaced over the whole
+6h23min, all answered the same way. A window that a longer wait closes would
+have closed. Reading setec's source settled what the answer meant — a failed
+identity lookup returns 500 `unable to identify caller`, and we got 403, so
+setec identified the node and found no permissions in the `CapMap` its own
+netmap carried for that peer. The stale state was on setec's side, out of reach
+of anything vimmary could wait for or retry.
+
+vimmary therefore no longer fetches secrets at startup. The database password
+comes from `VIMMARY_POSTGRES_PASSWORD`, the LLM API keys live in `app_settings`
+and are read when used, and no setec client is linked into the binary. The
+failure class is gone, not shortened. The tsnet race still exists and still
+belongs to `ROADMAP.md`; what changed is that vimmary no longer gives it a way
+to stop the process.
+
 ---
 
 ## 2026-08-06 — the container ran, the service did not, and nothing said so

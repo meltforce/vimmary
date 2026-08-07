@@ -98,7 +98,12 @@ func (db *DB) GetUserByFeedToken(ctx context.Context, token string) (int, error)
 	return id, err
 }
 
-// SetKarakeepAPIKey stores an encrypted Karakeep API key for a user.
+// SetKarakeepAPIKey stores a user's Karakeep API key.
+//
+// In plain text. An earlier version of this comment claimed the key was
+// encrypted; there is no crypto anywhere in this repo, and the same holds for
+// the API keys in app_settings. DECISIONS.md carries why that is accepted and
+// what would overturn it.
 func (db *DB) SetKarakeepAPIKey(ctx context.Context, userID int, apiKey string) error {
 	_, err := db.Pool.Exec(ctx, `UPDATE users SET karakeep_api_key = $1 WHERE id = $2`, apiKey, userID)
 	return err

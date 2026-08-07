@@ -19,6 +19,10 @@ search:
   score_cutoff_ratio: 0.5
 
 summary:
+  # The initial provider. Once one is chosen in Settings → LLM providers, that
+  # choice wins — this stays the value an unattended deployment starts from.
+  # The API keys are not here: they live in the database and are entered in the
+  # same page. Nothing in this file is fetched over the network at startup.
   provider: "claude"        # "claude" or "mistral"
   claude_model: "claude-sonnet-4-5-20250514"
   mistral_model: "mistral-large-latest"
@@ -39,7 +43,8 @@ cast2md:
   max_per_poll: 25            # episodes queued per feed per tick
   timeout_seconds: 60         # transcript fetch; metadata calls use 15 s
 
+# The database password is the only secret vimmary resolves at startup.
+# VIMMARY_POSTGRES_PASSWORD in the environment takes precedence over the value
+# here, which is what a deployment sets; the literal below is for local runs.
 secrets:
   postgres_password: "vimmary"
-  mistral_api_key: ""
-  claude_api_key: ""

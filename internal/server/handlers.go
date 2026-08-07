@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -438,6 +439,97 @@ func (s *Server) handleSetKarakeepKey(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
 }
 
+// mustAdmin resolves the caller and requires that they are the primary user.
+// It answers 404 rather than 403 for a non-admin, so the response does not
+// confirm that an admin-only surface exists — the same reasoning as the Atom
+// feed token in server.go.
+func (s *Server) mustAdmin(w http.ResponseWriter, r *http.Request) (int, bool) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return 0, false
+	}
+	admin, err := s.svc.IsAdmin(r.Context(), uid)
+	if err != nil {
+		s.log.Error("admin check failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check permissions"})
+		return 0, false
+	}
+	if !admin {
+		http.NotFound(w, r)
+		return 0, false
+	}
+	return uid, true
+}
+
+func (s *Server) handleGetLLMSettings(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.mustAdmin(w, r); !ok {
+		return
+	}
+
+	settings, err := s.svc.GetLLMSettings(r.Context())
+	if err != nil {
+		s.log.Error("get llm settings failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get settings"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, settings)
+}
+
+// handleSetLLMSettings updates the service-wide LLM configuration. Every field
+// is a pointer, because absent and empty mean different things here: absent
+// leaves the value alone, empty clears it. The Anthropic key is meant to be
+// clearable, which is why this does not reject empty the way the Karakeep
+// handler does.
+//
+// Keys are applied before the provider, so one request can supply a key and
+// select the provider it belongs to.
+func (s *Server) handleSetLLMSettings(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.mustAdmin(w, r); !ok {
+		return
+	}
+
+	var body struct {
+		MistralAPIKey   *string `json:"mistral_api_key"`
+		AnthropicAPIKey *string `json:"anthropic_api_key"`
+		Provider        *string `json:"provider"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	if body.MistralAPIKey != nil {
+		if err := s.svc.SetLLMKey(r.Context(), "mistral", strings.TrimSpace(*body.MistralAPIKey)); err != nil {
+			s.log.Error("set mistral key failed", "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save key"})
+			return
+		}
+	}
+	if body.AnthropicAPIKey != nil {
+		if err := s.svc.SetLLMKey(r.Context(), "claude", strings.TrimSpace(*body.AnthropicAPIKey)); err != nil {
+			s.log.Error("set anthropic key failed", "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save key"})
+			return
+		}
+	}
+	if body.Provider != nil {
+		if err := s.svc.SetSummaryProvider(r.Context(), strings.TrimSpace(*body.Provider)); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+	}
+
+	settings, err := s.svc.GetLLMSettings(r.Context())
+	if err != nil {
+		s.log.Error("get llm settings failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "saved, but failed to read back"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, settings)
+}
+
 func (s *Server) handleGetPrompts(w http.ResponseWriter, r *http.Request) {
 	uid, ok := mustUserID(w, r)
 	if !ok {
@@ -493,8 +585,8 @@ func (s *Server) handleGetProviders(w http.ResponseWriter, r *http.Request) {
 	prefProvider, prefModel, _ := s.svc.GetModelPreference(r.Context(), uid)
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"providers": s.svc.AvailableProviders(),
-		"default":   s.svc.DefaultProvider(),
+		"providers":         s.svc.AvailableProviders(r.Context()),
+		"default":           s.svc.DefaultProvider(r.Context()),
 		"selected_provider": prefProvider,
 		"selected_model":    prefModel,
 	})

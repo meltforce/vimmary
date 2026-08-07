@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/meltforce/vimmary/internal/config"
 	"github.com/meltforce/vimmary/internal/storage"
-	"github.com/meltforce/vimmary/internal/summary"
 )
 
 // mockDB implements the DB methods used by the service layer under test.
@@ -28,15 +27,11 @@ func (m *mockEmbedder) Embed(_ context.Context, _ string) ([]float32, error) {
 	return m.embedding, m.err
 }
 
-// mockSummarizer returns a fixed summary.
-type mockSummarizer struct {
-	summary *summary.Summary
-	err     error
-}
-
-func (m *mockSummarizer) Summarize(_ context.Context, _ summary.Request) (*summary.Summary, error) {
-	return m.summary, m.err
-}
+// There is no mockSummarizer any more. getSummarizer builds the summarizer from
+// the API key in app_settings on every call, so a fake can no longer be injected
+// through the constructor — testing that path now needs a database. Nothing
+// tested it before either; this note exists so the missing seam reads as a
+// consequence rather than an oversight.
 
 // Since Service.Search depends on storage.DB methods that require a real
 // pgx pool, we test the RRF merging logic in isolation.
@@ -189,12 +184,9 @@ func TestHybridMatchJSON(t *testing.T) {
 // Verify that the service constructor works with nil-safe defaults.
 func TestNewService(t *testing.T) {
 	embedder := &mockEmbedder{embedding: []float32{0.1, 0.2}}
-	summarizer := &mockSummarizer{summary: &summary.Summary{Text: "test"}}
 
 	svc := New(
 		nil, // db
-		map[string]summary.Summarizer{"claude": summarizer},
-		"claude",
 		nil, // registry
 		nil, // yt client
 		nil, // cast2md client

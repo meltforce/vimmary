@@ -22,9 +22,19 @@ export function useFeatures(): Features {
   });
   // Default to off while loading. Showing the podcast UI and then removing it
   // would be worse than showing it a moment late on a deployment that has it.
-  return data ?? { podcasts: false, cast2md_url: "" };
+  return data ?? { podcasts: false, cast2md_url: "", is_admin: false };
 }
 
 export function usePodcastsEnabled(): boolean {
   return useFeatures().podcasts;
+}
+
+/**
+ * useIsAdmin reports whether the signed-in user is the primary user. It gates
+ * the service-wide LLM settings, which everyone else does not see at all — the
+ * server answers 404 on those routes for them, so rendering the section would
+ * only produce a broken panel.
+ */
+export function useIsAdmin(): boolean {
+  return useFeatures().is_admin;
 }

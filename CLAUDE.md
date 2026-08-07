@@ -27,28 +27,39 @@ unreachable from outside the tailnet. `compose.example.yml` is the one the
 README points the public at; it pulls `ghcr.io/meltforce/vimmary:latest`.
 Changing one does not change the other.
 
-**tsnet starts before secrets, because setec is reached over it.** The init
-order in `cmd/vimmary/main.go` is config → tsnet → setec resolver → resolve
-secrets → migrations → DB → services → HTTP server. Moving secret resolution
-earlier leaves setec without a transport.
+**Nothing in the startup path fetches a secret over the network, and that is the
+point.** The init order in `cmd/vimmary/main.go` is config → tsnet → resolve the
+database password from the environment → migrations → DB → services → HTTP
+listener. The only remaining network dependency is tsnet itself. Until
+2026-08-07 vimmary read three secrets from setec over the tsnet node during
+startup, and a node the tailnet had not yet placed got `access denied` — an
+answer the setec store retries forever. That produced a 6h23min outage with the
+container up and no listener; see INCIDENTS.md. Reintroducing any network call
+before the listener reintroduces that failure class.
 
-**A start can lose a race against the tailnet, and `tsServer.Up()` does not
-prevent it.** `Start()` returns while the node may still have no current netmap.
-A setec request sent in that window reaches setec, which cannot identify the
-peer and answers `access denied` — an answer the store never recovers from.
-`Up()` was added on 2026-08-06 to close that window and does not: when tsnet
-loads its persisted state the AuthLoop short-circuits (`AuthLoop: state is
-Running; done`) and `Up()` returns satisfied within milliseconds. Measured over
-15 starts, `Running` lost 4 of 4 and `Starting` won 11 of 11; see INCIDENTS.md,
-2026-08-07.
+**The LLM API keys live in `app_settings` and are read when they are used.**
+`Service.getSummarizer` builds a summarizer per summary from the key in the
+database, the way `writeBackToKarakeep` builds its client — so a key entered in
+Settings → LLM providers works without a restart. There is deliberately no
+startup check that the configured provider has a key: a service that refuses to
+start cannot serve the page on which the key would be entered. A missing key is
+a failed summary with a message saying so.
 
-**What keeps a lost race short is the bound, not the wait.**
-`InitSetecStore` gets a 30 s context and the process exits non-zero on expiry,
-so `restart: unless-stopped` draws again. With `context.Background()` there the
-same race produced a 6h23min outage. The `HEALTHCHECK` lives in the `Dockerfile`
-rather than in a compose file, because a compose probe is owned by the
-deployment repo — the one added there on 2026-08-06 was reverted by an
-auto-rollback 94 seconds later.
+**The Mistral key is not only the summarizer's.** The same `app_settings` value
+feeds `internal/mistral.Client`, which is both the embedder and the podcast
+transcriber. Changing it in the UI changes all three, which is intended —
+`DECISIONS.md` records that embeddings are deliberately not swappable.
+
+**Admin is the primary user, and that rule predates the Settings page.**
+`storage.GetPrimaryUser` — first login containing `@`, by `created_at` — is part
+of meltkit's `UserStore` interface and is what the identity middleware already
+resolves every tagged device to. The service-wide settings reuse it rather than
+adding a second notion of owner. Non-admins get 404, not 403.
+
+**The `HEALTHCHECK` lives in the `Dockerfile`, not in a compose file**, because a
+compose probe is owned by whichever repo holds the deployment. The one added to
+homelab on 2026-08-06 lasted 94 seconds before an auto-rollback removed it, and
+vimmary then ran dead with nothing watching.
 
 **The health endpoint is on loopback, and it is deliberate.** With Tailscale
 enabled the real listener runs on the tsnet netstack, which nothing inside the
@@ -80,10 +91,17 @@ which is what preserves Karakeep's AI-generated tags.
 10 s to 45 s with queue depth. A bulk import that looks stalled is usually this
 working as intended.
 
-**Karakeep API keys are per-user and live in the database**, configured through
-the Settings page — they are not setec secrets. The global secrets are exactly
-`vimmary/postgres-password`, `vimmary/mistral-api-key` and
-`vimmary/claude-api-key`.
+**Every API key lives in the database and is configured through the Settings
+page.** Karakeep keys are per-user (`users.karakeep_api_key`); the LLM keys and
+the summary provider are service-wide (`app_settings`) and only the primary user
+sees them. All of them are stored in plain text — a decision with its cost and
+its trigger recorded in `DECISIONS.md`, not an oversight.
+
+**setec still holds the database password, but vimmary never talks to it.**
+Ansible reads `docker/vimmary/db-password` at deploy time and renders it into
+the stack's `.env`; the container receives it as `VIMMARY_POSTGRES_PASSWORD`,
+which meltkit's resolver checks before anything else. Nothing in the binary
+links a setec client.
 
 **`videos` holds both kinds of row, and source-blind queries are bugs.** A
 `source` column discriminates `youtube` from `podcast`; podcast rows carry NULL

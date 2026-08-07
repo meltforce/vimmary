@@ -19,17 +19,24 @@ const (
 	embedModel = "mistral-embed"
 )
 
+// KeyFunc supplies the API key at call time. The key is a service-wide setting
+// maintained in the Settings page, so it can change while the process runs and
+// cannot be captured once at construction.
+type KeyFunc func(ctx context.Context) (string, error)
+
 // Client provides Mistral API access for embeddings.
 type Client struct {
-	apiKey string
-	http   *http.Client
+	key  KeyFunc
+	http *http.Client
 }
 
-// NewClient creates a Mistral API client.
-func NewClient(apiKey string) *Client {
+// NewClient creates a Mistral API client. The key is fetched per request, not
+// held — this is the same client that serves embeddings and transcription, so
+// changing the Mistral key in the Settings page has to reach all three uses.
+func NewClient(key KeyFunc) *Client {
 	return &Client{
-		apiKey: apiKey,
-		http:   &http.Client{Timeout: 30 * time.Second},
+		key:  key,
+		http: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -82,12 +89,20 @@ func (c *Client) Transcribe(ctx context.Context, audioPath string) (string, erro
 		return "", fmt.Errorf("close multipart: %w", err)
 	}
 
+	apiKey, err := c.key(ctx)
+	if err != nil {
+		return "", fmt.Errorf("mistral api key: %w", err)
+	}
+	if apiKey == "" {
+		return "", fmt.Errorf("mistral api key not configured")
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "POST", baseURL+"/audio/transcriptions", &buf)
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", w.FormDataContentType())
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	// Use a separate client with longer timeout for large audio uploads.
 	httpClient := &http.Client{Timeout: 10 * time.Minute}
@@ -124,6 +139,17 @@ func (c *Client) post(ctx context.Context, path string, body any, result any) er
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
+	// Resolved once, outside the retry loop: a retry is for a failed request,
+	// not for a changed key, and re-reading it per attempt would put a database
+	// query behind every backoff.
+	apiKey, err := c.key(ctx)
+	if err != nil {
+		return fmt.Errorf("mistral api key: %w", err)
+	}
+	if apiKey == "" {
+		return fmt.Errorf("mistral api key not configured")
+	}
+
 	deadline := time.Now().Add(10 * time.Minute)
 	backoff := 500 * time.Millisecond
 	const maxBackoff = 30 * time.Second
@@ -134,7 +160,7 @@ func (c *Client) post(ctx context.Context, path string, body any, result any) er
 			return fmt.Errorf("create request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+		req.Header.Set("Authorization", "Bearer "+apiKey)
 
 		resp, err := c.http.Do(req)
 		if err != nil {

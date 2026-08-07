@@ -94,7 +94,9 @@ jobs:
       # that never opened its listener passed as deployed on 2026-08-06.
       # /version answers 503 when the database is unreachable, and curl -sfS
       # fails the step on it. The defaults are 30 attempts every 5 s = 150 s,
-      # which covers the 120 s start_period in the compose file.
+      # which covers the 120 s start-period in the Dockerfile's HEALTHCHECK —
+      # the compose file has carried no probe since an auto-rollback removed it
+      # on 2026-08-06.
       health_url: https://vimmary.coydog-fence.ts.net/version
       # homelab/Ansible owns the deployed compose
       # (homelab/docker/stacks/vimmary/compose.yaml), and Compose resolves
@@ -143,8 +145,10 @@ jobs:
           EXPECTED: edge-${{ github.sha }}
         run: |
           set -euo pipefail
-          # Twelve attempts at 10 s: tsnet, setec and migrations run before the
-          # listener opens, and the compose start_period allows 120 s for that.
+          # Twelve attempts at 10 s: tsnet and migrations run before the listener
+          # opens, which is the 120 s start-period in the Dockerfile. setec used
+          # to be in that budget and is not any more — the keys come from the
+          # database now, so nothing here waits on a network secret fetch.
           for attempt in $(seq 1 12); do
             body="$(curl -fsS --max-time 10 https://vimmary.coydog-fence.ts.net/version || true)"
             got="$(printf '%s' "${body}" \

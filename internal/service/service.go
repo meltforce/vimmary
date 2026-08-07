@@ -2,13 +2,16 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/meltforce/vimmary/internal/config"
 	"github.com/meltforce/vimmary/internal/models"
 	"github.com/meltforce/vimmary/internal/storage"
@@ -55,8 +58,6 @@ type episodeJob struct {
 // Service contains all business logic for vimmary.
 type Service struct {
 	db              *storage.DB
-	summarizers     map[string]summary.Summarizer
-	defaultProvider string
 	registry        *models.Registry
 	yt              *youtube.Client
 	cast2md         PodcastSource
@@ -75,8 +76,6 @@ type Service struct {
 // New creates a new Service.
 func New(
 	db *storage.DB,
-	summarizers map[string]summary.Summarizer,
-	defaultProvider string,
 	registry *models.Registry,
 	yt *youtube.Client,
 	c2m PodcastSource,
@@ -91,8 +90,6 @@ func New(
 ) *Service {
 	s := &Service{
 		db:              db,
-		summarizers:     summarizers,
-		defaultProvider: defaultProvider,
 		registry:        registry,
 		yt:              yt,
 		cast2md:         c2m,
@@ -234,31 +231,166 @@ func (s *Service) episodeWorker() {
 	}
 }
 
-// getSummarizer returns the summarizer for the given provider name.
-// If provider is empty, the default provider is used.
-func (s *Service) getSummarizer(provider string) (summary.Summarizer, string, error) {
-	if provider == "" {
-		provider = s.defaultProvider
-	}
-	sum, ok := s.summarizers[provider]
-	if !ok {
-		return nil, "", fmt.Errorf("unknown provider: %q", provider)
-	}
-	return sum, provider, nil
+// LLMKey returns a provider's API key, empty when it is not configured.
+func (s *Service) LLMKey(ctx context.Context, provider string) (string, error) {
+	return s.db.GetLLMKey(ctx, provider)
 }
 
-// AvailableProviders returns the names of all configured summarizer providers.
-func (s *Service) AvailableProviders() []string {
-	providers := make([]string, 0, len(s.summarizers))
-	for name := range s.summarizers {
-		providers = append(providers, name)
+// LLMSettings is what the Settings page shows. It reports whether each key is
+// set, never the key itself — the same contract as the Karakeep status
+// endpoint, so a key that goes in never comes back out.
+type LLMSettings struct {
+	MistralConfigured   bool   `json:"mistral_configured"`
+	AnthropicConfigured bool   `json:"anthropic_configured"`
+	Provider            string `json:"provider"`
+}
+
+// GetLLMSettings reports the service-wide LLM configuration.
+func (s *Service) GetLLMSettings(ctx context.Context) (LLMSettings, error) {
+	mistral, err := s.LLMKey(ctx, "mistral")
+	if err != nil {
+		return LLMSettings{}, err
+	}
+	anthropic, err := s.LLMKey(ctx, "claude")
+	if err != nil {
+		return LLMSettings{}, err
+	}
+	provider, err := s.SummaryProvider(ctx)
+	if err != nil {
+		return LLMSettings{}, err
+	}
+	return LLMSettings{
+		MistralConfigured:   mistral != "",
+		AnthropicConfigured: anthropic != "",
+		Provider:            provider,
+	}, nil
+}
+
+// SetLLMKey stores a provider's API key. An empty key clears it, which is how
+// a provider is switched off — Anthropic is expected to stay empty here.
+func (s *Service) SetLLMKey(ctx context.Context, provider, key string) error {
+	switch provider {
+	case "claude":
+		return s.db.SetAppSetting(ctx, storage.SettingAnthropicAPIKey, key)
+	case "mistral":
+		return s.db.SetAppSetting(ctx, storage.SettingMistralAPIKey, key)
+	}
+	return fmt.Errorf("unknown provider: %q", provider)
+}
+
+// SetSummaryProvider stores the provider used when a request names none. It is
+// validated against the providers that have a key, so the selection cannot name
+// something that would fail on every summary. Storing an empty string restores
+// the config file as the source.
+func (s *Service) SetSummaryProvider(ctx context.Context, provider string) error {
+	if provider != "" && !slices.Contains(s.AvailableProviders(ctx), provider) {
+		return fmt.Errorf("provider %q has no API key configured", provider)
+	}
+	return s.db.SetAppSetting(ctx, storage.SettingSummaryProvider, provider)
+}
+
+// IsAdmin reports whether the user may change the service-wide settings.
+//
+// The rule is "you are the primary user" — the first login containing `@`, by
+// creation time. That is not a new notion of owner: meltkit's identity
+// middleware already resolves every tagged device to exactly this user, so
+// reusing it keeps one answer to who owns the instance instead of two that can
+// disagree.
+//
+// When no primary user exists, the caller is admin. That state means no
+// personal Tailscale login has ever reached this instance, so there is no owner
+// to protect the settings from — it is a local run against the seeded `local`
+// user, where the alternative is a deployment whose keys cannot be configured
+// at all. It cannot occur behind Tailscale: the middleware rejects a tagged
+// device with "no registered user yet" until a personal device has logged in,
+// and that login creates the primary user. The rule therefore tightens by
+// itself the moment there is someone to tighten it for.
+func (s *Service) IsAdmin(ctx context.Context, userID int) (bool, error) {
+	primaryID, _, err := s.db.GetPrimaryUser(ctx)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return true, nil
+		}
+		return false, err
+	}
+	return userID == primaryID, nil
+}
+
+// getSummarizer builds the summarizer for the given provider name. If provider
+// is empty, the configured default is used.
+//
+// Built per call, not held: the API keys are service-wide settings maintained
+// in the Settings page, so a key entered there has to take effect without a
+// restart. This follows writeBackToKarakeep, which reads its key from the
+// database on every use for the same reason. The summarizer structs are
+// stateless, so the cost is one http.Client allocation per summary.
+func (s *Service) getSummarizer(ctx context.Context, provider string) (summary.Summarizer, string, error) {
+	if provider == "" {
+		var err error
+		provider, err = s.SummaryProvider(ctx)
+		if err != nil {
+			return nil, "", fmt.Errorf("resolve default provider: %w", err)
+		}
+	}
+
+	apiKey, err := s.LLMKey(ctx, provider)
+	if err != nil {
+		return nil, "", fmt.Errorf("api key for %q: %w", provider, err)
+	}
+	if apiKey == "" {
+		return nil, "", fmt.Errorf("provider %q has no API key configured — set one under Settings", provider)
+	}
+
+	switch provider {
+	case "claude":
+		return summary.NewClaudeSummarizer(apiKey, "", nil), provider, nil
+	case "mistral":
+		return summary.NewMistralSummarizer(apiKey), provider, nil
+	}
+	return nil, "", fmt.Errorf("unknown provider: %q", provider)
+}
+
+// SummaryProvider returns the provider used when a request names none: the
+// app_settings value, falling back to the config file. The config keeps working
+// as the initial value for an unattended deployment, and the Settings page
+// overrides it — the same shape as user_prompts over the built-in defaults.
+func (s *Service) SummaryProvider(ctx context.Context) (string, error) {
+	provider, err := s.db.GetAppSetting(ctx, storage.SettingSummaryProvider)
+	if err != nil {
+		return "", err
+	}
+	if provider != "" {
+		return provider, nil
+	}
+	return s.summaryCfg.Provider, nil
+}
+
+// AvailableProviders returns the providers that have an API key configured.
+func (s *Service) AvailableProviders(ctx context.Context) []string {
+	providers := make([]string, 0, len(models.Providers))
+	for _, provider := range models.Providers {
+		key, err := s.LLMKey(ctx, provider)
+		if err != nil {
+			s.log.Warn("failed to read provider key", "provider", provider, "error", err)
+			continue
+		}
+		if key != "" {
+			providers = append(providers, provider)
+		}
 	}
 	return providers
 }
 
-// DefaultProvider returns the name of the default summarizer provider.
-func (s *Service) DefaultProvider() string {
-	return s.defaultProvider
+// DefaultProvider returns the name of the default summarizer provider. It
+// reports the configured value even when that provider has no key, so the
+// Settings page can show what is selected rather than silently nothing.
+func (s *Service) DefaultProvider(ctx context.Context) string {
+	provider, err := s.SummaryProvider(ctx)
+	if err != nil {
+		s.log.Warn("failed to read summary provider", "error", err)
+		return s.summaryCfg.Provider
+	}
+	return provider
 }
 
 // KarakeepBaseURL returns the configured Karakeep base URL.
@@ -464,9 +596,11 @@ func (s *Service) GetModelPreference(ctx context.Context, userID int) (provider,
 	return s.db.GetModelPreference(ctx, userID)
 }
 
-// SetModelPreference sets the user's preferred summary model.
+// SetModelPreference sets the user's preferred summary model. The provider is
+// validated against the ones that have a key, so a preference cannot be stored
+// for a provider that could never serve it.
 func (s *Service) SetModelPreference(ctx context.Context, userID int, provider, model string) error {
-	if _, ok := s.summarizers[provider]; !ok && provider != "" {
+	if provider != "" && !slices.Contains(s.AvailableProviders(ctx), provider) {
 		return fmt.Errorf("invalid provider: %q", provider)
 	}
 	return s.db.SetModelPreference(ctx, userID, provider, model)
