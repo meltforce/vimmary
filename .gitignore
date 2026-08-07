@@ -42,7 +42,10 @@ web/tsconfig.tsbuildinfo
 # Internal docs
 plan.md
 internal_docs/
-design_handoff/
+# Design handoff bundles. What ships out of one is web/src/homelab.css and the
+# icon script; the bundle itself is a reference and stays out of the repo.
+design_handoff*/
+*.zip
 
 # Import data
 import/

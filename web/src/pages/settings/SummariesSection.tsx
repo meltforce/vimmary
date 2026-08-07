@@ -9,7 +9,7 @@ import {
 } from "../../api.ts";
 import type { ContentSource, ModelInfo, ModelsResponse } from "../../api.ts";
 import { usePodcastsEnabled } from "../../features.ts";
-import { Section, SectionError, SectionLoading } from "./primitives.tsx";
+import { Row, Section, SectionError, SectionLoading } from "./primitives.tsx";
 
 function ModelSelector() {
   const queryClient = useQueryClient();
@@ -41,10 +41,12 @@ function ModelSelector() {
 
   const hasChanges = displaySelected !== currentKey;
 
-  if (isLoading)
-    return <div style={{ fontSize: 13, color: "var(--vim-ink-3)" }}>Loading models…</div>;
-  if (!data?.models?.length)
-    return <div style={{ fontSize: 13, color: "var(--vim-ink-3)" }}>No models available</div>;
+  if (isLoading) {
+    return <span style={{ fontSize: 13, color: "var(--color-neutral-600)" }}>Loading models…</span>;
+  }
+  if (!data?.models?.length) {
+    return <span style={{ fontSize: 13, color: "var(--color-neutral-600)" }}>No models available.</span>;
+  }
 
   const byProvider = new Map<string, ModelInfo[]>();
   const seen = new Set<string>();
@@ -58,20 +60,18 @@ function ModelSelector() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", gap: 8 }}>
+    <>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <select
           value={displaySelected}
           onChange={(e) => setSelected(e.target.value)}
-          className="vim-input"
-          style={{ flex: 1, fontSize: 13 }}
+          className="select"
+          style={{ flex: 1, minWidth: 220 }}
+          aria-label="Summary model"
         >
           <option value="">Provider default</option>
           {[...byProvider.entries()].map(([provider, models]) => (
-            <optgroup
-              key={provider}
-              label={provider.charAt(0).toUpperCase() + provider.slice(1)}
-            >
+            <optgroup key={provider} label={provider.charAt(0).toUpperCase() + provider.slice(1)}>
               {models.map((m) => (
                 <option key={`${provider}:${m.id}`} value={`${provider}:${m.id}`}>
                   {m.display_name || m.id}
@@ -81,20 +81,16 @@ function ModelSelector() {
           ))}
         </select>
         <button
-          onClick={() => save.mutate(displaySelected)}
+          type="button"
+          className="btn btn-primary"
           disabled={!hasChanges || save.isPending}
-          className="vim-btn primary"
-          style={{ padding: "8px 14px", fontSize: 12 }}
+          onClick={() => save.mutate(displaySelected)}
         >
           {save.isPending ? "Saving…" : "Save"}
         </button>
       </div>
-      {save.isError && (
-        <p style={{ fontSize: 12, color: "var(--vim-err)", margin: 0 }}>
-          {(save.error as Error).message}
-        </p>
-      )}
-    </div>
+      {save.isError ? <p className="field-error">{(save.error as Error).message}</p> : null}
+    </>
   );
 }
 
@@ -132,96 +128,57 @@ function PromptEditor({
   const hasChanges = value !== currentPrompt;
 
   return (
-    <div style={{ padding: "16px 0", borderBottom: "1px solid var(--vim-line-soft)" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 16,
-          marginBottom: open ? 12 : 0,
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 13, color: "var(--vim-ink-3)", marginBottom: 3 }}>
-            {label}
-          </div>
-          <div style={{ fontSize: 14, color: "var(--vim-ink)" }}>
-            {isCustom ? (
-              <>
-                Custom prompt{" "}
-                <span
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 11,
-                    color: "var(--vim-accent-ink)",
-                    marginLeft: 4,
-                  }}
-                >
-                  edited
-                </span>
-              </>
-            ) : (
-              "Default prompt"
-            )}
-          </div>
-        </div>
-        <button
-          onClick={() => setOpen(!open)}
-          className="vim-btn ghost"
-          style={{ padding: "6px 12px", fontSize: 12 }}
-        >
-          {open ? "Hide ↑" : "Edit ↓"}
+    <Row label={label}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span style={{ fontSize: 14, flex: 1 }}>
+          {isCustom ? "Edited" : "Default"}
+        </span>
+        <button type="button" className="btn btn-secondary" onClick={() => setOpen(!open)}>
+          {open ? "Close" : "Edit"}
         </button>
       </div>
-      {open && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+
+      {open ? (
+        <div style={{ marginTop: 10 }}>
           <textarea
+            className="textarea"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            rows={12}
-            className="vim-input"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, resize: "vertical" }}
+            rows={14}
+            style={{ fontFamily: "var(--font-mono)", fontSize: 12.5 }}
           />
-          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            {isCustom && (
-              <button
-                onClick={() => reset.mutate()}
-                disabled={reset.isPending}
-                className="vim-btn outline danger"
-                style={{ padding: "6px 12px", fontSize: 12 }}
-              >
-                {reset.isPending ? "Resetting…" : "Reset to default"}
-              </button>
-            )}
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             <button
-              onClick={() => save.mutate(value)}
+              type="button"
+              className="btn btn-primary"
               disabled={!hasChanges || save.isPending}
-              className="vim-btn primary"
-              style={{ padding: "6px 12px", fontSize: 12 }}
+              onClick={() => save.mutate(value)}
             >
               {save.isPending ? "Saving…" : "Save"}
             </button>
+            {isCustom ? (
+              <button
+                type="button"
+                className="btn btn-danger"
+                disabled={reset.isPending}
+                onClick={() => reset.mutate()}
+              >
+                {reset.isPending ? "Resetting…" : "Reset to default"}
+              </button>
+            ) : null}
           </div>
-          {save.isSuccess && (
-            <p style={{ fontSize: 12, color: "var(--vim-ok)", margin: 0 }}>Prompt saved.</p>
-          )}
-          {save.isError && (
-            <p style={{ fontSize: 12, color: "var(--vim-err)", margin: 0 }}>
-              {(save.error as Error).message}
-            </p>
-          )}
+          {save.isError ? <p className="field-error">{(save.error as Error).message}</p> : null}
         </div>
-      )}
-    </div>
+      ) : null}
+    </Row>
   );
 }
 
 /**
- * SummariesSection holds the model choice and the two prompts. The prompts are
- * per content source — a podcast transcript and a talk transcript want different
- * instructions — which is what promptSource selects; the switch only appears
- * when podcasts are configured.
+ * The model choice and the two prompts. The prompts are per content source — a
+ * podcast transcript and a talk transcript want different instructions — which
+ * is what promptSource selects; the switch only appears when podcasts are
+ * configured.
  */
 export default function SummariesSection() {
   const [promptSource, setPromptSource] = useState<ContentSource>("youtube");
@@ -231,108 +188,65 @@ export default function SummariesSection() {
     queryKey: ["settings", "prompts", promptSource],
     queryFn: () => fetchSummaryPrompts(promptSource),
   });
-  const { data: providers } = useQuery({
-    queryKey: ["providers"],
-    queryFn: fetchProviders,
-  });
+  const { data: providers } = useQuery({ queryKey: ["providers"], queryFn: fetchProviders });
 
-  if (isLoading)
-    return (
-      <Section title="Summaries" subtitle="Model and prompt configuration.">
-        <SectionLoading what="prompts" />
-      </Section>
-    );
-  if (error)
-    return (
-      <Section title="Summaries" subtitle="Model and prompt configuration.">
-        <SectionError error={error as Error} />
-      </Section>
-    );
+  const subtitle =
+    "Which model writes the summary, and what it is asked for. A changed prompt applies to the next summary, not to the ones already stored.";
 
   return (
-  <Section title="Summaries" subtitle="Model and prompt configuration.">
-    {providers && providers.providers.length > 0 && (
-      <div style={{ padding: "16px 0", borderBottom: "1px solid var(--vim-line-soft)" }}>
-        <div style={{ fontSize: 13, color: "var(--vim-ink-3)", marginBottom: 8 }}>
-          Model
-        </div>
-        <ModelSelector />
-      </div>
-    )}
-    {podcastsEnabled && (
-      <div style={{ padding: "16px 0", borderBottom: "1px solid var(--vim-line-soft)" }}>
-        <div style={{ fontSize: 13, color: "var(--vim-ink-3)", marginBottom: 8 }}>
-          Prompts for
-        </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          {(["youtube", "podcast"] as ContentSource[]).map((src) => (
-            <button
-              key={src}
-              onClick={() => setPromptSource(src)}
-              className={promptSource === src ? "vim-btn primary" : "vim-btn ghost"}
-              style={{ padding: "6px 14px", fontSize: 12 }}
-            >
-              {src === "youtube" ? "Videos" : "Podcasts"}
-            </button>
-          ))}
-        </div>
-      </div>
-    )}
-    {prompts && (
-      <>
-        <PromptEditor
-          key={`${promptSource}-medium`}
-          source={promptSource}
-          level="medium"
-          label="Medium summary prompt"
-          currentPrompt={prompts.medium}
-          defaultPrompt={prompts.default_medium}
-        />
-        <PromptEditor
-          key={`${promptSource}-deep`}
-          source={promptSource}
-          level="deep"
-          label="Deep summary prompt"
-          currentPrompt={prompts.deep}
-          defaultPrompt={prompts.default_deep}
-        />
-        <div style={{ padding: "12px 0 16px", fontSize: 11.5, color: "var(--vim-ink-4)" }}>
-          Placeholders:{" "}
-          <code
-            style={{
-              fontFamily: "var(--font-mono)",
-              background: "var(--vim-surface-2)",
-              padding: "1px 5px",
-              borderRadius: 3,
-            }}
-          >
-            {"{{TITLE}}"}
-          </code>
-          ,{" "}
-          <code
-            style={{
-              fontFamily: "var(--font-mono)",
-              background: "var(--vim-surface-2)",
-              padding: "1px 5px",
-              borderRadius: 3,
-            }}
-          >
-            {"{{LANGUAGE}}"}
-          </code>
-          ,{" "}
-          <code
-            style={{
-              fontFamily: "var(--font-mono)",
-              background: "var(--vim-surface-2)",
-              padding: "1px 5px",
-              borderRadius: 3,
-            }}
-          >
-            {"{{TRANSCRIPT}}"}
-          </code>
-        </div>
-      </>
-    )}
-  </Section>
+    <Section title="Summaries" subtitle={subtitle}>
+      {providers && providers.providers.length > 0 ? (
+        <Row label="Model">
+          <ModelSelector />
+        </Row>
+      ) : null}
+
+      {podcastsEnabled ? (
+        <Row label="Prompts for">
+          <span className="seg">
+            {(["youtube", "podcast"] as ContentSource[]).map((src) => (
+              <label key={src} className="seg-opt">
+                <input
+                  type="radio"
+                  name="prompt-source"
+                  checked={promptSource === src}
+                  onChange={() => setPromptSource(src)}
+                />
+                {src === "youtube" ? "Videos" : "Podcasts"}
+              </label>
+            ))}
+          </span>
+        </Row>
+      ) : null}
+
+      {isLoading ? <SectionLoading /> : null}
+      {error ? <SectionError error={error as Error} /> : null}
+
+      {prompts ? (
+        <>
+          <PromptEditor
+            key={`${promptSource}-medium`}
+            source={promptSource}
+            level="medium"
+            label="Medium prompt"
+            currentPrompt={prompts.medium}
+            defaultPrompt={prompts.default_medium}
+          />
+          <PromptEditor
+            key={`${promptSource}-deep`}
+            source={promptSource}
+            level="deep"
+            label="Deep prompt"
+            currentPrompt={prompts.deep}
+            defaultPrompt={prompts.default_deep}
+          />
+          <Row label="Placeholders">
+            <span className="mono">
+              {"{{TITLE}}"} · {"{{LANGUAGE}}"} · {"{{TRANSCRIPT}}"}
+            </span>
+          </Row>
+        </>
+      ) : null}
+    </Section>
   );
 }

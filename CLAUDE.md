@@ -69,6 +69,25 @@ away from being wrong and one of them was, answering 500 where the handler
 intended 404. Only `internal/storage` imports `jackc/pgx`, and a `grep` for it
 outside that package is the check.
 
+**`web/src/homelab.css` is the shared design system and is not edited here.**
+It is a verbatim copy of the meltforce homelab stylesheet, derived from
+FreeReps' `server/web/src/index.css`, which is the authority when the two
+disagree. A vimmary-only rule goes in `web/src/index.css` below the import; a
+change to the system itself is a change in FreeReps and a fresh copy. The why:
+five apps read the same file, and a local edit is a divergence nothing detects.
+Archivo is self-hosted through `@fontsource-variable/archivo` — a font CDN is
+unreachable for a client with no route to it, and the whole UI then renders in
+`system-ui`. One breakpoint, 768px, read in JS by `useIsDesktop()`, because
+desktop and phone are different component trees rather than one reflowed.
+
+**The app icon's mark must stay lighter than its field.**
+`web/scripts/build-icons.mjs` (`npm run icons`, needs Chrome and ImageMagick, not
+wired into the build) writes `web/public/app-icon/*` — `vm` in `#f3f2f2` on
+`#ec3013`. iOS 18 derives the dark and tinted home-screen variants from that one
+file, and a dark mark on a mid field collapses to an empty rounded square in
+both. The failure is invisible on desktop; FreeReps shipped it once and fixed it
+in `c7319b0`.
+
 **Each Settings section owns its queries and its own error state**
 (`web/src/pages/settings/`, one file per concern). The page holds none. The why:
 a shared `isLoading`/`errorObj` pair is a hard conjunction, so one failing

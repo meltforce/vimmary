@@ -1,70 +1,61 @@
 import { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
-import ThemeToggle from "./ThemeToggle.tsx";
+import { Link, NavLink } from "react-router-dom";
 import { usePodcastsEnabled } from "../features.ts";
+import { useIsDesktop } from "../hooks/useMediaQuery.ts";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const podcasts = usePodcastsEnabled();
+  const isDesktop = useIsDesktop();
 
-  // Without cast2md there is no second content type, so neither the nav entry
-  // nor the strapline mentions one.
-  const navItems = [
-    { to: "/", label: "Videos" },
-    ...(podcasts ? [{ to: "/podcasts", label: "Podcasts" }] : []),
-    { to: "/stats", label: "Stats" },
-    { to: "/settings", label: "Settings" },
+  // Without cast2md there is no second content type, so the entry is absent
+  // rather than disabled. The tab bar takes its column count from the list.
+  const items = [
+    { to: "/", label: "Videos", end: true },
+    ...(podcasts ? [{ to: "/podcasts", label: "Podcasts", end: false }] : []),
+    { to: "/stats", label: "Stats", end: false },
   ];
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header
-        className="sticky top-0 z-10 backdrop-blur-sm"
-        style={{
-          background:
-            "linear-gradient(to bottom, var(--vim-bg), color-mix(in oklch, var(--vim-bg) 92%, transparent))",
-          borderBottom: "1px solid var(--vim-line-soft)",
-        }}
-      >
-        <div className="vim-topbar-inner">
-          <div className="vim-topbar-left">
-            <NavLink to="/" className="vim-brand-mark flex items-baseline" style={{ gap: 10 }}>
-              <span>
-                vimma<span className="r">r</span>y
-              </span>
-              <span
-                className="vim-kicker vim-brand-tag-mobile-hide"
-                style={{ fontSize: 10.5 }}
-              >
-                {podcasts ? "video · podcast · read" : "youtube · read"}
-              </span>
+      {isDesktop ? (
+        <nav className="nav">
+          {/* A plain Link: the brand points at the video list but must not
+              carry the active mark, which belongs to the Videos item. */}
+          <Link to="/" className="nav-brand">
+            vimmary
+            <span className="house">meltforce</span>
+          </Link>
+          {items.map((item) => (
+            <NavLink key={item.to} to={item.to} end={item.end}>
+              {item.label}
             </NavLink>
-            <nav className="flex items-center" style={{ gap: 4 }}>
-              {navItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.to === "/"}
-                  className="transition-colors"
-                  style={({ isActive }) => ({
-                    padding: "8px 14px",
-                    borderRadius: 999,
-                    fontSize: 13,
-                    color: isActive ? "var(--vim-ink)" : "var(--vim-ink-3)",
-                    background: isActive ? "var(--vim-surface-2)" : "transparent",
-                  })}
-                >
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
-          </div>
-          <div className="vim-topbar-right">
-            <ThemeToggle />
-            <span className="vim-kbd vim-brand-tag-mobile-hide">⌘ K</span>
-          </div>
-        </div>
-      </header>
-      <main className="flex-1 w-full">{children}</main>
+          ))}
+          <NavLink
+            to="/settings"
+            className="ml-auto"
+            style={{ color: "var(--color-neutral-600)" }}
+          >
+            Settings
+          </NavLink>
+        </nav>
+      ) : null}
+
+      <main className="flex-1 flex flex-col">{children}</main>
+
+      {!isDesktop ? (
+        <>
+          {/* Reserves the tab bar's height so the last row is not covered. */}
+          <div aria-hidden className="h-[76px]" />
+          <nav className="tabs">
+            {items.map((item) => (
+              <NavLink key={item.to} to={item.to} end={item.end}>
+                {item.label}
+              </NavLink>
+            ))}
+            <NavLink to="/settings">More</NavLink>
+          </nav>
+        </>
+      ) : null}
     </div>
   );
 }

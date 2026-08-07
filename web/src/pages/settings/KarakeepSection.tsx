@@ -7,16 +7,17 @@ import {
   importKarakeepBookmarks,
 } from "../../api.ts";
 import { CopyButton, Row, Section, SectionError, SectionLoading } from "./primitives.tsx";
+import { clock } from "../../display.ts";
 
 /**
- * KarakeepSection holds the per-user Karakeep API key, the webhook Karakeep
- * posts to, and the one-off bookmark import. The key is per user
- * (users.karakeep_api_key), unlike the service-wide LLM keys in LLMSection.
+ * The per-user Karakeep API key, the webhook Karakeep posts to, and the one-off
+ * bookmark import. The key is per user (users.karakeep_api_key), unlike the
+ * service-wide LLM keys in LLMSection.
  */
 export default function KarakeepSection() {
   const queryClient = useQueryClient();
   const [apiKey, setApiKey] = useState("");
-  const [showApiKey, setShowApiKey] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const { data: webhook, isLoading: webhookLoading, error: webhookError } = useQuery({
     queryKey: ["settings", "webhook"],
@@ -32,7 +33,7 @@ export default function KarakeepSection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["settings", "karakeep"] });
       setApiKey("");
-      setShowApiKey(false);
+      setEditing(false);
     },
   });
 
@@ -43,123 +44,127 @@ export default function KarakeepSection() {
 
   const error = (webhookError ?? statusError) as Error | undefined;
   const webhookURL = `${window.location.origin}/webhook/karakeep`;
+  const loading = webhookLoading || statusLoading;
 
   return (
-    <Section title="Karakeep" subtitle="Keep Vimmary and Karakeep in sync.">
-      {(webhookLoading || statusLoading) && <SectionLoading what="Karakeep settings" />}
-      {error && <SectionError error={error} />}
-      {!webhookLoading && !statusLoading && !error && (
+    <Section
+      title="Karakeep"
+      subtitle="A bookmark tagged in Karakeep arrives here through the webhook; the API key lets vimmary write the summary back and pull older bookmarks in bulk."
+    >
+      {loading ? <SectionLoading /> : null}
+      {error ? <SectionError error={error} /> : null}
+
+      {!loading && !error ? (
         <>
           <Row
             label="API key"
             value={
-              status?.configured ? (
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 12.5 }}>
-                  ••••••••••••
-                </span>
+              editing ? undefined : status?.configured ? (
+                <span className="mono">••••••••••••</span>
               ) : (
-                <span style={{ color: "var(--vim-ink-3)" }}>Not configured</span>
+                <span style={{ color: "var(--color-neutral-600)" }}>Not configured</span>
               )
             }
           >
-            {showApiKey ? (
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            {editing ? (
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                 <input
                   type="password"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder="Paste key"
-                  className="vim-input"
-                  style={{ width: 200, padding: "7px 10px", fontSize: 12 }}
+                  className="input"
+                  style={{ width: 220 }}
                   autoFocus
                 />
                 <button
-                  onClick={() => saveKey.mutate(apiKey)}
+                  type="button"
+                  className="btn btn-primary"
                   disabled={!apiKey || saveKey.isPending}
-                  className="vim-btn primary"
-                  style={{ padding: "6px 12px", fontSize: 12 }}
+                  onClick={() => saveKey.mutate(apiKey)}
                 >
                   {saveKey.isPending ? "Saving…" : "Save"}
                 </button>
                 <button
+                  type="button"
+                  className="btn btn-secondary"
                   onClick={() => {
-                    setShowApiKey(false);
+                    setEditing(false);
                     setApiKey("");
                   }}
-                  className="vim-btn ghost"
-                  style={{ padding: "6px 12px", fontSize: 12 }}
                 >
                   Cancel
                 </button>
               </div>
             ) : (
-              <button
-                onClick={() => setShowApiKey(true)}
-                className="vim-btn ghost"
-                style={{ padding: "6px 12px", fontSize: 12 }}
-              >
+              <button type="button" className="btn btn-secondary" onClick={() => setEditing(true)}>
                 {status?.configured ? "Change" : "Set"}
               </button>
             )}
+            {saveKey.isError ? (
+              <p className="field-error">{(saveKey.error as Error).message}</p>
+            ) : null}
           </Row>
-          {saveKey.isError && (
-            <p style={{ fontSize: 12, color: "var(--vim-err)", margin: "0 0 8px" }}>
-              {(saveKey.error as Error).message}
-            </p>
-          )}
+
           <Row label="Webhook URL" value={webhookURL} mono>
             <CopyButton text={webhookURL} />
           </Row>
+
           <Row label="Bearer token" value={webhook?.token ?? ""} mono>
             <CopyButton text={webhook?.token ?? ""} />
           </Row>
-          {status?.configured && (
-            <Row
-              label="Bulk import"
-              value="Pull every YouTube bookmark you've ever starred."
-              truncate={false}
-              isLast
-            >
-              <button
-                onClick={() => importBookmarks.mutate()}
-                disabled={importBookmarks.isPending}
-                className="vim-btn primary"
-                style={{ padding: "8px 14px", fontSize: 12 }}
-              >
-                {importBookmarks.isPending ? "Importing…" : "Import"}
-              </button>
-            </Row>
-          )}
-          {!status?.configured && (
-            <Row label="Bulk import" value="Configure API key to enable." isLast />
-          )}
-          {importBookmarks.isSuccess && importBookmarks.data && (
-            <p
-              style={{
-                fontSize: 12,
-                color: "var(--vim-ok)",
-                padding: "0 0 12px",
-                margin: 0,
-              }}
-            >
-              Found {importBookmarks.data.total} videos · imported{" "}
-              {importBookmarks.data.imported} · skipped {importBookmarks.data.skipped}
-            </p>
-          )}
-          {importBookmarks.isError && (
-            <p
-              style={{
-                fontSize: 12,
-                color: "var(--vim-err)",
-                padding: "0 0 12px",
-                margin: 0,
-              }}
-            >
-              {(importBookmarks.error as Error).message}
-            </p>
-          )}
+
+          <Row label="Bulk import">
+            {status?.configured ? (
+              <>
+                <p
+                  style={{
+                    font: "400 13px var(--font-body)",
+                    color: "var(--color-neutral-700)",
+                    margin: "0 0 10px",
+                    maxWidth: "58ch",
+                  }}
+                >
+                  Pulls every YouTube bookmark in Karakeep. Already-summarized ones are skipped,
+                  and the queue spaces the InnerTube calls out by itself.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={importBookmarks.isPending}
+                  onClick={() => importBookmarks.mutate()}
+                >
+                  {importBookmarks.isPending ? "Importing…" : "Import bookmarks"}
+                </button>
+              </>
+            ) : (
+              <span style={{ color: "var(--color-neutral-600)", fontSize: 14 }}>
+                Set the API key to enable it.
+              </span>
+            )}
+          </Row>
+
+          {importBookmarks.isSuccess || importBookmarks.isError ? (
+            <div className="log">
+              {importBookmarks.isSuccess && importBookmarks.data ? (
+                <div className="log-line" style={{ paddingLeft: 0, paddingRight: 0 }}>
+                  <time>{clock(new Date().toISOString())}</time>
+                  <span>
+                    {importBookmarks.data.total} found · {importBookmarks.data.imported} imported ·{" "}
+                    {importBookmarks.data.skipped} skipped
+                  </span>
+                </div>
+              ) : null}
+              {importBookmarks.isError ? (
+                <div className="log-line err" style={{ paddingLeft: 0, paddingRight: 0 }}>
+                  <time>{clock(new Date().toISOString())}</time>
+                  <span>{(importBookmarks.error as Error).message}</span>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </>
-      )}
+      ) : null}
     </Section>
   );
 }

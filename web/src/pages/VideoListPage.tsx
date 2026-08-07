@@ -1,760 +1,550 @@
-import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Fragment, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  fetchFeedInfo,
+  fetchStats,
   listVideos,
+  retryAllFailed,
   searchVideos,
   submitVideo,
-  retryAllFailed,
   transcribeAllNoCaptions,
-  fetchStats,
+  type HybridMatch,
+  type Video,
 } from "../api.ts";
-import VideoCard from "../components/VideoCard.tsx";
-import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
-import { PlayIcon } from "../components/SourceBadge.tsx";
-import { formatDuration, stripMarkdown } from "../utils.ts";
-import { Link } from "react-router-dom";
+import PageHeader from "../components/PageHeader.tsx";
+import Toast, { useToast } from "../components/Toast.tsx";
+import { Skel } from "../components/LoadingSkeleton.tsx";
+import { AlertIcon, SearchIcon } from "../components/icons.tsx";
+import { useIsDesktop } from "../hooks/useMediaQuery.ts";
+import { formatDuration } from "../utils.ts";
+import {
+  clock,
+  groupByDay,
+  isInFlight,
+  longDate,
+  statusClass,
+  statusLabel,
+} from "../display.ts";
 
 const PAGE_SIZE = 20;
 
-function formatDate(iso?: string): string {
-  if (!iso) return "";
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+/* The chips are server-side filters, so every one of them is a `status` the
+   list endpoint accepts. There is no detail-level filter on the API and the
+   frontend does not invent one by filtering the current page. */
+const FILTERS = [
+  { key: "", label: "All" },
+  { key: "pending", label: "Queue" },
+  { key: "failed", label: "Failed" },
+  { key: "no_captions", label: "No captions" },
+] as const;
+
+/** The list and the search results are rendered by one table. */
+interface Row {
+  id: string;
+  title: string;
+  channel: string;
+  created_at: string;
+  source: string;
+  status?: string;
+  detail_level?: string;
+  duration_seconds?: number;
+  error_message?: string;
+  score?: number;
 }
 
-function SearchIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="var(--vim-ink-3)"
-      strokeWidth="1.6"
-    >
-      <circle cx="11" cy="11" r="7" />
-      <path d="m20 20-3.5-3.5" />
-    </svg>
-  );
+function toRow(v: Video): Row {
+  return {
+    id: v.id,
+    title: v.title || v.youtube_id,
+    channel: v.channel,
+    created_at: v.created_at,
+    source: v.source,
+    status: v.status,
+    detail_level: v.detail_level,
+    duration_seconds: v.duration_seconds,
+    error_message: v.error_message,
+  };
 }
 
-function EmptyState({
-  onSubmit,
-  pending,
-  error,
-}: {
-  onSubmit: (url: string) => void;
-  pending: boolean;
-  error?: string;
-}) {
+function matchToRow(m: HybridMatch): Row {
+  return {
+    id: m.id,
+    title: m.title || m.youtube_id,
+    channel: m.channel,
+    created_at: m.created_at,
+    source: m.source,
+    score: m.score,
+  };
+}
+
+export default function VideoListPage() {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const isDesktop = useIsDesktop();
+  const toast = useToast();
+
+  const [params, setParams] = useSearchParams();
+  const query = params.get("q") ?? "";
+  const status = params.get("status") ?? "";
+  const page = Math.max(1, parseInt(params.get("page") ?? "1", 10));
+  const offset = (page - 1) * PAGE_SIZE;
+
+  const [searchInput, setSearchInput] = useState(query);
   const [url, setUrl] = useState("");
-  return (
-    <div
-      className="vim-empty"
-      style={{
-        maxWidth: 720,
-        margin: "0 auto",
-        padding: "clamp(60px, 14vw, 120px) clamp(16px, 4vw, 40px)",
-        textAlign: "center",
-      }}
-    >
-      {/* Tape-frame motif */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          gap: 8,
-          marginBottom: 40,
-          opacity: 0.7,
-        }}
-      >
-        {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            style={{
-              width: 52,
-              height: 38,
-              borderRadius: 3,
-              background:
-                "linear-gradient(135deg, var(--vim-surface-2) 0%, var(--vim-surface) 100%)",
-              border: "1px solid var(--vim-line)",
-              position: "relative",
-              transform: `rotate(${(i - 1) * 4}deg) translateY(${Math.abs(i - 1) * 2}px)`,
-            }}
-          >
-            <div
-              style={{
-                position: "absolute",
-                inset: 4,
-                borderRadius: 2,
-                background: "var(--vim-bg)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <div
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: i === 1 ? "var(--vim-accent)" : "var(--vim-ink-4)",
-                }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
 
-      <div className="vim-kicker" style={{ marginBottom: 18 }}>
-        — A quiet beginning
-      </div>
-      <h1 className="vim-h1-empty">
-        Nothing here yet.
-        <br />
-        <em
-          style={{
-            color: "var(--vim-accent-ink)",
-            fontStyle: "italic",
-            fontWeight: 400,
-          }}
-        >
-          Paste a link to begin.
-        </em>
-      </h1>
-      <p
-        style={{
-          fontSize: 16,
-          lineHeight: 1.6,
-          color: "var(--vim-ink-2)",
-          margin: "0 auto 32px",
-          maxWidth: 480,
-        }}
-      >
-        Drop in any YouTube URL and we'll turn the transcript into a short,
-        readable summary. Karakeep webhooks and bulk import live in Settings.
-      </p>
+  const searching = query.length > 0;
+
+  const search = useQuery({
+    queryKey: ["search", query],
+    queryFn: () => searchVideos(query),
+    enabled: searching,
+  });
+
+  const list = useQuery({
+    queryKey: ["videos", status, offset],
+    queryFn: () => listVideos({ status: status || undefined, limit: PAGE_SIZE, offset }),
+    enabled: !searching,
+    // A queue that is moving is polled three times as often as one that is not.
+    refetchInterval: (q) =>
+      q.state.data?.videos.some((v) => isInFlight(v.status)) ? 3000 : 10000,
+  });
+
+  const stats = useQuery({ queryKey: ["stats"], queryFn: () => fetchStats(), refetchInterval: 10000 });
+  const feed = useQuery({ queryKey: ["settings", "feed"], queryFn: fetchFeedInfo });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["videos"] });
+    queryClient.invalidateQueries({ queryKey: ["stats"] });
+  };
+
+  const submit = useMutation({
+    mutationFn: (u: string) => submitVideo(u),
+    onSuccess: () => {
+      setUrl("");
+      invalidate();
+      toast.show("Queued. It appears in the list once the transcript is in.");
+    },
+  });
+
+  const retryAll = useMutation({
+    mutationFn: retryAllFailed,
+    onSuccess: (r) => {
+      invalidate();
+      toast.show(`${r.retried} ${r.retried === 1 ? "video" : "videos"} queued for retry.`);
+    },
+  });
+
+  const transcribeAll = useMutation({
+    mutationFn: transcribeAllNoCaptions,
+    onSuccess: (r) => {
+      invalidate();
+      toast.show(
+        `${r.transcribing} ${r.transcribing === 1 ? "video" : "videos"} queued for Voxtral.`,
+      );
+    },
+  });
+
+  const rows: Row[] | undefined = searching
+    ? search.data?.results.map(matchToRow)
+    : list.data?.videos.map(toRow);
+  const loading = searching ? search.isLoading : list.isLoading;
+  const error = (searching ? search.error : list.error) as Error | null;
+
+  const byStatus = stats.data?.by_status ?? {};
+  const failedCount = byStatus.failed ?? 0;
+  const noCaptionsCount = byStatus.no_captions ?? 0;
+  const queuedCount = (byStatus.pending ?? 0) + (byStatus.processing ?? 0);
+
+  /* The stats endpoint returns a daily series; the week is a sum over it rather
+     than a second request. */
+  const lastWeek = (() => {
+    const days = stats.data?.daily_activity;
+    if (!days) return undefined;
+    const since = Date.now() - 7 * 86_400_000;
+    return days
+      .filter((d) => new Date(d.date).getTime() >= since)
+      .reduce((n, d) => n + d.count, 0);
+  })();
+
+  const setParam = (key: string, value: string) => {
+    const next = new URLSearchParams(params);
+    if (value) next.set(key, value);
+    else next.delete(key);
+    // Any change to what is listed puts the reader back on the first page.
+    if (key !== "page") next.delete("page");
+    setParams(next);
+  };
+
+  const totalPages = list.data ? Math.ceil(list.data.total / PAGE_SIZE) : 1;
+  const isEmpty = !loading && rows && rows.length === 0;
+
+  return (
+    <>
+      <PageHeader kicker={longDate(new Date())} title="Videos" />
 
       <form
+        className="cmdline page-x"
+        style={{ paddingBottom: 18, maxWidth: isDesktop ? 640 + 80 : undefined }}
         onSubmit={(e) => {
           e.preventDefault();
           const t = url.trim();
-          if (t) onSubmit(t);
+          if (t) submit.mutate(t);
         }}
-        style={{ position: "relative", maxWidth: 520, margin: "0 auto 24px" }}
       >
         <input
-          className="vim-input"
-          placeholder="https://youtube.com/watch?v=…"
+          className="input"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          style={{ paddingLeft: 18, paddingRight: 110, textAlign: "center", fontSize: 14 }}
+          placeholder="Paste a YouTube URL"
+          aria-label="YouTube URL"
         />
-        <button
-          type="submit"
-          disabled={pending || !url.trim()}
-          className="vim-btn primary"
-          style={{ position: "absolute", right: 6, top: 6, padding: "8px 16px" }}
-        >
-          {pending ? "Adding…" : "Add →"}
+        <button type="submit" className="btn btn-primary" disabled={submit.isPending || !url.trim()}>
+          {submit.isPending ? "Adding…" : "Summarize"}
         </button>
       </form>
 
-      {error && (
-        <p style={{ fontSize: 12.5, color: "var(--vim-err)", marginBottom: 12 }}>
-          {error}
-        </p>
-      )}
+      {submit.isError ? (
+        <div className="banner">
+          <AlertIcon />
+          <span>{(submit.error as Error).message}</span>
+        </div>
+      ) : null}
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 8,
-          color: "var(--vim-ink-3)",
-          fontSize: 12,
-        }}
-      >
-        <span>Or wire it up to</span>
-        <Link
-          to="/settings"
-          style={{
-            fontFamily: "var(--font-mono)",
-            color: "var(--vim-accent-ink)",
-            fontSize: 11.5,
-            letterSpacing: "0.04em",
-            textDecoration: "underline",
-            textUnderlineOffset: 3,
-            textDecorationColor: "var(--vim-line)",
+      <div className="hero">
+        <HeroCell label="Videos" value={stats.data?.total_count} />
+        <HeroCell label="Last 7 days" value={lastWeek} />
+        <HeroCell label="Queued" value={queuedCount} loaded={!!stats.data} />
+        <HeroCell label="Failed" value={failedCount} loaded={!!stats.data} accent={failedCount > 0} />
+      </div>
+
+      <div className="filters">
+        <form
+          className="search"
+          style={{ flex: isDesktop ? "0 1 320px" : "1 1 100%" }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            setParam("q", searchInput.trim());
           }}
         >
-          Karakeep webhooks →
-        </Link>
+          <SearchIcon size={15} />
+          <input
+            className="input"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search all summaries"
+            aria-label="Search summaries"
+          />
+        </form>
+        {FILTERS.map((f) => (
+          <button
+            key={f.key || "all"}
+            type="button"
+            className="chip"
+            aria-pressed={!searching && status === f.key}
+            onClick={() => {
+              setSearchInput("");
+              const next = new URLSearchParams();
+              if (f.key) next.set("status", f.key);
+              setParams(next);
+            }}
+          >
+            {f.label}
+          </button>
+        ))}
+        {searching ? (
+          <span className="spacer note" style={{ font: "400 11.5px var(--font-body)", color: "var(--color-neutral-600)" }}>
+            {search.data?.results.length ?? 0} for “{query}”
+          </span>
+        ) : null}
+      </div>
+
+      {error ? (
+        <div className="banner">
+          <AlertIcon />
+          <span>{error.message}</span>
+        </div>
+      ) : null}
+
+      {search.data?.warnings?.map((w) => (
+        <div key={w} className="banner">
+          <AlertIcon />
+          <span>{w}</span>
+        </div>
+      ))}
+
+      {isEmpty ? (
+        <EmptyState searching={searching} query={query} filtered={status !== ""} />
+      ) : isDesktop ? (
+        <RowTable rows={rows} loading={loading} searching={searching} onOpen={(r) => navigate(detailPath(r))} />
+      ) : (
+        <RowList rows={rows} loading={loading} searching={searching} />
+      )}
+
+      {!searching && list.data && list.data.total > PAGE_SIZE ? (
+        <div className="page-x flex items-center gap-4" style={{ paddingTop: 14, paddingBottom: 14 }}>
+          <span className="num" style={{ font: "400 12px var(--font-body)", color: "var(--color-neutral-600)" }}>
+            Page {page} of {totalPages}
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary ml-auto"
+            style={{ fontSize: 12 }}
+            disabled={page <= 1}
+            onClick={() => setParam("page", String(page - 1))}
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ fontSize: 12 }}
+            disabled={offset + PAGE_SIZE >= list.data.total}
+            onClick={() => setParam("page", String(page + 1))}
+          >
+            Next
+          </button>
+        </div>
+      ) : null}
+
+      <div className="footer">
+        {failedCount > 0 ? (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ fontSize: 12.5 }}
+            disabled={retryAll.isPending}
+            onClick={() => retryAll.mutate()}
+          >
+            Retry all {failedCount} failed →
+          </button>
+        ) : null}
+        {noCaptionsCount > 0 ? (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ fontSize: 12.5 }}
+            disabled={transcribeAll.isPending}
+            onClick={() => transcribeAll.mutate()}
+          >
+            Transcribe {noCaptionsCount} without captions →
+          </button>
+        ) : null}
+        {feed.data ? (
+          <a className="btn btn-ghost" style={{ fontSize: 12.5 }} href={feed.data.urls.videos}>
+            Open the Atom feed →
+          </a>
+        ) : null}
+        <span className="spacer note num">
+          {stats.data ? `${stats.data.total_count} summaries` : ""}
+        </span>
+      </div>
+
+      <Toast message={toast.message} onDismiss={toast.dismiss} />
+    </>
+  );
+}
+
+function detailPath(r: Row): string {
+  return r.source === "podcast" ? `/podcast/${r.id}` : `/video/${r.id}`;
+}
+
+function HeroCell({
+  label,
+  value,
+  loaded,
+  accent,
+}: {
+  label: string;
+  value?: number;
+  loaded?: boolean;
+  accent?: boolean;
+}) {
+  const known = loaded ?? value !== undefined;
+  return (
+    <div>
+      <div className="kick">{label}</div>
+      <div className="value" style={accent ? { color: "var(--color-accent)" } : undefined}>
+        {known ? value?.toLocaleString() : <Skel w={92} h={44} />}
       </div>
     </div>
   );
 }
 
-export default function VideoListPage() {
-  const queryClient = useQueryClient();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const query = searchParams.get("q") || "";
-  const [searchInput, setSearchInput] = useState(query);
-  const [youtubeUrl, setYoutubeUrl] = useState("");
-  const page = parseInt(searchParams.get("page") || "1", 10);
-  const offset = (page - 1) * PAGE_SIZE;
+/* Desktop. The head, the rules and the day bands paint before the data does;
+   only the values are placeholders, so nothing reflows on arrival. */
+function RowTable({
+  rows,
+  loading,
+  searching,
+  onOpen,
+}: {
+  rows?: Row[];
+  loading: boolean;
+  searching: boolean;
+  onOpen: (row: Row) => void;
+}) {
+  const groups = rows ? groupByDay(rows, (r) => r.created_at) : [];
 
-  const searchResult = useQuery({
-    queryKey: ["search", query],
-    queryFn: () => searchVideos(query),
-    enabled: query.length > 0,
-  });
+  return (
+    <table className="table">
+      <thead>
+        <tr>
+          <th>Video</th>
+          <th style={{ width: 200 }}>Channel</th>
+          <th style={{ width: 96 }}>Detail</th>
+          <th style={{ width: 130 }}>{searching ? "Match" : "Status"}</th>
+          <th className="right" style={{ width: 90 }}>Length</th>
+          <th className="right" style={{ width: 110 }}>{searching ? "Score" : "Added"}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {loading
+          ? Array.from({ length: 8 }, (_, i) => (
+              <tr key={i}>
+                <td><Skel w={`${72 - (i % 4) * 9}%`} /></td>
+                <td><Skel w={110} /></td>
+                <td><Skel w={48} /></td>
+                <td><Skel w={64} h={18} /></td>
+                <td className="right"><Skel w={44} /></td>
+                <td className="right"><Skel w={62} /></td>
+              </tr>
+            ))
+          : groups.map((g) => (
+              <Fragment key={g.key}>
+                <tr className="grp">
+                  <td colSpan={6} className="kick">{g.label}</td>
+                </tr>
+                {g.items.map((r) => (
+                  <tr key={r.id} style={{ cursor: "pointer" }} onClick={() => onOpen(r)}>
+                    <td style={{ fontWeight: 500 }}>
+                      <Link to={detailPath(r)} style={{ color: "inherit" }}>{r.title}</Link>
+                      {r.error_message ? (
+                        <div style={{ font: "400 11.5px var(--font-body)", color: "var(--color-neutral-600)", marginTop: 3 }}>
+                          {r.error_message}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td style={{ color: "var(--color-neutral-700)" }}>{r.channel}</td>
+                    <td>{r.detail_level ? <span className="tag tag-neutral">{r.detail_level}</span> : null}</td>
+                    <td>
+                      {r.status ? (
+                        <span className={`status ${statusClass(r.status)}`}>{statusLabel(r.status)}</span>
+                      ) : (
+                        <span className="tag tag-neutral">{r.source}</span>
+                      )}
+                    </td>
+                    <td className="num right">
+                      {r.duration_seconds ? formatDuration(r.duration_seconds) : ""}
+                    </td>
+                    <td className="num right" style={{ fontSize: 12.5, color: "var(--color-neutral-600)" }}>
+                      {r.score !== undefined ? r.score.toFixed(2) : clock(r.created_at)}
+                    </td>
+                  </tr>
+                ))}
+              </Fragment>
+            ))}
+      </tbody>
+    </table>
+  );
+}
 
-  const listResult = useQuery({
-    queryKey: ["videos", offset],
-    queryFn: () => listVideos({ limit: PAGE_SIZE, offset }),
-    enabled: query.length === 0,
-    refetchInterval: (q) => {
-      const data = q.state.data;
-      if (data?.videos.some((v) => v.status === "pending" || v.status === "processing")) {
-        return 3000;
-      }
-      return 10000;
-    },
-  });
-
-  const submit = useMutation({
-    mutationFn: (url: string) => submitVideo(url),
-    onSuccess: () => {
-      setYoutubeUrl("");
-      queryClient.invalidateQueries({ queryKey: ["videos"] });
-    },
-  });
-
-  const retryAll = useMutation({
-    mutationFn: () => retryAllFailed(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["videos"] });
-      queryClient.invalidateQueries({ queryKey: ["stats"] });
-    },
-  });
-
-  const transcribeAll = useMutation({
-    mutationFn: () => transcribeAllNoCaptions(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["videos"] });
-      queryClient.invalidateQueries({ queryKey: ["stats"] });
-    },
-  });
-
-  const statsResult = useQuery({
-    queryKey: ["stats"],
-    queryFn: () => fetchStats(),
-    enabled: query.length === 0,
-    refetchInterval: 10000,
-  });
-
-  const isSearching = query.length > 0;
-  const isLoading = isSearching ? searchResult.isLoading : listResult.isLoading;
-  const errorObj = isSearching ? searchResult.error : listResult.error;
-  const failedCount = statsResult.data?.by_status?.failed ?? 0;
-  const noCaptionsCount = statsResult.data?.by_status?.no_captions ?? 0;
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const t = searchInput.trim();
-    if (t) setSearchParams({ q: t });
-    else setSearchParams({});
-  };
-
-  const handleAddSubmit = (urlOrEvent: string | React.FormEvent) => {
-    if (typeof urlOrEvent === "string") {
-      submit.mutate(urlOrEvent);
-      return;
-    }
-    urlOrEvent.preventDefault();
-    const t = youtubeUrl.trim();
-    if (t) submit.mutate(t);
-  };
-
-  type Row = {
-    id: string;
-    youtube_id: string;
-    source?: "youtube" | "podcast";
-    title: string;
-    channel: string;
-    summary?: string;
-    metadata?: { topics?: string[]; key_points?: string[]; action_items?: string[] };
-    created_at: string;
-    status?: string;
-    error_message?: string;
-    duration_seconds?: number;
-    language?: string;
-    score?: number;
-    match_type?: string;
-  };
-
-  const total = isSearching
-    ? searchResult.data?.results.length ?? 0
-    : listResult.data?.total ?? 0;
-  const videos: Row[] | undefined = isSearching
-    ? searchResult.data?.results.map((m) => ({
-        id: m.id,
-        youtube_id: m.youtube_id,
-        source: m.source,
-        title: m.title,
-        channel: m.channel,
-        summary: m.summary,
-        metadata: m.metadata,
-        score: m.score,
-        match_type: m.match_type,
-        created_at: m.created_at,
-      }))
-    : listResult.data?.videos;
-
-  const onFirstPage = page === 1 && !isSearching;
-  const totalForIntro = statsResult.data?.total_count ?? listResult.data?.total ?? 0;
-  const isEmpty =
-    !isSearching &&
-    !isLoading &&
-    page === 1 &&
-    listResult.data &&
-    listResult.data.total === 0;
-
-  if (isEmpty) {
+/* Phone. One row is one target: the whole row opens the detail page, and the
+   per-row actions live there rather than as five buttons under a thumbnail. */
+function RowList({ rows, loading, searching }: { rows?: Row[]; loading: boolean; searching: boolean }) {
+  if (loading) {
     return (
-      <div className="vim-page" style={{ paddingTop: 0, paddingBottom: 0 }}>
-        <EmptyState
-          onSubmit={(u) => submit.mutate(u)}
-          pending={submit.isPending}
-          error={submit.isError ? (submit.error as Error).message : undefined}
-        />
+      <div style={{ borderTop: "var(--rule-strong)" }}>
+        {Array.from({ length: 6 }, (_, i) => (
+          <div key={i} className="row">
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Skel w={`${74 - (i % 3) * 11}%`} />
+              <div style={{ marginTop: 5 }}><Skel w={128} h={11} /></div>
+            </div>
+            <Skel w={52} h={18} />
+          </div>
+        ))}
       </div>
     );
   }
 
-  // Hero is the newest summarized video (only on first page, only when listing).
-  const heroIdx =
-    onFirstPage && videos ? videos.findIndex((v) => v.summary && v.status !== "failed") : -1;
-  const heroVideo = heroIdx >= 0 ? videos![heroIdx] : null;
-  const restVideos = heroVideo
-    ? videos!.filter((_, i) => i !== heroIdx)
-    : videos;
+  const groups = rows ? groupByDay(rows, (r) => r.created_at) : [];
 
   return (
-    <div className="vim-page">
-      {/* Editorial header */}
-      {onFirstPage && (
-        <div style={{ marginBottom: 28 }}>
-          <div className="vim-kicker" style={{ marginBottom: 10 }}>
-            Your reading list · {totalForIntro} video{totalForIntro === 1 ? "" : "s"}
-          </div>
-          <h1 className="vim-h1-page">
-            Everything you've{" "}
-            <em
-              style={{
-                color: "var(--vim-accent-ink)",
-                fontStyle: "italic",
-                fontWeight: 400,
-              }}
-            >
-              queued
-            </em>{" "}
-            to watch,
-            <br />
-            turned into something to read.
-          </h1>
-        </div>
-      )}
-
-      {isSearching && (
-        <div style={{ marginBottom: 28 }}>
-          <div className="vim-kicker" style={{ marginBottom: 10 }}>
-            Search · {searchResult.data?.results.length ?? 0} result
-            {(searchResult.data?.results.length ?? 0) === 1 ? "" : "s"} for "{query}"
-          </div>
-          <h1 className="vim-h1-page" style={{ fontSize: 36 }}>
-            <em style={{ fontStyle: "italic", color: "var(--vim-accent-ink)" }}>
-              {query}
-            </em>
-          </h1>
-        </div>
-      )}
-
-      {/* Dual input row */}
-      <div className="vim-grid-input-row" style={{ marginBottom: 36 }}>
-        <form onSubmit={handleAddSubmit} style={{ position: "relative" }}>
-          <span style={{ position: "absolute", left: 16, top: 14, lineHeight: 0 }}>
-            <PlayIcon />
-          </span>
-          <input
-            className="vim-input"
-            type="text"
-            value={youtubeUrl}
-            onChange={(e) => setYoutubeUrl(e.target.value)}
-            placeholder="Paste a YouTube URL to summarize…"
-            style={{ paddingLeft: 44, paddingRight: 110 }}
-          />
-          <button
-            type="submit"
-            disabled={submit.isPending || !youtubeUrl.trim()}
-            className="vim-btn primary"
-            style={{ position: "absolute", right: 6, top: 6, padding: "7px 14px" }}
-          >
-            {submit.isPending ? "Adding…" : "Add"}
-          </button>
-        </form>
-
-        <form onSubmit={handleSearchSubmit} style={{ position: "relative" }}>
-          <span style={{ position: "absolute", left: 14, top: 14, lineHeight: 0 }}>
-            <SearchIcon />
-          </span>
-          <input
-            className="vim-input"
-            type="text"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search across all summaries…"
-            style={{ paddingLeft: 40, paddingRight: query ? 84 : 14 }}
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearchInput("");
-                setSearchParams({});
-              }}
-              className="vim-btn ghost"
-              style={{ position: "absolute", right: 6, top: 6, padding: "7px 12px", fontSize: 12 }}
-            >
-              Clear
-            </button>
-          )}
-        </form>
-      </div>
-
-      {/* Status messages */}
-      {submit.isSuccess && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: "10px 14px",
-            borderRadius: "var(--vim-radius)",
-            background: "color-mix(in oklch, var(--vim-ok) 8%, transparent)",
-            border: "1px solid color-mix(in oklch, var(--vim-ok) 24%, transparent)",
-            color: "var(--vim-ok)",
-            fontSize: 13,
-          }}
-        >
-          Video submitted for processing. It will appear shortly.
-        </div>
-      )}
-      {submit.isError && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: "10px 14px",
-            borderRadius: "var(--vim-radius)",
-            background: "color-mix(in oklch, var(--vim-err) 10%, transparent)",
-            border: "1px solid color-mix(in oklch, var(--vim-err) 28%, transparent)",
-            color: "var(--vim-err)",
-            fontSize: 13,
-          }}
-        >
-          {(submit.error as Error).message}
-        </div>
-      )}
-
-      {/* Failed banner */}
-      {!isSearching && failedCount > 0 && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 16,
-            padding: "12px 16px",
-            marginBottom: 16,
-            borderRadius: "var(--vim-radius)",
-            background: "color-mix(in oklch, var(--vim-err) 10%, transparent)",
-            border: "1px solid color-mix(in oklch, var(--vim-err) 28%, transparent)",
-          }}
-        >
-          <span style={{ color: "var(--vim-err)", fontSize: 13 }}>
-            {failedCount} video{failedCount !== 1 ? "s" : ""} failed
-          </span>
-          <button
-            onClick={() => retryAll.mutate()}
-            disabled={retryAll.isPending}
-            className="vim-btn ghost"
-            style={{ padding: "6px 12px", fontSize: 12 }}
-          >
-            {retryAll.isPending ? "Retrying…" : "Retry all"}
-          </button>
-        </div>
-      )}
-      {retryAll.isSuccess && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: "10px 14px",
-            borderRadius: "var(--vim-radius)",
-            background: "color-mix(in oklch, var(--vim-ok) 8%, transparent)",
-            color: "var(--vim-ok)",
-            fontSize: 13,
-          }}
-        >
-          {retryAll.data.retried} video{retryAll.data.retried !== 1 ? "s" : ""} queued for retry.
-        </div>
-      )}
-
-      {/* No-captions banner */}
-      {!isSearching && noCaptionsCount > 0 && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 16,
-            padding: "12px 16px",
-            marginBottom: 16,
-            borderRadius: "var(--vim-radius)",
-            background: "color-mix(in oklch, var(--vim-warn) 8%, transparent)",
-            border: "1px solid color-mix(in oklch, var(--vim-warn) 22%, transparent)",
-          }}
-        >
-          <span style={{ color: "var(--vim-warn)", fontSize: 13 }}>
-            {noCaptionsCount} video{noCaptionsCount !== 1 ? "s" : ""} with no captions
-          </span>
-          <button
-            onClick={() => transcribeAll.mutate()}
-            disabled={transcribeAll.isPending}
-            className="vim-btn ghost"
-            style={{ padding: "6px 12px", fontSize: 12 }}
-          >
-            {transcribeAll.isPending ? "Transcribing…" : "Transcribe all with Voxtral"}
-          </button>
-        </div>
-      )}
-      {transcribeAll.isSuccess && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: "10px 14px",
-            borderRadius: "var(--vim-radius)",
-            background: "color-mix(in oklch, var(--vim-ok) 8%, transparent)",
-            color: "var(--vim-ok)",
-            fontSize: 13,
-          }}
-        >
-          {transcribeAll.data.transcribing} video
-          {transcribeAll.data.transcribing !== 1 ? "s" : ""} queued for Voxtral transcription.
-        </div>
-      )}
-
-      {errorObj && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: "10px 14px",
-            borderRadius: "var(--vim-radius)",
-            background: "color-mix(in oklch, var(--vim-err) 10%, transparent)",
-            border: "1px solid color-mix(in oklch, var(--vim-err) 28%, transparent)",
-            color: "var(--vim-err)",
-            fontSize: 13,
-          }}
-        >
-          {(errorObj as Error).message}
-        </div>
-      )}
-
-      {searchResult.data?.warnings?.map((w, i) => (
-        <div
-          key={i}
-          style={{
-            marginBottom: 16,
-            padding: "10px 14px",
-            borderRadius: "var(--vim-radius)",
-            background: "color-mix(in oklch, var(--vim-warn) 8%, transparent)",
-            color: "var(--vim-warn)",
-            fontSize: 13,
-          }}
-        >
-          {w}
-        </div>
-      ))}
-
-      {/* Hero card */}
-      {heroVideo && (
-        <Link
-          to={`/video/${heroVideo.id}`}
-          style={{ display: "block", color: "inherit", textDecoration: "none", marginBottom: 40 }}
-        >
-          <article className="vim-card">
-            <div className="vim-kicker" style={{ marginBottom: 14 }}>
-              — Latest summary · {formatDate(heroVideo.created_at)}
-            </div>
-            <div className="vim-grid-hero">
-              <div className="vim-thumb vim-thumb-hero">
-                <img
-                  src={`https://img.youtube.com/vi/${heroVideo.youtube_id}/mqdefault.jpg`}
-                  alt=""
-                />
-                {heroVideo.duration_seconds ? (
-                  <span className="dur">{formatDuration(heroVideo.duration_seconds)}</span>
-                ) : null}
-                <div className="play">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="#fff">
-                    <path d="M3 1.5v11L13 7z" />
-                  </svg>
-                </div>
-              </div>
-              <div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "var(--vim-ink-3)",
-                    marginBottom: 8,
-                    display: "flex",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  {heroVideo.channel && (
-                    <span style={{ color: "var(--vim-ink-2)" }}>{heroVideo.channel}</span>
-                  )}
-                  {heroVideo.duration_seconds ? (
-                    <>
-                      <span className="vim-dot" />
-                      <span>{formatDuration(heroVideo.duration_seconds)}</span>
-                    </>
-                  ) : null}
-                  {heroVideo.language && (
-                    <>
-                      <span className="vim-dot" />
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}>
-                        {heroVideo.language.toUpperCase()}
-                      </span>
-                    </>
-                  )}
-                </div>
-                <h2 className="vim-h2-hero">
-                  {heroVideo.title || heroVideo.youtube_id}
-                </h2>
-                <p
-                  style={{
-                    fontSize: 15,
-                    lineHeight: 1.6,
-                    color: "var(--vim-ink-2)",
-                    margin: "0 0 18px",
-                    maxWidth: 580,
-                    display: "-webkit-box",
-                    WebkitLineClamp: 4,
-                    WebkitBoxOrient: "vertical",
-                    overflow: "hidden",
-                  }}
-                >
-                  {stripMarkdown(heroVideo.summary ?? "")}
-                </p>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {(heroVideo.metadata?.topics ?? []).slice(0, 5).map((t) => (
-                    <span key={t} className="vim-tag">
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </article>
-        </Link>
-      )}
-
-      {heroVideo && <hr className="vim-hr" style={{ marginBottom: 8 }} />}
-
-      {/* List */}
-      {isLoading ? (
-        <LoadingSkeleton count={3} />
-      ) : (
-        <div>
-          {restVideos && restVideos.length === 0 && !heroVideo && (
-            <p
-              style={{
-                color: "var(--vim-ink-3)",
-                fontSize: 14,
-                padding: "48px 0",
-                textAlign: "center",
-              }}
-            >
-              {isSearching ? `No results found for "${query}"` : "No videos yet"}
-            </p>
-          )}
-          {restVideos?.map((v, i) => (
-            <VideoCard
-              key={v.id}
-              id={v.id}
-              youtubeId={v.youtube_id}
-              source={v.source}
-              title={v.title}
-              channel={v.channel}
-              durationSeconds={v.duration_seconds}
-              summary={v.summary}
-              topics={v.metadata?.topics}
-              status={v.status}
-              errorMessage={v.error_message}
-              score={v.score}
-              matchType={v.match_type}
-              createdAt={v.created_at}
-              index={!isSearching ? total - offset - (heroVideo ? 1 : 0) - i : undefined}
-              isLast={i === (restVideos.length - 1)}
-            />
-          ))}
-
-          {/* Pagination */}
-          {!isSearching && listResult.data && listResult.data.total > PAGE_SIZE && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 16,
-                paddingTop: 28,
-              }}
-            >
-              <button
-                disabled={page <= 1}
-                onClick={() => setSearchParams({ page: String(page - 1) })}
-                className="vim-btn ghost"
-                style={{ padding: "7px 14px", fontSize: 12 }}
-              >
-                ← Previous
-              </button>
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11.5,
-                  color: "var(--vim-ink-3)",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                Page {page} of {Math.ceil(listResult.data.total / PAGE_SIZE)}
+    <div style={{ borderTop: "var(--rule-strong)" }}>
+      {groups.map((g) => (
+        <Fragment key={g.key}>
+          <div className="kick row-group">{g.label}</div>
+          {g.items.map((r) => (
+            <Link key={r.id} to={detailPath(r)} className="row" style={{ color: "inherit", minHeight: 44 }}>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span className="row-title" style={{ display: "block" }}>{r.title}</span>
+                <span className="row-meta" style={{ display: "block" }}>
+                  {r.error_message ??
+                    [
+                      r.channel,
+                      r.duration_seconds ? formatDuration(r.duration_seconds) : null,
+                      r.detail_level,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                </span>
               </span>
-              <button
-                disabled={offset + PAGE_SIZE >= listResult.data.total}
-                onClick={() => setSearchParams({ page: String(page + 1) })}
-                className="vim-btn ghost"
-                style={{ padding: "7px 14px", fontSize: 12 }}
-              >
-                Next →
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+              {r.status ? (
+                <span className={`status ${statusClass(r.status)}`}>{statusLabel(r.status)}</span>
+              ) : searching && r.score !== undefined ? (
+                <span className="num row-value" style={{ fontSize: 12.5, color: "var(--color-neutral-600)" }}>
+                  {r.score.toFixed(2)}
+                </span>
+              ) : null}
+            </Link>
+          ))}
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+function EmptyState({
+  searching,
+  query,
+  filtered,
+}: {
+  searching: boolean;
+  query: string;
+  filtered: boolean;
+}) {
+  if (searching) {
+    return (
+      <div className="empty">
+        <div className="kick">Search</div>
+        <h3>Nothing matches “{query}”.</h3>
+        <p>Hybrid search reads the summary text and its embedding. A narrower phrase usually helps more than a broader one.</p>
+        <Link to="/" className="btn btn-secondary">Back to all videos</Link>
+      </div>
+    );
+  }
+
+  if (filtered) {
+    return (
+      <div className="empty">
+        <div className="kick">Library</div>
+        <h3>Nothing in this state.</h3>
+        <p>No video currently carries the selected status.</p>
+        <Link to="/" className="btn btn-secondary">Show all</Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="empty">
+      <div className="kick">Library</div>
+      <h3>No videos yet.</h3>
+      <p>
+        Paste a YouTube URL above and the transcript comes back as a readable summary.
+        Karakeep webhooks and bulk import live in Settings.
+      </p>
+      <Link to="/settings?tab=karakeep" className="btn btn-secondary">Set up Karakeep</Link>
     </div>
   );
 }

@@ -1,16 +1,29 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchStats, listVideos, retryVideo, deleteVideo } from "../api.ts";
-import type { ContentSource } from "../api.ts";
+import { fetchStats, listVideos, retryAllFailed, type ContentSource, type DailyCount } from "../api.ts";
 import { usePodcastsEnabled } from "../features.ts";
-import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
+import PageHeader from "../components/PageHeader.tsx";
+import RangeControl from "../components/RangeControl.tsx";
+import Toast, { useToast } from "../components/Toast.tsx";
+import { Skel } from "../components/LoadingSkeleton.tsx";
+import { shortDate, statusClass, statusLabel } from "../display.ts";
 
-function busiestWeekday(daily: { date: string; count: number }[]): string {
+type StatsScope = ContentSource | "all";
+
+const SCOPES: StatsScope[] = ["all", "youtube", "podcast"];
+const SCOPE_LABEL: Record<string, string> = {
+  all: "Everything",
+  youtube: "Videos",
+  podcast: "Podcasts",
+};
+
+function busiestWeekday(daily: DailyCount[]): string {
   if (!daily.length) return "—";
   const byDay = new Map<number, number>();
   for (const d of daily) {
-    const dt = new Date(d.date);
-    byDay.set(dt.getDay(), (byDay.get(dt.getDay()) ?? 0) + d.count);
+    const day = new Date(d.date).getDay();
+    byDay.set(day, (byDay.get(day) ?? 0) + d.count);
   }
   let best = -1;
   let bestN = -1;
@@ -20,22 +33,20 @@ function busiestWeekday(daily: { date: string; count: number }[]): string {
       best = k;
     }
   }
-  return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][best] ?? "—";
+  return (
+    ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][best] ?? "—"
+  );
 }
-
-function shortDate(d: string): string {
-  return new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-type StatsScope = ContentSource | "all";
 
 export default function StatsPage() {
   const queryClient = useQueryClient();
-  const [scope, setScope] = useState<StatsScope>("all");
   const podcastsEnabled = usePodcastsEnabled();
+  const toast = useToast();
+  const [scope, setScope] = useState<StatsScope>("all");
+
   // With cast2md off, count videos rather than everything. Podcast rows can
-  // still exist from an earlier configuration, and counting them here while
-  // the video list hides them would make the two disagree.
+  // still exist from an earlier configuration, and counting them here while the
+  // video list hides them would make the two pages disagree.
   const effectiveScope: StatsScope = podcastsEnabled ? scope : "youtube";
 
   const { data: stats, isLoading, error } = useQuery({
@@ -45,448 +56,351 @@ export default function StatsPage() {
 
   const failedCount = stats?.by_status?.failed ?? 0;
 
-  const { data: failedVideos } = useQuery({
+  const { data: failed } = useQuery({
     queryKey: ["videos", "failed", effectiveScope],
     queryFn: () => listVideos({ status: "failed", source: effectiveScope, limit: 20 }),
     enabled: failedCount > 0,
   });
 
-  const retry = useMutation({
-    mutationFn: (id: string) => retryVideo(id),
-    onSuccess: () => {
+  const retryAll = useMutation({
+    mutationFn: retryAllFailed,
+    onSuccess: (r) => {
       queryClient.invalidateQueries({ queryKey: ["videos"] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
+      toast.show(`${r.retried} ${r.retried === 1 ? "video" : "videos"} queued for retry.`);
     },
   });
 
-  const remove = useMutation({
-    mutationFn: (id: string) => deleteVideo(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["videos"] });
-      queryClient.invalidateQueries({ queryKey: ["stats"] });
-    },
-  });
-
-  if (isLoading)
+  if (error) {
     return (
-      <div className="vim-page">
-        <LoadingSkeleton count={3} />
+      <div className="empty">
+        <div className="kick">Error</div>
+        <h3>Stats could not be loaded.</h3>
+        <p>{(error as Error).message}</p>
       </div>
     );
+  }
 
-  if (error)
-    return (
-      <div className="vim-page">
-        <div
-          style={{
-            padding: "12px 16px",
-            borderRadius: "var(--vim-radius)",
-            background: "color-mix(in oklch, var(--vim-err) 10%, transparent)",
-            border: "1px solid color-mix(in oklch, var(--vim-err) 28%, transparent)",
-            color: "var(--vim-err)",
-            fontSize: 13,
-          }}
-        >
-          {(error as Error).message}
-        </div>
-      </div>
-    );
-
-  if (!stats) return null;
-
-  const completed = stats.by_status?.completed ?? 0;
-  const completionRate =
-    stats.total_count > 0 ? Math.round((completed / stats.total_count) * 100) : 0;
-  const totalHours = stats.total_duration_seconds / 3600;
-  // Reading a summary takes roughly 15% of the runtime — so ~85% saved vs watching.
+  const totalHours = (stats?.total_duration_seconds ?? 0) / 3600;
+  // Reading a summary takes roughly 15% of the runtime, so ~85% is saved.
   const savedHours = totalHours * 0.85;
-
-  const sumLast30 = stats.daily_activity.reduce((acc, d) => acc + d.count, 0);
-  const maxDaily = Math.max(...stats.daily_activity.map((d) => d.count), 1);
-  const today = new Date().toISOString().slice(0, 10);
-
-  const topChannelMax = stats.by_channel[0]?.count ?? 1;
-  const topTopicMax = stats.top_topics[0]?.count ?? 1;
+  const completed = stats?.by_status?.completed ?? 0;
+  const completion = stats && stats.total_count > 0
+    ? Math.round((completed / stats.total_count) * 100)
+    : 0;
 
   return (
-    <div className="vim-page">
-      <div className="vim-kicker" style={{ marginBottom: 10 }}>
-        — Reading habits
-      </div>
-      <h1 className="vim-h1-stats-settings">Stats</h1>
+    <>
+      <PageHeader
+        kicker="Library"
+        title="Stats"
+        actions={
+          podcastsEnabled ? (
+            <RangeControl
+              options={SCOPES}
+              value={effectiveScope}
+              onChange={setScope}
+              label="Scope"
+              longLabel={SCOPE_LABEL}
+              name="stats-scope"
+              note="Everything counts videos and podcast episodes together."
+            />
+          ) : null
+        }
+      />
 
-      {/* Scope switch. by_source is always unfiltered, so the counts stay
-          visible whichever scope is selected. With only one content type there
-          is nothing to switch between, so it is not shown. */}
-      {podcastsEnabled && (
-      <div style={{ display: "flex", gap: 6, margin: "16px 0 4px", flexWrap: "wrap" }}>
-        {(
-          [
-            { key: "all" as StatsScope, label: "Everything", count: stats.total_count },
-            {
-              key: "youtube" as StatsScope,
-              label: "Videos",
-              count: stats.by_source?.youtube ?? 0,
-            },
-            {
-              key: "podcast" as StatsScope,
-              label: "Podcasts",
-              count: stats.by_source?.podcast ?? 0,
-            },
-          ]
-        ).map((opt) => (
+      <div className="hero">
+        <HeroCell label="Summaries" value={stats?.total_count.toLocaleString()} />
+        <HeroCell
+          label="Runtime"
+          value={stats ? hoursLabel(totalHours) : undefined}
+          unit="watched"
+        />
+        <HeroCell label="Saved" value={stats ? hoursLabel(savedHours) : undefined} unit="vs 1×" />
+        <HeroCell label="Completed" value={stats ? `${completion}%` : undefined} />
+      </div>
+
+      {isLoading || !stats ? (
+        <div className="page-x" style={{ paddingTop: 28 }}>
+          <Skel w={280} h={16} />
+        </div>
+      ) : (
+        <>
+          <Section
+            title="Last 30 days"
+            note={
+              stats.daily_activity.length
+                ? `${stats.daily_activity.reduce((n, d) => n + d.count, 0)} summaries · busiest ${busiestWeekday(stats.daily_activity)}`
+                : undefined
+            }
+          >
+            <DailyChart daily={stats.daily_activity} />
+          </Section>
+
+          {Object.keys(stats.by_status).length > 0 ? (
+            <Section title="By status">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 160 }}>Status</th>
+                    <th>Share</th>
+                    <th className="right" style={{ width: 90 }}>Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(stats.by_status)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([status, count]) => (
+                      <tr key={status}>
+                        <td>
+                          <span className={`status ${statusClass(status)}`}>
+                            {statusLabel(status)}
+                          </span>
+                        </td>
+                        <td>
+                          <Bar
+                            fraction={count / Math.max(stats.total_count, 1)}
+                            accent={status === "failed"}
+                          />
+                        </td>
+                        <td className="num right">{count}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </Section>
+          ) : null}
+
+          {stats.by_channel.length > 0 ? (
+            <Section title="Top channels">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th style={{ width: "40%" }}>Channel</th>
+                    <th>Share</th>
+                    <th className="right" style={{ width: 90 }}>Summaries</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.by_channel.map((c) => (
+                    <tr key={c.channel}>
+                      <td>{c.channel}</td>
+                      <td>
+                        <Bar fraction={c.count / Math.max(stats.by_channel[0].count, 1)} />
+                      </td>
+                      <td className="num right">{c.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
+          ) : null}
+
+          {stats.top_topics.length > 0 ? (
+            <Section title="Top topics">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th style={{ width: "40%" }}>Topic</th>
+                    <th>Share</th>
+                    <th className="right" style={{ width: 90 }}>Summaries</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.top_topics.map((t) => (
+                    <tr key={t.topic}>
+                      <td>{t.topic}</td>
+                      <td>
+                        <Bar fraction={t.count / Math.max(stats.top_topics[0].count, 1)} />
+                      </td>
+                      <td className="num right">{t.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
+          ) : null}
+
+          {failed && failed.videos.length > 0 ? (
+            <Section title="Failed">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Video</th>
+                    <th style={{ width: "38%" }}>Reason</th>
+                    <th className="right" style={{ width: 110 }}>Added</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {failed.videos.map((v) => (
+                    <tr key={v.id}>
+                      <td style={{ fontWeight: 500 }}>
+                        <Link
+                          to={v.source === "podcast" ? `/podcast/${v.id}` : `/video/${v.id}`}
+                          style={{ color: "inherit" }}
+                        >
+                          {v.title || v.youtube_id}
+                        </Link>
+                      </td>
+                      <td style={{ color: "var(--color-accent-700)", fontSize: 12.5 }}>
+                        {v.error_message}
+                      </td>
+                      <td className="num right" style={{ fontSize: 12.5, color: "var(--color-neutral-600)" }}>
+                        {shortDate(v.created_at)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
+          ) : null}
+        </>
+      )}
+
+      <div className="footer">
+        {failedCount > 0 ? (
           <button
-            key={opt.key}
-            onClick={() => setScope(opt.key)}
-            className={scope === opt.key ? "vim-btn primary" : "vim-btn ghost"}
-            style={{ padding: "6px 14px", fontSize: 12 }}
+            type="button"
+            className="btn btn-ghost"
+            style={{ fontSize: 12.5 }}
+            disabled={retryAll.isPending}
+            onClick={() => retryAll.mutate()}
           >
-            {opt.label}
-            <span style={{ opacity: 0.65, marginLeft: 6, fontFamily: "var(--font-mono)" }}>
-              {opt.count}
-            </span>
+            Retry all {failedCount} failed →
           </button>
+        ) : null}
+        <span className="spacer note">
+          {podcastsEnabled ? SCOPE_LABEL[effectiveScope] : "Videos"}
+        </span>
+      </div>
+
+      <Toast message={toast.message} onDismiss={toast.dismiss} />
+    </>
+  );
+}
+
+function hoursLabel(h: number): string {
+  return h >= 1 ? `${h.toFixed(0)} h` : `${Math.round(h * 60)} min`;
+}
+
+function HeroCell({ label, value, unit }: { label: string; value?: string; unit?: string }) {
+  return (
+    <div>
+      <div className="kick">{label}</div>
+      <div className="value">
+        {value ?? <Skel w={92} h={44} />}
+        {/* The value's -0.035em tracking is inherited and eats the space in a
+            15px word, so the unit resets it. */}
+        {value && unit ? (
+          <span className="unit" style={{ letterSpacing: "normal" }}>
+            {unit}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/* Section head, then the content. No card, no frame: a 2px rule and a kicker
+   carry the break. */
+function Section({
+  title,
+  note,
+  children,
+}: {
+  title: string;
+  note?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section>
+      <div
+        className="page-x flex items-baseline gap-4"
+        style={{ paddingTop: 26, paddingBottom: 12, borderTop: "var(--rule-strong)" }}
+      >
+        <h2 style={{ fontSize: 22 }}>{title}</h2>
+        {note ? (
+          <span style={{ font: "400 12.5px var(--font-body)", color: "var(--color-neutral-600)" }}>
+            {note}
+          </span>
+        ) : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** Square, track in neutral-300, fill in ink — the accent marks failure only. */
+function Bar({ fraction, accent }: { fraction: number; accent?: boolean }) {
+  return (
+    <span
+      style={{
+        display: "block",
+        height: 10,
+        background: "var(--color-neutral-300)",
+        maxWidth: 320,
+      }}
+    >
+      <span
+        style={{
+          display: "block",
+          height: "100%",
+          width: `${Math.max(0, Math.min(1, fraction)) * 100}%`,
+          background: accent ? "var(--color-accent)" : "var(--color-text)",
+        }}
+      />
+    </span>
+  );
+}
+
+/* No frame and no legend: a 2px zero line, 1px grid, .kick axis labels. Bars are
+   ink; the current day is the accent, because that is the series the page is
+   about. */
+function DailyChart({ daily }: { daily: DailyCount[] }) {
+  if (!daily.length) {
+    return (
+      <p className="page-x" style={{ color: "var(--color-neutral-600)", fontSize: 13 }}>
+        Nothing summarized in the last 30 days.
+      </p>
+    );
+  }
+
+  const max = Math.max(...daily.map((d) => d.count), 1);
+  const today = new Date().toISOString().slice(0, 10);
+
+  return (
+    <div className="page-x" style={{ paddingBottom: 8 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-end",
+          gap: 3,
+          height: 120,
+          borderBottom: "var(--rule-strong)",
+          // One grid line at the midpoint; a full grid says nothing a 30-bar
+          // series does not already say.
+          backgroundImage:
+            "linear-gradient(to bottom, transparent 50%, var(--color-neutral-300) 50%, var(--color-neutral-300) calc(50% + 1px), transparent calc(50% + 1px))",
+        }}
+      >
+        {daily.map((d) => (
+          <div
+            key={d.date}
+            title={`${d.date}: ${d.count}`}
+            style={{
+              flex: 1,
+              height: `${(d.count / max) * 100}%`,
+              minHeight: d.count > 0 ? 2 : 0,
+              background: d.date === today ? "var(--color-accent)" : "var(--color-text)",
+            }}
+          />
         ))}
       </div>
-      )}
-
-      {/* Headline grid */}
-      <div className="vim-grid-stats-headline" style={{ marginBottom: 30 }}>
-        {[
-          { n: stats.total_count.toLocaleString(), l: "summaries" },
-          {
-            n: totalHours >= 1 ? `${totalHours.toFixed(0)} hrs` : `${Math.round(totalHours * 60)} min`,
-            l: "watched by vimmary",
-          },
-          {
-            n: savedHours >= 1 ? `${savedHours.toFixed(0)} hrs` : `${Math.round(savedHours * 60)} min`,
-            l: "saved vs 1× speed",
-          },
-          { n: `${completionRate}%`, l: "completion rate" },
-        ].map((x) => (
-          <div
-            key={x.l}
-            style={{
-              padding: "22px 24px",
-              background: "var(--vim-surface)",
-              borderRadius: 12,
-              border: "1px solid var(--vim-line-soft)",
-            }}
-          >
-            <div
-              style={{
-                fontFamily: "var(--font-serif)",
-                fontSize: 36,
-                fontWeight: 400,
-                letterSpacing: "-0.02em",
-                color: "var(--vim-ink)",
-                lineHeight: 1.05,
-              }}
-            >
-              {x.n}
-            </div>
-            <div style={{ fontSize: 12, color: "var(--vim-ink-3)", marginTop: 6 }}>{x.l}</div>
-          </div>
-        ))}
+      <div className="flex" style={{ justifyContent: "space-between", paddingTop: 6 }}>
+        <span className="kick">{shortDate(daily[0].date)}</span>
+        <span className="kick">{max} max/day</span>
+        <span className="kick">{shortDate(daily[daily.length - 1].date)}</span>
       </div>
-
-      {/* Sparkline card */}
-      {stats.daily_activity.length > 0 && (
-        <div
-          style={{
-            padding: 28,
-            background: "var(--vim-surface)",
-            borderRadius: 12,
-            border: "1px solid var(--vim-line-soft)",
-            marginBottom: 30,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "baseline",
-              justifyContent: "space-between",
-              marginBottom: 18,
-              gap: 16,
-              flexWrap: "wrap",
-            }}
-          >
-            <div>
-              <div className="vim-kicker" style={{ marginBottom: 6 }}>
-                Last 30 days
-              </div>
-              <div
-                style={{
-                  fontFamily: "var(--font-serif)",
-                  fontSize: 22,
-                  fontWeight: 500,
-                  letterSpacing: "-0.01em",
-                  color: "var(--vim-ink)",
-                }}
-              >
-                {sumLast30} summar{sumLast30 === 1 ? "y" : "ies"} · busiest{" "}
-                {busiestWeekday(stats.daily_activity)}
-              </div>
-            </div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--vim-ink-3)" }}>
-              {shortDate(stats.daily_activity[0].date)} —{" "}
-              {shortDate(stats.daily_activity[stats.daily_activity.length - 1].date)}
-            </div>
-          </div>
-          <div className="vim-spark">
-            {stats.daily_activity.map((d) => (
-              <div
-                key={d.date}
-                className={"bar" + (d.date === today ? " cur" : "")}
-                style={{ height: `${(d.count / maxDaily) * 100}%` }}
-                title={`${d.date}: ${d.count}`}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* By status */}
-      {Object.keys(stats.by_status).length > 0 && (
-        <div
-          style={{
-            padding: 24,
-            background: "var(--vim-surface)",
-            borderRadius: 12,
-            border: "1px solid var(--vim-line-soft)",
-            marginBottom: 30,
-          }}
-        >
-          <div className="vim-kicker" style={{ marginBottom: 16 }}>
-            — By status
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {Object.entries(stats.by_status)
-              .sort(([, a], [, b]) => b - a)
-              .map(([status, count]) => (
-                <div
-                  key={status}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "120px 1fr 38px",
-                    alignItems: "center",
-                    gap: 12,
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: 13,
-                      color: status === "failed" ? "var(--vim-err)" : "var(--vim-ink-2)",
-                    }}
-                  >
-                    {status}
-                  </span>
-                  <div className={"vim-bar" + (status === "completed" ? " accent" : "")}>
-                    <span
-                      style={{
-                        width: `${(count / stats.total_count) * 100}%`,
-                        background:
-                          status === "failed" ? "var(--vim-err)" : undefined,
-                      }}
-                    />
-                  </div>
-                  <span
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 12,
-                      color: "var(--vim-ink-3)",
-                      textAlign: "right",
-                    }}
-                  >
-                    {count}
-                  </span>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* Top channels + topics */}
-      <div className="vim-grid-stats-2col" style={{ marginBottom: 30 }}>
-        {stats.by_channel.length > 0 && (
-          <div
-            style={{
-              padding: 24,
-              background: "var(--vim-surface)",
-              borderRadius: 12,
-              border: "1px solid var(--vim-line-soft)",
-            }}
-          >
-            <div className="vim-kicker" style={{ marginBottom: 16 }}>
-              — Top channels
-            </div>
-            {stats.by_channel.map((cc, i) => (
-              <div
-                key={cc.channel}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 38px",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "9px 0",
-                  borderBottom:
-                    i === stats.by_channel.length - 1
-                      ? "none"
-                      : "1px solid var(--vim-line-soft)",
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: 13.5, marginBottom: 6, color: "var(--vim-ink)" }}>
-                    {cc.channel}
-                  </div>
-                  <div className="vim-bar accent">
-                    <span style={{ width: `${(cc.count / topChannelMax) * 100}%` }} />
-                  </div>
-                </div>
-                <span
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 12,
-                    color: "var(--vim-ink-3)",
-                    textAlign: "right",
-                  }}
-                >
-                  {cc.count}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-        {stats.top_topics.length > 0 && (
-          <div
-            style={{
-              padding: 24,
-              background: "var(--vim-surface)",
-              borderRadius: 12,
-              border: "1px solid var(--vim-line-soft)",
-            }}
-          >
-            <div className="vim-kicker" style={{ marginBottom: 16 }}>
-              — Top topics
-            </div>
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 6,
-                alignContent: "flex-start",
-              }}
-            >
-              {stats.top_topics.map((tc) => (
-                <span
-                  key={tc.topic}
-                  className="vim-tag"
-                  style={{
-                    fontSize: 12 + Math.min(tc.count / Math.max(topTopicMax / 3, 1), 3),
-                    padding: "5px 11px",
-                  }}
-                >
-                  {tc.topic}{" "}
-                  <span
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 10,
-                      color: "var(--vim-ink-4)",
-                      marginLeft: 4,
-                    }}
-                  >
-                    {tc.count}
-                  </span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Failed videos log */}
-      {failedVideos && failedVideos.videos.length > 0 && (
-        <div
-          style={{
-            padding: 24,
-            background: "var(--vim-surface)",
-            borderRadius: 12,
-            border: "1px solid color-mix(in oklch, var(--vim-err) 22%, transparent)",
-          }}
-        >
-          <div className="vim-kicker" style={{ marginBottom: 16, color: "var(--vim-err)" }}>
-            — Failed videos
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {failedVideos.videos.map((v) => (
-              <div
-                key={v.id}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  justifyContent: "space-between",
-                  gap: 16,
-                }}
-              >
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <p
-                    style={{
-                      color: "var(--vim-ink)",
-                      fontSize: 13.5,
-                      margin: 0,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {v.title || v.youtube_id}
-                  </p>
-                  <p
-                    style={{
-                      color: "var(--vim-err)",
-                      fontSize: 12,
-                      margin: "2px 0 0",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {v.error_message}
-                  </p>
-                  <p
-                    style={{
-                      color: "var(--vim-ink-4)",
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 11,
-                      margin: "2px 0 0",
-                    }}
-                  >
-                    {new Date(v.created_at).toLocaleString()}
-                  </p>
-                </div>
-                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                  <button
-                    onClick={() => retry.mutate(v.id)}
-                    disabled={retry.isPending}
-                    className="vim-btn ghost"
-                    style={{ padding: "5px 10px", fontSize: 11 }}
-                  >
-                    Retry
-                  </button>
-                  <button
-                    onClick={() => remove.mutate(v.id)}
-                    disabled={remove.isPending}
-                    className="vim-btn outline"
-                    style={{ padding: "5px 10px", fontSize: 11 }}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

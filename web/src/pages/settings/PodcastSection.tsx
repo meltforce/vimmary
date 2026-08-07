@@ -8,9 +8,9 @@ import {
   transcribeAllPodcastFeed,
 } from "../../api.ts";
 import type { PodcastFeed } from "../../api.ts";
-import { MicIcon } from "../../components/SourceBadge.tsx";
 import { usePodcastsEnabled } from "../../features.ts";
-import { Section } from "./primitives.tsx";
+import ConfirmDialog from "../../components/ConfirmDialog.tsx";
+import { Section, SectionError, SectionLoading, Switch } from "./primitives.tsx";
 
 function formatPolled(iso?: string): string {
   if (!iso) return "never polled";
@@ -27,7 +27,7 @@ function formatPolled(iso?: string): string {
 // starts downloads and Whisper runs in cast2md.
 type PendingBulk = "summarize" | "transcribe" | null;
 
-function PodcastFeedRow({ feed, isLast }: { feed: PodcastFeed; isLast: boolean }) {
+function PodcastFeedRow({ feed }: { feed: PodcastFeed }) {
   const queryClient = useQueryClient();
   const [backfillLimit, setBackfillLimit] = useState(5);
   const [confirm, setConfirm] = useState<PendingBulk>(null);
@@ -65,102 +65,60 @@ function PodcastFeedRow({ feed, isLast }: { feed: PodcastFeed; isLast: boolean }
   });
 
   const busy = summarizeAll.isPending || transcribeAll.isPending;
-  const bulkError = (summarizeAll.error ?? transcribeAll.error) as Error | undefined;
+  const rowError = (subscribe.error ?? backfill.error ?? summarizeAll.error ?? transcribeAll.error) as
+    | Error
+    | undefined;
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 14,
-        padding: "16px 0",
-        borderBottom: isLast ? "none" : "1px solid var(--vim-line-soft)",
-      }}
-    >
-      <div
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: 8,
-          overflow: "hidden",
-          flexShrink: 0,
-          background: "var(--vim-surface-2)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        {feed.image_url ? (
-          <img
-            src={feed.image_url}
-            alt=""
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-          />
-        ) : (
-          <MicIcon size={20} color="var(--vim-ink-4)" />
-        )}
+    <div className="set-row" style={{ alignItems: "flex-start" }}>
+      <div className="kick" style={{ paddingTop: 4 }}>
+        <Switch
+          checked={feed.subscribed}
+          disabled={subscribe.isPending}
+          label={`Subscribe to ${feed.title}`}
+          onChange={(enabled) => subscribe.mutate({ enabled, level: feed.detail_level })}
+        />
       </div>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 14, color: "var(--vim-ink)", marginBottom: 3 }}>{feed.title}</div>
-        <div style={{ fontSize: 11.5, color: "var(--vim-ink-3)" }}>
+      <div className="val">
+        <div style={{ fontSize: 14, fontWeight: 500 }}>{feed.title}</div>
+        <div style={{ font: "400 11.5px var(--font-body)", color: "var(--color-neutral-600)", marginTop: 3 }}>
           {feed.completed_count} of {feed.episode_count} transcribed in cast2md ·{" "}
           {feed.summarized_count} summarized here
-          {feed.subscribed && (
-            <>
-              {" · "}
-              {formatPolled(feed.last_polled_at)}
-            </>
-          )}
+          {feed.subscribed ? ` · ${formatPolled(feed.last_polled_at)}` : ""}
         </div>
+
         {/* The first poll runs when the feed is switched on, so this only
             appears when that attempt failed and the poller has to retry. */}
-        {feed.subscribed && !feed.initialized && (
-          <div style={{ fontSize: 11.5, color: "var(--vim-ink-4)", marginTop: 4 }}>
-            The first poll has not completed. The poller retries within a poll
-            interval.
+        {feed.subscribed && !feed.initialized ? (
+          <div style={{ font: "400 11.5px var(--font-body)", color: "var(--color-neutral-600)", marginTop: 4 }}>
+            The first poll has not completed. The poller retries within a poll interval.
           </div>
-        )}
-        {feed.last_error && (
-          <div style={{ fontSize: 11.5, color: "var(--vim-err)", marginTop: 4 }}>
+        ) : null}
+        {feed.last_error ? (
+          <div style={{ font: "400 11.5px var(--font-body)", color: "var(--color-accent-700)", marginTop: 4 }}>
             {feed.last_error}
           </div>
-        )}
+        ) : null}
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            marginTop: 10,
-            flexWrap: "wrap",
-          }}
-        >
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
-            <input
-              type="checkbox"
-              checked={feed.subscribed}
-              disabled={subscribe.isPending}
-              onChange={(e) =>
-                subscribe.mutate({ enabled: e.target.checked, level: feed.detail_level })
-              }
-            />
-            Subscribed
-          </label>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
           <select
+            className="select"
+            style={{ width: "auto" }}
             value={feed.detail_level}
             disabled={subscribe.isPending}
+            aria-label="Detail level for this feed"
             onChange={(e) => subscribe.mutate({ enabled: feed.subscribed, level: e.target.value })}
-            className="vim-input"
-            style={{ width: "auto", padding: "5px 8px", fontSize: 12 }}
-            title="Detail level for this feed's summaries"
           >
             <option value="medium">medium</option>
             <option value="deep">deep</option>
           </select>
           <select
+            className="select"
+            style={{ width: "auto" }}
             value={feed.initial_backfill}
             disabled={subscribe.isPending}
+            aria-label="How many recent episodes are summarized when this feed is switched on"
             onChange={(e) =>
               subscribe.mutate({
                 enabled: feed.subscribed,
@@ -168,131 +126,81 @@ function PodcastFeedRow({ feed, isLast }: { feed: PodcastFeed; isLast: boolean }
                 initialBackfill: parseInt(e.target.value, 10),
               })
             }
-            className="vim-input"
-            style={{ width: "auto", padding: "5px 8px", fontSize: 12 }}
-            title="How many recent episodes are summarized right away when this feed is switched on"
           >
             <option value={0}>on subscribe: none</option>
             {[1, 3, 5, 10, 25].map((n) => (
-              <option key={n} value={n}>
-                on subscribe: last {n}
-              </option>
+              <option key={n} value={n}>on subscribe: last {n}</option>
             ))}
           </select>
           <select
+            className="select"
+            style={{ width: "auto" }}
             value={backfillLimit}
+            aria-label="Backfill size"
             onChange={(e) => setBackfillLimit(parseInt(e.target.value, 10))}
-            className="vim-input"
-            style={{ width: "auto", padding: "5px 8px", fontSize: 12 }}
           >
             {[5, 10, 25, 50].map((n) => (
-              <option key={n} value={n}>
-                last {n}
-              </option>
+              <option key={n} value={n}>last {n}</option>
             ))}
           </select>
           <button
-            onClick={() => backfill.mutate()}
+            type="button"
+            className="btn btn-secondary"
             disabled={backfill.isPending || busy}
-            className="vim-btn ghost"
-            style={{ padding: "5px 12px", fontSize: 12 }}
             title="Summarize the newest completed episodes without moving the watermark"
+            onClick={() => backfill.mutate()}
           >
-            {backfill.isPending ? "Queuing…" : "Backfill"}
+            {backfill.isPending ? "Queueing…" : "Backfill"}
           </button>
-          {backfill.isSuccess && (
-            <span style={{ fontSize: 12, color: "var(--vim-ok)" }}>
-              {backfill.data.queued} queued · {backfill.data.skipped} skipped
-            </span>
-          )}
-          {(subscribe.isError || backfill.isError) && (
-            <span style={{ fontSize: 12, color: "var(--vim-err)" }}>
-              {((subscribe.error ?? backfill.error) as Error).message}
-            </span>
-          )}
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={busy || feed.completed_count === 0}
+            onClick={() => setConfirm("summarize")}
+          >
+            Summarize all ({feed.completed_count})
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={busy || feed.transcribable_count === 0}
+            onClick={() => setConfirm("transcribe")}
+          >
+            Transcribe all ({feed.transcribable_count})
+          </button>
         </div>
 
-        {/* Whole-feed actions. Both are open-ended, so each states its count
-            and asks before running. */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            marginTop: 8,
-            flexWrap: "wrap",
-          }}
-        >
-          {confirm === null ? (
-            <>
-              <button
-                onClick={() => setConfirm("summarize")}
-                disabled={busy || feed.completed_count === 0}
-                className="vim-btn ghost"
-                style={{ padding: "5px 12px", fontSize: 12 }}
-                title="Summarize every episode cast2md already has a transcript for"
-              >
-                Summarize all ({feed.completed_count})
-              </button>
-              <button
-                onClick={() => setConfirm("transcribe")}
-                disabled={busy || feed.transcribable_count === 0}
-                className="vim-btn ghost"
-                style={{ padding: "5px 12px", fontSize: 12 }}
-                title="Ask cast2md to download and transcribe the rest of this feed"
-              >
-                Transcribe all ({feed.transcribable_count})
-              </button>
-            </>
-          ) : (
-            <>
-              <span style={{ fontSize: 12, color: "var(--vim-warn)" }}>
-                {confirm === "summarize"
-                  ? `Summarize ${feed.completed_count} episode${
-                      feed.completed_count === 1 ? "" : "s"
-                    }? That is ${feed.completed_count} model call${
-                      feed.completed_count === 1 ? "" : "s"
-                    }.`
-                  : `Have cast2md download and transcribe ${feed.transcribable_count} episode${
-                      feed.transcribable_count === 1 ? "" : "s"
-                    }? They appear here as they finish${
-                      feed.subscribed ? "" : " — but only once this feed is subscribed"
-                    }.`}
-              </span>
-              <button
-                onClick={() =>
-                  confirm === "summarize" ? summarizeAll.mutate() : transcribeAll.mutate()
-                }
-                disabled={busy}
-                className="vim-btn primary"
-                style={{ padding: "5px 12px", fontSize: 12 }}
-              >
-                {busy ? "Queuing…" : "Yes, go ahead"}
-              </button>
-              <button
-                onClick={() => setConfirm(null)}
-                className="vim-btn ghost"
-                style={{ padding: "5px 12px", fontSize: 12 }}
-              >
-                Cancel
-              </button>
-            </>
-          )}
-          {summarizeAll.isSuccess && (
-            <span style={{ fontSize: 12, color: "var(--vim-ok)" }}>
-              {summarizeAll.data.queued} queued · {summarizeAll.data.skipped} already done
-            </span>
-          )}
-          {transcribeAll.isSuccess && (
-            <span style={{ fontSize: 12, color: "var(--vim-ok)" }}>
-              {transcribeAll.data.queued} queued in cast2md · {transcribeAll.data.skipped} skipped
-            </span>
-          )}
-          {bulkError && (
-            <span style={{ fontSize: 12, color: "var(--vim-err)" }}>{bulkError.message}</span>
-          )}
-        </div>
+        {backfill.isSuccess ? (
+          <p className="field-hint">
+            {backfill.data.queued} queued · {backfill.data.skipped} skipped
+          </p>
+        ) : null}
+        {summarizeAll.isSuccess ? (
+          <p className="field-hint">
+            {summarizeAll.data.queued} queued · {summarizeAll.data.skipped} already done
+          </p>
+        ) : null}
+        {transcribeAll.isSuccess ? (
+          <p className="field-hint">
+            {transcribeAll.data.queued} queued in cast2md · {transcribeAll.data.skipped} skipped
+          </p>
+        ) : null}
+        {rowError ? <p className="field-error">{rowError.message}</p> : null}
       </div>
+
+      <ConfirmDialog
+        open={confirm !== null}
+        title={confirm === "summarize" ? "Summarize the whole feed?" : "Transcribe the whole feed?"}
+        body={
+          confirm === "summarize"
+            ? `${feed.completed_count} ${feed.completed_count === 1 ? "episode has" : "episodes have"} a transcript in cast2md. Each one costs a model call.`
+            : `cast2md downloads and transcribes ${feed.transcribable_count} ${feed.transcribable_count === 1 ? "episode" : "episodes"}. They arrive here as they finish${feed.subscribed ? "" : " — but only once this feed is subscribed"}.`
+        }
+        confirmLabel="Go ahead"
+        busy={busy}
+        onConfirm={() => (confirm === "summarize" ? summarizeAll.mutate() : transcribeAll.mutate())}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   );
 }
@@ -302,42 +210,30 @@ export default function PodcastSection() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["podcast-feeds"],
     queryFn: listPodcastFeeds,
-    // Only ask when the server says it has cast2md; a 503 is not worth
-    // retrying either way.
+    // Only ask when the server says it has cast2md; a 503 is not worth retrying
+    // either way.
     enabled,
     retry: false,
   });
 
-  // Without cast2md there is no section — not a disabled one, not an empty
-  // one. This installation simply does not do podcasts.
+  // Without cast2md there is no section — not a disabled one, not an empty one.
+  // This installation simply does not do podcasts.
   if (!enabled) return null;
 
   return (
     <Section
       title="Podcasts"
-      subtitle="Pick the shows whose episodes get summarized as cast2md finishes them."
+      subtitle="Which shows get summarized as cast2md finishes transcribing them. Switching a feed on summarizes its most recent episodes right away and takes the newest of them as the watermark, so the batch is never fetched twice."
     >
-      {isLoading && (
-        <div style={{ padding: "16px 0", fontSize: 13, color: "var(--vim-ink-3)" }}>
-          Loading feeds…
-        </div>
-      )}
-      {error && (
-        <div style={{ padding: "16px 0", fontSize: 13, color: "var(--vim-ink-3)" }}>
-          cast2md is not reachable: {(error as Error).message}
-        </div>
-      )}
-      {data && data.feeds.length === 0 && (
-        <div style={{ padding: "16px 0", fontSize: 13, color: "var(--vim-ink-3)" }}>
+      {isLoading ? <SectionLoading /> : null}
+      {error ? <SectionError error={error as Error} /> : null}
+      {data && data.feeds.length === 0 ? (
+        <p style={{ padding: "15px 0", fontSize: 13.5, color: "var(--color-neutral-700)" }}>
           cast2md has no feeds yet.
-        </div>
-      )}
-      {data?.feeds.map((feed, i) => (
-        <PodcastFeedRow
-          key={feed.feed_id}
-          feed={feed}
-          isLast={i === data.feeds.length - 1}
-        />
+        </p>
+      ) : null}
+      {data?.feeds.map((feed) => (
+        <PodcastFeedRow key={feed.feed_id} feed={feed} />
       ))}
     </Section>
   );

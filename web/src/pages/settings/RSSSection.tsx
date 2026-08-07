@@ -1,94 +1,54 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchFeedInfo } from "../../api.ts";
 import { usePodcastsEnabled } from "../../features.ts";
-import { CopyButton, Section, SectionError, SectionLoading } from "./primitives.tsx";
+import { CopyButton, Row, Section, SectionError, SectionLoading } from "./primitives.tsx";
 
 /**
- * RSSSection shows the feed URLs. There are three separate subscriptions rather
- * than one feed with a filter, because an RSS reader cannot filter — the split
- * has to happen in the URL. The 32-byte token in the path is the only access
- * control on those routes; they are mounted outside the Tailscale middleware
- * because a reader cannot authenticate over Tailscale.
+ * The feed URLs. There are three separate subscriptions rather than one feed
+ * with a filter, because an RSS reader cannot filter — the split has to happen
+ * in the URL. The 32-byte token in the path is the only access control on those
+ * routes; they are mounted outside the Tailscale middleware because a reader
+ * cannot authenticate over Tailscale.
  */
 export default function RSSSection() {
   const podcastsEnabled = usePodcastsEnabled();
-  const { data: feedInfo, isLoading, error } = useQuery({
+  const { data: feed, isLoading, error } = useQuery({
     queryKey: ["settings", "feed"],
     queryFn: fetchFeedInfo,
   });
 
-  const subtitle = podcastsEnabled
-    ? "Subscribe to your own feeds of summaries."
-    : "Subscribe to your own feed of summaries.";
+  const subtitle =
+    "Atom, authenticated by the token in the path — anyone holding the URL can read the feed, so treat it as the secret it is.";
 
-  if (isLoading)
-    return (
-      <Section title="RSS" subtitle={subtitle}>
-        <SectionLoading what="feed token" />
-      </Section>
-    );
-  if (error)
-    return (
-      <Section title="RSS" subtitle={subtitle}>
-        <SectionError error={error as Error} />
-      </Section>
-    );
-
-  const feedBase = feedInfo ? `${window.location.origin}/feed/atom/${feedInfo.token}` : "";
-  const truncatedFeedToken = feedInfo ? `${feedInfo.token.slice(0, 8)}…` : "—";
-  const feedVariants: { label: string; suffix: string; hint: string }[] = podcastsEnabled
-    ? [
-        { label: "Videos only", suffix: "", hint: "The original feed. Existing subscriptions keep this content." },
-        { label: "Podcasts only", suffix: "/podcasts", hint: "Podcast episode summaries." },
-        { label: "Everything", suffix: "/all", hint: "Both kinds; each entry is tagged with its type." },
-      ]
-    : [{ label: "Your personal feed URL", suffix: "", hint: "" }];
+  const variants = feed
+    ? podcastsEnabled
+      ? [
+          { label: "Videos", url: feed.urls.videos, hint: "The original feed. Existing subscriptions keep this content." },
+          { label: "Podcasts", url: feed.urls.podcasts, hint: "Episode summaries only." },
+          { label: "Everything", url: feed.urls.all, hint: "Both kinds; each entry is tagged with its type." },
+        ]
+      : [{ label: "Feed URL", url: feed.urls.videos, hint: "" }]
+    : [];
 
   return (
-    <Section title="RSS" subtitle={subtitle}>
-      {feedInfo &&
-      feedVariants.map((variant, i) => (
-        <div
-          key={variant.suffix}
-          style={{
-            padding: "16px 0",
-            borderBottom:
-              i === feedVariants.length - 1 ? "none" : "1px solid var(--vim-line-soft)",
-          }}
-        >
-          <div style={{ fontSize: 13, color: "var(--vim-ink-3)", marginBottom: 3 }}>
-            {variant.label}
-          </div>
-          {variant.hint && (
-            <div style={{ fontSize: 12, color: "var(--vim-ink-4)", marginBottom: 8 }}>
-              {variant.hint}
-            </div>
-          )}
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 12.5,
-              padding: "12px 14px",
-              background: "var(--vim-surface-2)",
-              borderRadius: 6,
-              color: "var(--vim-ink-2)",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-            }}
-          >
-            <span
-              style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-            >
-              {window.location.origin}/feed/atom/
-              <span style={{ color: "var(--vim-accent-ink)" }}>{truncatedFeedToken}</span>
-              {variant.suffix}
+    <Section title="Feed" subtitle={subtitle}>
+      {isLoading ? <SectionLoading /> : null}
+      {error ? <SectionError error={error as Error} /> : null}
+      {variants.map((v) => (
+        <Row key={v.label} label={v.label}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span className="mono" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {v.url}
             </span>
-            <CopyButton text={feedBase + variant.suffix} />
+            <CopyButton text={v.url} />
           </div>
-        </div>
+          {v.hint ? (
+            <p style={{ font: "400 12px var(--font-body)", color: "var(--color-neutral-600)", margin: "6px 0 0" }}>
+              {v.hint}
+            </p>
+          ) : null}
+        </Row>
       ))}
-  </Section>
+    </Section>
   );
 }

@@ -1,34 +1,45 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import {
+  deleteVideo,
+  fetchKarakeepStatus,
+  fetchProviders,
   getVideo,
   resummarizeVideo,
-  deleteVideo,
-  fetchProviders,
-  fetchKarakeepStatus,
+  retryVideo,
+  transcribeVideo,
+  type Video,
 } from "../api.ts";
 import { formatDuration, formatTokens, videoToMarkdown } from "../utils.ts";
-import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
-import SourceBadge, { MicIcon } from "../components/SourceBadge.tsx";
+import PageHeader from "../components/PageHeader.tsx";
+import ConfirmDialog from "../components/ConfirmDialog.tsx";
+import Toast, { useToast } from "../components/Toast.tsx";
+import { Skel } from "../components/LoadingSkeleton.tsx";
+import { AlertIcon } from "../components/icons.tsx";
+import { useIsDesktop } from "../hooks/useMediaQuery.ts";
 import { usePodcastsEnabled } from "../features.ts";
+import { isInFlight, shortDate, statusClass, statusLabel } from "../display.ts";
 
-function formatDate(iso?: string): string {
-  if (!iso) return "";
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
+type Tab = "summary" | "chapters" | "transcript" | "topics";
 
-function parseChapter(raw: string, index: number): { ts: string; body: string } {
+const TAB_LABEL: Record<Tab, string> = {
+  summary: "Summary",
+  chapters: "Chapters",
+  transcript: "Transcript",
+  topics: "Topics",
+};
+
+/** `12:04 — Title` splits into a timestamp column and a body; anything else
+ *  keeps its position as the column instead. */
+function parseChapter(raw: string, index: number): { ts: string; body: string; seconds?: number } {
   const m = raw.match(/^\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*[—–-]?\s*(.+)/s);
-  if (m) {
-    return { ts: m[1], body: m[2].trim() };
-  }
-  return { ts: String(index + 1).padStart(2, "0"), body: raw.trim() };
+  if (!m) return { ts: String(index + 1).padStart(2, "0"), body: raw.trim() };
+  const parts = m[1].split(":").map(Number);
+  const seconds =
+    parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
+  return { ts: m[1], body: m[2].trim(), seconds };
 }
 
 function wordCount(s: string): number {
@@ -39,634 +50,514 @@ export default function VideoDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [showTranscript, setShowTranscript] = useState(false);
-  const [showActions, setShowActions] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [resumLang, setResumLang] = useState("");
-  const [resumProvider, setResumProvider] = useState("");
-  const [copiedMd, setCopiedMd] = useState(false);
+  const isDesktop = useIsDesktop();
   const podcastsEnabled = usePodcastsEnabled();
+  const toast = useToast();
 
-  const { data: providers } = useQuery({
-    queryKey: ["providers"],
-    queryFn: fetchProviders,
-  });
+  const [tab, setTab] = useState<Tab>("summary");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [resumOpen, setResumOpen] = useState(false);
 
-  const { data: karakeepStatus } = useQuery({
+  const { data: providers } = useQuery({ queryKey: ["providers"], queryFn: fetchProviders });
+  const { data: karakeep } = useQuery({
     queryKey: ["settings", "karakeep"],
     queryFn: fetchKarakeepStatus,
   });
 
-  const {
-    data: video,
-    isLoading,
-    error,
-  } = useQuery({
+  const { data: video, isLoading, error } = useQuery({
     queryKey: ["video", id],
     queryFn: () => getVideo(id!),
     enabled: !!id,
-    refetchInterval: (q) => {
-      const v = q.state.data;
-      if (v && (v.status === "pending" || v.status === "processing")) return 2000;
-      return false;
-    },
+    refetchInterval: (q) => (q.state.data && isInFlight(q.state.data.status) ? 2000 : false),
   });
 
   useEffect(() => {
-    if (video?.title) document.title = video.title;
+    if (video?.title) document.title = `${video.title} — vimmary`;
     return () => {
-      document.title = "Vimmary";
+      document.title = "vimmary";
     };
   }, [video?.title]);
 
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["video", id] });
+
   const resummarize = useMutation({
-    mutationFn: (level: string) =>
-      resummarizeVideo(id!, level, resumLang || undefined, resumProvider || undefined),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["video", id] }),
+    mutationFn: (opts: { level: string; language?: string; provider?: string }) =>
+      resummarizeVideo(id!, opts.level, opts.language, opts.provider),
+    onSuccess: (r) => {
+      setResumOpen(false);
+      refresh();
+      toast.show(`Queued for a ${r.level} summary.`);
+    },
+  });
+
+  const retry = useMutation({
+    mutationFn: () => retryVideo(id!),
+    onSuccess: () => {
+      refresh();
+      toast.show("Queued for another attempt.");
+    },
+  });
+
+  const transcribe = useMutation({
+    mutationFn: () => transcribeVideo(id!),
+    onSuccess: () => {
+      refresh();
+      toast.show("Queued for Voxtral transcription.");
+    },
   });
 
   const del = useMutation({
     mutationFn: () => deleteVideo(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["videos"] });
-      navigate("/");
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      navigate(video?.source === "podcast" ? "/podcasts" : "/");
     },
   });
 
-  if (isLoading)
-    return (
-      <div className="vim-page-narrow">
-        <LoadingSkeleton count={2} />
-      </div>
-    );
+  const tabs = useMemo<Tab[]>(() => {
+    if (!video) return ["summary"];
+    const t: Tab[] = ["summary"];
+    if (video.metadata?.key_points?.length) t.push("chapters");
+    if (video.transcript) t.push("transcript");
+    if (video.metadata?.topics?.length) t.push("topics");
+    return t;
+  }, [video]);
 
-  if (error)
+  if (isLoading) {
     return (
-      <div className="vim-page-narrow">
-        <div
-          style={{
-            padding: "12px 16px",
-            borderRadius: "var(--vim-radius)",
-            background: "color-mix(in oklch, var(--vim-err) 10%, transparent)",
-            border: "1px solid color-mix(in oklch, var(--vim-err) 28%, transparent)",
-            color: "var(--vim-err)",
-            fontSize: 13,
-          }}
-        >
-          {(error as Error).message}
+      <>
+        <div className="page-head">
+          <div>
+            <Skel w={190} h={10} />
+            <div style={{ marginTop: 10 }}><Skel w={440} h={34} /></div>
+          </div>
         </div>
+        <div style={{ borderTop: "var(--rule-strong)" }} />
+        <div className="page-x" style={{ paddingTop: 24, maxWidth: "68ch" }}>
+          {[92, 100, 84, 96, 70].map((w, i) => (
+            <div key={i} style={{ marginBottom: 10 }}><Skel w={`${w}%`} h={16} /></div>
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="empty">
+        <div className="kick">Error</div>
+        <h3>This summary could not be loaded.</h3>
+        <p>{(error as Error).message}</p>
+        <Link to="/" className="btn btn-secondary">Back to videos</Link>
       </div>
     );
+  }
 
   if (!video) return null;
 
   const isPodcast = video.source === "podcast";
-  const thumbnail = isPodcast
-    ? video.thumbnail_url
-    : `https://img.youtube.com/vi/${video.youtube_id}/mqdefault.jpg`;
-  // For podcasts the external link goes back to the cast2md episode page; for
-  // videos to YouTube.
   const externalUrl = isPodcast
     ? video.source_url ?? ""
     : `https://youtube.com/watch?v=${video.youtube_id}`;
-  const externalLabel = isPodcast ? "Open in cast2md" : "Watch on YouTube";
-  const backTo = isPodcast ? "/podcasts" : "/";
-  const backLabel = isPodcast ? "← Back to podcasts" : "← Back to videos";
-  const isProcessing = video.status === "pending" || video.status === "processing";
-  const isFailed = video.status === "failed";
+  const inFlight = isInFlight(video.status);
+  const failed = video.status === "failed" || video.status === "no_captions";
+  const activeTab = tabs.includes(tab) ? tab : "summary";
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(videoToMarkdown(video));
-    setCopiedMd(true);
-    setTimeout(() => setCopiedMd(false), 2000);
-  };
-
-  const summaryFirstLetter = video.summary?.trim().match(/^[A-Za-zÀ-ÿ]/)?.[0] ?? "";
-  const summaryRest = video.summary?.trim().replace(/^[A-Za-zÀ-ÿ]/, "") ?? "";
+  const kicker = [
+    podcastsEnabled ? (isPodcast ? "Podcast" : "Video") : null,
+    video.channel,
+    shortDate(video.created_at),
+    video.duration_seconds ? formatDuration(video.duration_seconds) : null,
+    video.detail_level,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
-    <div className="vim-page-narrow vim-page-detail">
-      <Link
-        to={backTo}
-        className="vim-kicker"
-        style={{
-          display: "inline-block",
-          marginBottom: 28,
-          color: "var(--vim-ink-3)",
-          textDecoration: "none",
-        }}
-      >
-        {backLabel}
-      </Link>
-
-      {/* Header */}
-      <div className="vim-kicker" style={{ marginBottom: 14 }}>
-        Summary · {video.detail_level} · {formatDate(video.created_at)}
-      </div>
-      <h1 className="vim-h1-detail">{video.title || video.youtube_id}</h1>
-
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 0,
-          fontSize: 13,
-          color: "var(--vim-ink-3)",
-          marginBottom: 28,
-          flexWrap: "wrap",
-        }}
-      >
-        {podcastsEnabled && (
+    <>
+      <PageHeader
+        kicker={kicker}
+        title={video.title || video.youtube_id}
+        actions={
           <>
-            <SourceBadge source={video.source} />
-            <span className="vim-dot" />
-          </>
-        )}
-        {video.channel && <span style={{ color: "var(--vim-ink-2)" }}>{video.channel}</span>}
-        {video.duration_seconds ? (
-          <>
-            <span className="vim-dot" />
-            <span>{formatDuration(video.duration_seconds)}</span>
-          </>
-        ) : null}
-        {video.language && (
-          <>
-            <span className="vim-dot" />
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
-              {video.language.toUpperCase()}
-            </span>
-          </>
-        )}
-        {!isProcessing && !isFailed && video.summary && (
-          <>
-            <span className="vim-dot" />
-            <span className="vim-status done">summarized</span>
-          </>
-        )}
-        {isProcessing && (
-          <>
-            <span className="vim-dot" />
-            <span className="vim-status proc">
-              <span className="pulse" />
-              {video.status === "pending" ? "queued" : "transcribing"}
-            </span>
-          </>
-        )}
-        {isFailed && (
-          <>
-            <span className="vim-dot" />
-            <span className="vim-status fail">failed</span>
-          </>
-        )}
-      </div>
-
-      {/* Thumbnail + actions */}
-      <div className="vim-grid-detail-actions" style={{ marginBottom: 44 }}>
-        <a
-          href={externalUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="vim-thumb"
-          style={{ aspectRatio: "16 / 9", width: "100%", height: "auto" }}
-        >
-          {thumbnail ? (
-            <img src={thumbnail} alt="" />
-          ) : (
-            <div
-              style={{
-                width: "100%",
-                height: "100%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "var(--vim-surface-2)",
-              }}
-            >
-              <MicIcon size={40} color="var(--vim-ink-4)" />
-            </div>
-          )}
-          {video.duration_seconds ? (
-            <span className="dur">{formatDuration(video.duration_seconds)}</span>
-          ) : null}
-          <div className="play" style={{ opacity: 1 }}>
-            {isPodcast ? (
-              <MicIcon size={13} color="#fff" />
-            ) : (
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="#fff">
-                <path d="M3 1.5v11L13 7z" />
-              </svg>
-            )}
-          </div>
-        </a>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <a
-            href={externalUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="vim-btn primary"
-            style={{ padding: "13px 16px" }}
-          >
-            {isPodcast ? (
-              <MicIcon size={13} color="currentColor" />
-            ) : (
-              <svg width="13" height="13" viewBox="0 0 14 14" fill="currentColor">
-                <path d="M3 1.5v11L13 7z" />
-              </svg>
-            )}
-            {externalLabel}
-          </a>
-          {!isPodcast && video.karakeep_bookmark_id && karakeepStatus?.base_url && (
-            <a
-              href={`${karakeepStatus.base_url}/dashboard/preview/${video.karakeep_bookmark_id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="vim-btn ghost"
-              style={{ padding: "11px 16px" }}
-            >
-              Open in Karakeep
-            </a>
-          )}
-          {video.summary && (
-            <button
-              onClick={handleCopy}
-              className="vim-btn outline"
-              style={{ padding: "11px 16px" }}
-            >
-              {copiedMd ? "Copied ✓" : "Copy Markdown"}
-            </button>
-          )}
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              color: "var(--vim-ink-4)",
-              marginTop: 4,
-              letterSpacing: "0.06em",
-              lineHeight: 1.5,
-            }}
-          >
-            {video.summary_provider && (
-              <>
-                {video.summary_provider}
-                {video.summary_model && ` · ${video.summary_model}`}
-                <br />
-              </>
-            )}
-            {(video.summary_input_tokens ?? 0) > 0 && (
-              <>
-                {formatTokens(video.summary_input_tokens!)} in ·{" "}
-                {formatTokens(video.summary_output_tokens!)} out
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Processing indicator */}
-      {isProcessing && (
-        <div
-          style={{
-            marginBottom: 32,
-            padding: "12px 16px",
-            borderRadius: "var(--vim-radius)",
-            background: "color-mix(in oklch, var(--vim-warn) 8%, transparent)",
-            border: "1px solid color-mix(in oklch, var(--vim-warn) 22%, transparent)",
-            color: "var(--vim-warn)",
-            fontSize: 13,
-          }}
-        >
-          {isPodcast ? "Episode" : "Video"} is being processed. This page will update
-          automatically.
-        </div>
-      )}
-
-      {isFailed && video.error_message && (
-        <div
-          style={{
-            marginBottom: 32,
-            padding: "12px 16px",
-            borderRadius: "var(--vim-radius)",
-            background: "color-mix(in oklch, var(--vim-err) 10%, transparent)",
-            border: "1px solid color-mix(in oklch, var(--vim-err) 28%, transparent)",
-            color: "var(--vim-err)",
-            fontSize: 13,
-          }}
-        >
-          {video.error_message}
-        </div>
-      )}
-
-      {/* Drop-cap summary */}
-      {video.summary && (
-        <section style={{ marginBottom: 48 }}>
-          <div className="vim-kicker" style={{ marginBottom: 18 }}>
-            — The summary
-          </div>
-          <div
-            style={{
-              fontFamily: "var(--font-serif)",
-              fontSize: 19,
-              lineHeight: 1.55,
-              color: "var(--vim-ink)",
-              fontWeight: 300,
-              maxWidth: 640,
-            }}
-            className="vim-md"
-          >
-            {summaryFirstLetter && (
-              <span className="vim-dropcap-letter">{summaryFirstLetter}</span>
-            )}
-            <ReactMarkdown
-              components={{
-                p: ({ children }) => (
-                  <p style={{ margin: 0, marginBottom: "0.7em" }}>{children}</p>
-                ),
-              }}
-            >
-              {summaryRest}
-            </ReactMarkdown>
-          </div>
-          <div style={{ clear: "both" }} />
-        </section>
-      )}
-
-      {/* Chapters */}
-      {video.metadata?.key_points && video.metadata.key_points.length > 0 && (
-        <section style={{ marginBottom: 48 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "baseline",
-              justifyContent: "space-between",
-              marginBottom: 16,
-            }}
-          >
-            <div className="vim-kicker">
-              — Chapters · {video.metadata.key_points.length} key point
-              {video.metadata.key_points.length === 1 ? "" : "s"}
-            </div>
-          </div>
-          <div
-            style={{
-              border: "1px solid var(--vim-line-soft)",
-              borderRadius: 12,
-              overflow: "hidden",
-              background: "var(--vim-surface)",
-            }}
-          >
-            {video.metadata.key_points.map((kp, i) => {
-              const { ts, body } = parseChapter(kp, i);
-              return (
-                <div key={i} className="vim-chapter">
-                  <span className="ts">{ts}</span>
-                  <span className="body vim-md">
-                    <ReactMarkdown>{body}</ReactMarkdown>
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* Action Items */}
-      {video.metadata?.action_items && video.metadata.action_items.length > 0 && (
-        <section style={{ marginBottom: 48 }}>
-          <div className="vim-kicker" style={{ marginBottom: 16 }}>
-            — Things to try
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {video.metadata.action_items.map((ai, i) => (
-              <div
-                key={i}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "28px 1fr",
-                  gap: 12,
-                  padding: "14px 18px",
-                  background: "var(--vim-surface)",
-                  border: "1px solid var(--vim-line-soft)",
-                  borderRadius: 8,
+            {inFlight || failed ? (
+              <span className={`status ${statusClass(video.status)}`}>
+                {statusLabel(video.status)}
+              </span>
+            ) : null}
+            {externalUrl ? (
+              <a
+                className="btn btn-secondary"
+                style={{ fontSize: 12 }}
+                href={externalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {isPodcast ? "Open in cast2md" : "Open on YouTube"}
+              </a>
+            ) : null}
+            {!isPodcast && video.karakeep_bookmark_id && karakeep?.base_url ? (
+              <a
+                className="btn btn-secondary"
+                style={{ fontSize: 12 }}
+                href={`${karakeep.base_url}/dashboard/preview/${video.karakeep_bookmark_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open in Karakeep
+              </a>
+            ) : null}
+            {video.summary ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ fontSize: 12 }}
+                onClick={() => {
+                  navigator.clipboard.writeText(videoToMarkdown(video));
+                  toast.show("Markdown copied.");
                 }}
               >
-                <span
+                Copy Markdown
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ fontSize: 12 }}
+              onClick={() => setResumOpen(true)}
+            >
+              Resummarize
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              style={{ fontSize: 12 }}
+              onClick={() => setConfirmDelete(true)}
+            >
+              Delete
+            </button>
+          </>
+        }
+      />
+
+      {failed ? (
+        <FailureState
+          video={video}
+          onRetry={() => retry.mutate()}
+          onTranscribe={() => transcribe.mutate()}
+          busy={retry.isPending || transcribe.isPending}
+        />
+      ) : (
+        <>
+          <div className="filters">
+            {isDesktop ? (
+              <span className="seg">
+                {tabs.map((t) => (
+                  <label key={t} className="seg-opt">
+                    <input
+                      type="radio"
+                      name="detail-tab"
+                      checked={activeTab === t}
+                      onChange={() => setTab(t)}
+                    />
+                    {TAB_LABEL[t]}
+                  </label>
+                ))}
+              </span>
+            ) : (
+              tabs.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className="chip"
+                  aria-pressed={activeTab === t}
+                  onClick={() => setTab(t)}
+                >
+                  {TAB_LABEL[t]}
+                </button>
+              ))
+            )}
+            {video.summary_provider ? (
+              <span
+                className="spacer mono"
+                style={{ color: "var(--color-neutral-600)" }}
+              >
+                {video.summary_provider}
+                {video.summary_model ? ` · ${video.summary_model}` : ""}
+                {(video.summary_input_tokens ?? 0) > 0
+                  ? ` · ${formatTokens(video.summary_input_tokens!)} in / ${formatTokens(
+                      video.summary_output_tokens!,
+                    )} out`
+                  : ""}
+              </span>
+            ) : null}
+          </div>
+
+          {inFlight ? (
+            <div className="banner">
+              <AlertIcon />
+              <span>
+                {isPodcast ? "This episode" : "This video"} is still being processed. The page
+                updates itself.
+              </span>
+            </div>
+          ) : null}
+
+          <div className="page-x" style={{ paddingTop: 24, paddingBottom: 40 }}>
+            {activeTab === "summary" ? (
+              video.summary ? (
+                <div className="reader">
+                  <ReactMarkdown>{video.summary}</ReactMarkdown>
+                  {video.metadata?.action_items?.length ? (
+                    <>
+                      <h3>Things to try</h3>
+                      <ul>
+                        {video.metadata.action_items.map((ai, i) => (
+                          <li key={i}>
+                            <ReactMarkdown>{ai}</ReactMarkdown>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : null}
+                </div>
+              ) : (
+                <p style={{ color: "var(--color-neutral-600)", fontSize: 13.5 }}>
+                  No summary yet.
+                </p>
+              )
+            ) : null}
+
+            {activeTab === "chapters" ? (
+              <div style={{ maxWidth: "72ch" }}>
+                {video.metadata!.key_points!.map((kp, i) => {
+                  const { ts, body, seconds } = parseChapter(kp, i);
+                  return (
+                    <div key={i} className="cue">
+                      {seconds !== undefined && !isPodcast ? (
+                        <time>
+                          <a
+                            href={`https://youtube.com/watch?v=${video.youtube_id}&t=${seconds}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: "inherit" }}
+                          >
+                            {ts}
+                          </a>
+                        </time>
+                      ) : (
+                        <time>{ts}</time>
+                      )}
+                      <div className="reader" style={{ fontSize: 14.5, lineHeight: 1.55 }}>
+                        <ReactMarkdown>{body}</ReactMarkdown>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {activeTab === "transcript" ? (
+              <>
+                <p className="kick" style={{ marginBottom: 10 }}>
+                  {wordCount(video.transcript!).toLocaleString()} words
+                </p>
+                <div
+                  className="transcript"
                   style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 11,
-                    color: "var(--vim-accent-ink)",
-                    paddingTop: 3,
-                    letterSpacing: "0.04em",
+                    padding: "16px 0",
+                    fontSize: 13.5,
+                    lineHeight: 1.65,
+                    color: "var(--color-neutral-800)",
+                    whiteSpace: "pre-wrap",
+                    maxWidth: "76ch",
                   }}
                 >
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <span
-                  className="vim-md"
-                  style={{ fontSize: 14.5, lineHeight: 1.5, color: "var(--vim-ink)" }}
-                >
-                  <ReactMarkdown>{ai}</ReactMarkdown>
-                </span>
+                  {video.transcript}
+                </div>
+              </>
+            ) : null}
+
+            {activeTab === "topics" ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {video.metadata!.topics!.map((t) => (
+                  <span key={t} className="tag tag-neutral">
+                    {t}
+                  </span>
+                ))}
               </div>
-            ))}
+            ) : null}
           </div>
-        </section>
+        </>
       )}
 
-      {/* Topics */}
-      {video.metadata?.topics && video.metadata.topics.length > 0 && (
-        <section style={{ marginBottom: 36 }}>
-          <div className="vim-kicker" style={{ marginBottom: 12 }}>
-            — Filed under
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {video.metadata.topics.map((t) => (
-              <span key={t} className="vim-tag dot">
-                {t}
-              </span>
-            ))}
-          </div>
-        </section>
-      )}
+      <ConfirmDialog
+        open={confirmDelete}
+        title={`Delete this ${isPodcast ? "episode" : "video"}?`}
+        body="The summary, the transcript and the embedding are removed. The source is untouched, so it can be submitted again."
+        confirmLabel="Delete"
+        danger
+        busy={del.isPending}
+        onConfirm={() => del.mutate()}
+        onCancel={() => setConfirmDelete(false)}
+      />
 
-      {/* Transcript toggle */}
-      {video.transcript && (
-        <div style={{ marginBottom: 32 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "18px 20px",
-              border: "1px dashed var(--vim-line)",
-              borderRadius: 10,
-              color: "var(--vim-ink-3)",
-              fontSize: 13,
-            }}
-          >
-            <span>
-              Transcript ·{" "}
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                {wordCount(video.transcript).toLocaleString()} words
-              </span>
-            </span>
-            <button
-              onClick={() => setShowTranscript(!showTranscript)}
-              className="vim-btn ghost"
-              style={{ padding: "7px 14px" }}
-            >
-              {showTranscript ? "Hide transcript ↑" : "Show transcript ↓"}
-            </button>
-          </div>
-          {showTranscript && (
-            <div
-              style={{
-                marginTop: 8,
-                padding: 20,
-                border: "1px solid var(--vim-line-soft)",
-                borderRadius: 10,
-                background: "var(--vim-surface)",
-                fontSize: 13.5,
-                lineHeight: 1.65,
-                color: "var(--vim-ink-2)",
-                whiteSpace: "pre-wrap",
-                maxHeight: 480,
-                overflowY: "auto",
-              }}
-            >
-              {video.transcript}
-            </div>
-          )}
-        </div>
-      )}
+      {resumOpen ? (
+        <ResummarizeDialog
+          video={video}
+          providers={providers?.providers ?? []}
+          defaultProvider={providers?.default ?? ""}
+          busy={resummarize.isPending}
+          error={resummarize.error as Error | null}
+          onSubmit={(opts) => resummarize.mutate(opts)}
+          onCancel={() => setResumOpen(false)}
+        />
+      ) : null}
 
-      {/* Actions */}
-      <div
-        style={{
-          border: "1px solid var(--vim-line-soft)",
-          borderRadius: 12,
-          background: "var(--vim-surface)",
-          marginBottom: 24,
-        }}
-      >
-        <button
-          onClick={() => setShowActions(!showActions)}
-          className="vim-btn"
-          style={{
-            width: "100%",
-            justifyContent: "space-between",
-            padding: "14px 18px",
-            background: "transparent",
-            color: "var(--vim-ink-2)",
-            fontSize: 13,
-          }}
-        >
-          <span>Actions</span>
-          <span style={{ color: "var(--vim-ink-4)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
-            {showActions ? "Hide ↑" : "Show ↓"}
-          </span>
+      <Toast message={toast.message} onDismiss={toast.dismiss} />
+    </>
+  );
+}
+
+/* The reader area is replaced rather than pushed down: on a failure the error
+   is the content. It states the message verbatim — a summarised failure is a
+   failure that has to be looked up in the logs. */
+function FailureState({
+  video,
+  onRetry,
+  onTranscribe,
+  busy,
+}: {
+  video: Video;
+  onRetry: () => void;
+  onTranscribe: () => void;
+  busy: boolean;
+}) {
+  const noCaptions = video.status === "no_captions";
+  return (
+    <div className="empty">
+      <div className="kick">{noCaptions ? "No captions" : "Failed"}</div>
+      <h3>{noCaptions ? "YouTube has no transcript for this one." : "This summary did not finish."}</h3>
+      <p>
+        {video.error_message ||
+          (noCaptions
+            ? "Voxtral can transcribe the audio instead. It costs a transcription call and takes about as long as the video."
+            : "No message was recorded.")}
+      </p>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button type="button" className="btn btn-primary" disabled={busy} onClick={onRetry}>
+          Try again
         </button>
-        {showActions && (
-          <div style={{ padding: "0 18px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                flexWrap: "wrap",
-                fontSize: 13,
-                color: "var(--vim-ink-3)",
-              }}
-            >
-              <span>Resummarize:</span>
-              {providers && providers.providers.length > 1 && (
-                <select
-                  value={resumProvider}
-                  onChange={(e) => setResumProvider(e.target.value)}
-                  className="vim-input"
-                  style={{ width: "auto", padding: "7px 10px", fontSize: 12 }}
-                >
-                  <option value="">Default ({providers.default})</option>
-                  {providers.providers.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <select
-                value={resumLang}
-                onChange={(e) => setResumLang(e.target.value)}
-                className="vim-input"
-                style={{ width: "auto", padding: "7px 10px", fontSize: 12 }}
-              >
-                <option value="">Auto ({video.language || "?"})</option>
-                <option value="de">Deutsch</option>
-                <option value="en">English</option>
-                <option value="fr">Français</option>
-                <option value="es">Español</option>
-              </select>
-              {["medium", "deep"].map((level) => (
-                <button
-                  key={level}
-                  disabled={resummarize.isPending}
-                  onClick={() => resummarize.mutate(level)}
-                  className="vim-btn ghost"
-                  style={{ padding: "7px 14px", fontSize: 12 }}
-                >
-                  {level}
-                </button>
-              ))}
-              {resummarize.isPending && (
-                <span style={{ color: "var(--vim-ink-3)" }}>Processing…</span>
-              )}
-              {resummarize.isSuccess && (
-                <span style={{ color: "var(--vim-ok)" }}>Done.</span>
-              )}
-              {resummarize.isError && (
-                <span style={{ color: "var(--vim-err)" }}>
-                  {(resummarize.error as Error).message}
-                </span>
-              )}
-            </div>
+        {video.source === "youtube" ? (
+          <button type="button" className="btn btn-secondary" disabled={busy} onClick={onTranscribe}>
+            Transcribe with Voxtral
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {!confirmDelete ? (
-                <button
-                  onClick={() => setConfirmDelete(true)}
-                  className="vim-btn outline danger"
-                  style={{ padding: "7px 14px", fontSize: 12 }}
-                >
-                  Delete {isPodcast ? "episode" : "video"}
-                </button>
-              ) : (
-                <>
-                  <span style={{ color: "var(--vim-err)", fontSize: 13 }}>Are you sure?</span>
-                  <button
-                    onClick={() => del.mutate()}
-                    disabled={del.isPending}
-                    className="vim-btn primary"
-                    style={{ padding: "7px 14px", fontSize: 12 }}
-                  >
-                    {del.isPending ? "Deleting…" : "Yes, delete"}
-                  </button>
-                  <button
-                    onClick={() => setConfirmDelete(false)}
-                    className="vim-btn ghost"
-                    style={{ padding: "7px 14px", fontSize: 12 }}
-                  >
-                    Cancel
-                  </button>
-                </>
-              )}
-              {del.isError && (
-                <span style={{ color: "var(--vim-err)", fontSize: 13 }}>
-                  {(del.error as Error).message}
-                </span>
-              )}
-            </div>
+function ResummarizeDialog({
+  video,
+  providers,
+  defaultProvider,
+  busy,
+  error,
+  onSubmit,
+  onCancel,
+}: {
+  video: Video;
+  providers: string[];
+  defaultProvider: string;
+  busy: boolean;
+  error: Error | null;
+  onSubmit: (opts: { level: string; language?: string; provider?: string }) => void;
+  onCancel: () => void;
+}) {
+  const [level, setLevel] = useState(video.detail_level === "deep" ? "deep" : "medium");
+  const [language, setLanguage] = useState("");
+  const [provider, setProvider] = useState("");
+
+  return (
+    <div className="dialog-backdrop" onClick={onCancel}>
+      <div className="dialog" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <h2 className="dialog-title">Summarize again</h2>
+        <p className="dialog-body">
+          The transcript is reused; only the summary is regenerated. A deep summary costs more
+          tokens and takes longer.
+        </p>
+
+        <div className="field" style={{ marginBottom: 14 }}>
+          <label htmlFor="resum-level">Detail</label>
+          <select
+            id="resum-level"
+            className="select"
+            value={level}
+            onChange={(e) => setLevel(e.target.value)}
+          >
+            <option value="medium">medium</option>
+            <option value="deep">deep</option>
+          </select>
+        </div>
+
+        <div className="field" style={{ marginBottom: 14 }}>
+          <label htmlFor="resum-lang">Language</label>
+          <select
+            id="resum-lang"
+            className="select"
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+          >
+            <option value="">Auto ({video.language || "unknown"})</option>
+            <option value="en">English</option>
+            <option value="de">German</option>
+            <option value="fr">French</option>
+            <option value="es">Spanish</option>
+          </select>
+        </div>
+
+        {providers.length > 1 ? (
+          <div className="field" style={{ marginBottom: 14 }}>
+            <label htmlFor="resum-provider">Provider</label>
+            <select
+              id="resum-provider"
+              className="select"
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+            >
+              <option value="">Default ({defaultProvider})</option>
+              {providers.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
           </div>
-        )}
+        ) : null}
+
+        {error ? <p className="field-error">{error.message}</p> : null}
+
+        <div className="dialog-actions" style={{ marginTop: 20 }}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busy}
+            onClick={() =>
+              onSubmit({
+                level,
+                language: language || undefined,
+                provider: provider || undefined,
+              })
+            }
+          >
+            {busy ? "Queueing…" : "Summarize"}
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   );

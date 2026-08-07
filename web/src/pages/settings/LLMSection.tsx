@@ -5,10 +5,10 @@ import { useIsAdmin } from "../../features.ts";
 import { Row, Section } from "./primitives.tsx";
 
 /**
- * LLMSection holds the service-wide API keys and the summary provider. They
- * used to come from setec at startup; resolving them over the network was what
- * left vimmary dead for six hours on 2026-08-07, so they now live in the
- * database and are entered here.
+ * The service-wide API keys and the summary provider. They used to come from
+ * setec at startup; resolving them over the network was what left vimmary dead
+ * for six hours on 2026-08-07, so they now live in the database and are entered
+ * here.
  *
  * This was the first section to own its query instead of joining the page's
  * isLoading/errorObj chain, because for a non-admin the server answers 404 and
@@ -50,53 +50,49 @@ export default function LLMSection() {
     which: "mistral" | "anthropic",
     label: string,
     configured: boolean,
-    clearable: boolean
+    clearable: boolean,
   ) => (
     <Row
       key={which}
       label={label}
       value={
-        configured ? (
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 12.5 }}>
-            ••••••••••••
-          </span>
+        editing === which ? undefined : configured ? (
+          <span className="mono">••••••••••••</span>
         ) : (
-          <span style={{ color: "var(--vim-ink-3)" }}>Not configured</span>
+          <span style={{ color: "var(--color-neutral-600)" }}>Not configured</span>
         )
       }
     >
       {editing === which ? (
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <input
             type="password"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder="Paste key"
-            className="vim-input"
-            style={{ width: 200, padding: "7px 10px", fontSize: 12 }}
+            className="input"
+            style={{ width: 220 }}
             autoFocus
           />
           <button
+            type="button"
+            className="btn btn-primary"
+            disabled={!draft || save.isPending}
             onClick={() =>
               save.mutate(
-                which === "mistral"
-                  ? { mistral_api_key: draft }
-                  : { anthropic_api_key: draft }
+                which === "mistral" ? { mistral_api_key: draft } : { anthropic_api_key: draft },
               )
             }
-            disabled={!draft || save.isPending}
-            className="vim-btn primary"
-            style={{ padding: "6px 12px", fontSize: 12 }}
           >
             {save.isPending ? "Saving…" : "Save"}
           </button>
           <button
+            type="button"
+            className="btn btn-secondary"
             onClick={() => {
               setEditing(null);
               setDraft("");
             }}
-            className="vim-btn ghost"
-            style={{ padding: "6px 12px", fontSize: 12 }}
           >
             Cancel
           </button>
@@ -104,31 +100,29 @@ export default function LLMSection() {
       ) : (
         <div style={{ display: "flex", gap: 6 }}>
           <button
+            type="button"
+            className="btn btn-secondary"
             onClick={() => {
               setEditing(which);
               setDraft("");
             }}
-            className="vim-btn ghost"
-            style={{ padding: "6px 12px", fontSize: 12 }}
           >
             {configured ? "Replace" : "Set key"}
           </button>
-          {configured && clearable && (
+          {configured && clearable ? (
             <button
+              type="button"
+              className="btn btn-danger"
+              disabled={save.isPending}
               onClick={() =>
                 save.mutate(
-                  which === "mistral"
-                    ? { mistral_api_key: "" }
-                    : { anthropic_api_key: "" }
+                  which === "mistral" ? { mistral_api_key: "" } : { anthropic_api_key: "" },
                 )
               }
-              disabled={save.isPending}
-              className="vim-btn ghost"
-              style={{ padding: "6px 12px", fontSize: 12 }}
             >
               Remove
             </button>
-          )}
+          ) : null}
         </div>
       )}
     </Row>
@@ -137,31 +131,23 @@ export default function LLMSection() {
   return (
     <Section
       title="LLM providers"
-      subtitle="Service-wide. Only you can see this."
+      subtitle="Service-wide and visible to the primary user only. The Mistral key also serves embeddings and podcast transcription, so replacing it changes all three; the Anthropic key may be left empty."
     >
-      {keyRow("mistral", "Mistral API key", llm.mistral_configured, false)}
-      {keyRow("anthropic", "Anthropic API key", llm.anthropic_configured, true)}
-      <Row label="Summary provider" value={llm.provider || "—"} isLast>
+      {keyRow("mistral", "Mistral key", llm.mistral_configured, false)}
+      {keyRow("anthropic", "Anthropic key", llm.anthropic_configured, true)}
+      <Row label="Summary provider">
         <select
-          className="vim-input"
-          style={{ padding: "6px 10px", fontSize: 12 }}
+          className="select"
+          style={{ width: "auto", minWidth: 180 }}
           value={llm.provider}
           disabled={save.isPending}
           onChange={(e) => save.mutate({ provider: e.target.value })}
         >
-          {llm.mistral_configured && <option value="mistral">Mistral</option>}
-          {llm.anthropic_configured && <option value="claude">Claude</option>}
+          {llm.mistral_configured ? <option value="mistral">Mistral</option> : null}
+          {llm.anthropic_configured ? <option value="claude">Claude</option> : null}
         </select>
+        {save.error ? <p className="field-error">{(save.error as Error).message}</p> : null}
       </Row>
-      {save.error && (
-        <p style={{ color: "var(--vim-danger)", fontSize: 12, marginTop: 8 }}>
-          {(save.error as Error).message}
-        </p>
-      )}
-      <p style={{ color: "var(--vim-ink-3)", fontSize: 12, marginTop: 8 }}>
-        The Mistral key also serves embeddings and podcast transcription, so
-        replacing it changes those too. The Anthropic key may be left empty.
-      </p>
     </Section>
   );
 }

@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { Suspense, lazy } from "react";
 import ErrorBoundary from "./components/ErrorBoundary.tsx";
 import Layout from "./components/Layout.tsx";
+import { Skel } from "./components/LoadingSkeleton.tsx";
 import { usePodcastsEnabled } from "./features.ts";
 
 const VideoListPage = lazy(() => import("./pages/VideoListPage.tsx"));
@@ -11,11 +12,17 @@ const PodcastNewPage = lazy(() => import("./pages/PodcastNewPage.tsx"));
 const StatsPage = lazy(() => import("./pages/StatsPage.tsx"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage.tsx"));
 
+/* The route chunk is loading. Reserve the page header's height with skeleton
+   blocks rather than centring a word, so the layout does not jump when the
+   real header arrives. */
 function Loading() {
   return (
-    <div className="flex items-center justify-center" style={{ padding: "80px 0" }}>
-      <div style={{ color: "var(--vim-ink-3)", fontFamily: "var(--font-mono)", fontSize: 12, letterSpacing: "0.04em" }}>
-        Loading…
+    <div className="page-head">
+      <div>
+        <Skel w={90} h={10} />
+        <div style={{ marginTop: 10 }}>
+          <Skel w={220} h={34} />
+        </div>
       </div>
     </div>
   );

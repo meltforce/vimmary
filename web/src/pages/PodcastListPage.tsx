@@ -1,316 +1,329 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { listVideos, searchVideos } from "../api.ts";
-import VideoCard from "../components/VideoCard.tsx";
-import LoadingSkeleton from "../components/LoadingSkeleton.tsx";
-import { MicIcon } from "../components/SourceBadge.tsx";
+import { fetchFeedInfo, fetchStats, listVideos, searchVideos } from "../api.ts";
+import PageHeader from "../components/PageHeader.tsx";
+import { Skel } from "../components/LoadingSkeleton.tsx";
+import { AlertIcon, SearchIcon } from "../components/icons.tsx";
+import { useIsDesktop } from "../hooks/useMediaQuery.ts";
+import { formatDuration } from "../utils.ts";
+import { clock, groupByDay, isInFlight, longDate, statusClass, statusLabel } from "../display.ts";
 
 const PAGE_SIZE = 20;
 
-function SearchIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="var(--vim-ink-3)"
-      strokeWidth="1.6"
-    >
-      <circle cx="11" cy="11" r="7" />
-      <path d="m20 20-3.5-3.5" />
-    </svg>
-  );
+/** One shape for both the list and the search results. */
+interface Row {
+  id: string;
+  title: string;
+  channel: string;
+  created_at: string;
+  score?: number;
+  status?: string;
+  detail_level?: string;
+  duration_seconds?: number;
+  error_message?: string;
 }
 
-// Episodes arrive from cast2md through subscriptions or a deep link — there is
-// no URL to paste here, which is why this page has no submit field.
-function EmptyState() {
-  return (
-    <div
-      className="vim-empty"
-      style={{
-        maxWidth: 640,
-        margin: "0 auto",
-        padding: "clamp(60px, 14vw, 120px) clamp(16px, 4vw, 40px)",
-        textAlign: "center",
-      }}
-    >
-      <div style={{ marginBottom: 32, opacity: 0.6, display: "flex", justifyContent: "center" }}>
-        <MicIcon size={48} color="var(--vim-ink-4)" />
-      </div>
-      <div className="vim-kicker" style={{ marginBottom: 18 }}>
-        — Nothing recorded yet
-      </div>
-      <h1 className="vim-h1-empty">
-        No podcast summaries.
-        <br />
-        <em style={{ color: "var(--vim-accent-ink)", fontStyle: "italic", fontWeight: 400 }}>
-          Pick a show to follow.
-        </em>
-      </h1>
-      <p
-        style={{
-          fontSize: 16,
-          lineHeight: 1.6,
-          color: "var(--vim-ink-2)",
-          margin: "0 auto 28px",
-          maxWidth: 480,
-        }}
-      >
-        Subscribe to a feed and every episode cast2md transcribes from then on
-        gets summarized here. Individual episodes can be sent over from cast2md
-        at any time.
-      </p>
-      <Link
-        to="/settings#podcasts"
-        className="vim-btn primary"
-        style={{ padding: "10px 18px" }}
-      >
-        Choose podcasts →
-      </Link>
-    </div>
-  );
-}
-
+/**
+ * The podcast half of the library. It mirrors the video list minus the two
+ * things that do not apply: there is no URL to paste — episodes arrive from a
+ * subscribed feed or from cast2md's deep link — and no bulk retry, because the
+ * failure modes are cast2md's rather than YouTube's.
+ */
 export default function PodcastListPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const query = searchParams.get("q") || "";
-  const [searchInput, setSearchInput] = useState(query);
-  const page = parseInt(searchParams.get("page") || "1", 10);
+  const isDesktop = useIsDesktop();
+  const [params, setParams] = useSearchParams();
+  const query = params.get("q") ?? "";
+  const page = Math.max(1, parseInt(params.get("page") ?? "1", 10));
   const offset = (page - 1) * PAGE_SIZE;
+  const [searchInput, setSearchInput] = useState(query);
 
-  const searchResult = useQuery({
+  const searching = query.length > 0;
+
+  const search = useQuery({
     queryKey: ["search", "podcast", query],
-    queryFn: () => searchVideos(query, undefined, "podcast"),
-    enabled: query.length > 0,
+    queryFn: () => searchVideos(query, 20, "podcast"),
+    enabled: searching,
   });
 
-  const listResult = useQuery({
+  const list = useQuery({
     queryKey: ["podcasts", offset],
     queryFn: () => listVideos({ source: "podcast", limit: PAGE_SIZE, offset }),
-    enabled: query.length === 0,
-    refetchInterval: (q) => {
-      const data = q.state.data;
-      if (data?.videos.some((v) => v.status === "pending" || v.status === "processing")) {
-        return 3000;
-      }
-      return 10000;
-    },
+    enabled: !searching,
+    refetchInterval: (q) =>
+      q.state.data?.videos.some((v) => isInFlight(v.status)) ? 3000 : 10000,
   });
 
-  const isSearching = query.length > 0;
-  const isLoading = isSearching ? searchResult.isLoading : listResult.isLoading;
-  const errorObj = isSearching ? searchResult.error : listResult.error;
+  const stats = useQuery({
+    queryKey: ["stats", "podcast"],
+    queryFn: () => fetchStats("podcast"),
+    refetchInterval: 10000,
+  });
+  const feed = useQuery({ queryKey: ["settings", "feed"], queryFn: fetchFeedInfo });
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const t = searchInput.trim();
-    if (t) setSearchParams({ q: t });
-    else setSearchParams({});
-  };
-
-  const total = isSearching
-    ? searchResult.data?.results.length ?? 0
-    : listResult.data?.total ?? 0;
-
-  const rows = isSearching
-    ? searchResult.data?.results.map((m) => ({
+  const rows: Row[] | undefined = searching
+    ? search.data?.results.map((m) => ({
         id: m.id,
-        youtube_id: m.youtube_id,
-        source: m.source,
         title: m.title,
         channel: m.channel,
-        summary: m.summary,
-        metadata: m.metadata,
-        score: m.score,
-        match_type: m.match_type,
         created_at: m.created_at,
-        thumbnail_url: undefined as string | undefined,
-        status: undefined as string | undefined,
-        error_message: undefined as string | undefined,
-        duration_seconds: undefined as number | undefined,
+        score: m.score,
       }))
-    : listResult.data?.videos.map((v) => ({
+    : list.data?.videos.map((v) => ({
         id: v.id,
-        youtube_id: v.youtube_id,
-        source: v.source,
         title: v.title,
         channel: v.channel,
-        summary: v.summary,
-        metadata: v.metadata,
-        score: undefined as number | undefined,
-        match_type: undefined as string | undefined,
         created_at: v.created_at,
-        thumbnail_url: v.thumbnail_url,
         status: v.status,
-        error_message: v.error_message,
+        detail_level: v.detail_level,
         duration_seconds: v.duration_seconds,
+        error_message: v.error_message,
       }));
 
-  const isEmpty =
-    !isSearching && !isLoading && page === 1 && listResult.data && listResult.data.total === 0;
+  const loading = searching ? search.isLoading : list.isLoading;
+  const error = (searching ? search.error : list.error) as Error | null;
+  const groups = rows ? groupByDay(rows, (r) => r.created_at) : [];
+  const totalPages = list.data ? Math.ceil(list.data.total / PAGE_SIZE) : 1;
 
-  if (isEmpty) {
-    return (
-      <div className="vim-page" style={{ paddingTop: 0, paddingBottom: 0 }}>
-        <EmptyState />
-      </div>
-    );
-  }
+  const setPage = (n: number) => {
+    const next = new URLSearchParams(params);
+    next.set("page", String(n));
+    setParams(next);
+  };
+
+  const hours = (stats.data?.total_duration_seconds ?? 0) / 3600;
 
   return (
-    <div className="vim-page">
-      {page === 1 && !isSearching && (
-        <div style={{ marginBottom: 28 }}>
-          <div className="vim-kicker" style={{ marginBottom: 10 }}>
-            Your listening list · {total} episode{total === 1 ? "" : "s"}
-          </div>
-          <h1 className="vim-h1-page">
-            Hours of{" "}
-            <em style={{ color: "var(--vim-accent-ink)", fontStyle: "italic", fontWeight: 400 }}>
-              conversation
-            </em>
-            ,
-            <br />
-            turned into something to read.
-          </h1>
-        </div>
-      )}
+    <>
+      <PageHeader kicker={longDate(new Date())} title="Podcasts" />
 
-      {isSearching && (
-        <div style={{ marginBottom: 28 }}>
-          <div className="vim-kicker" style={{ marginBottom: 10 }}>
-            Search · {total} result{total === 1 ? "" : "s"} for "{query}"
+      <div className="hero">
+        <div>
+          <div className="kick">Episodes</div>
+          <div className="value">
+            {stats.data ? stats.data.total_count.toLocaleString() : <Skel w={92} h={44} />}
           </div>
-          <h1 className="vim-h1-page" style={{ fontSize: 36 }}>
-            <em style={{ fontStyle: "italic", color: "var(--vim-accent-ink)" }}>{query}</em>
-          </h1>
         </div>
-      )}
+        <div>
+          <div className="kick">Runtime</div>
+          <div className="value">
+            {stats.data ? (
+              <>
+                {hours >= 1 ? hours.toFixed(0) : Math.round(hours * 60)}
+                <span className="unit">{hours >= 1 ? "hours" : "min"}</span>
+              </>
+            ) : (
+              <Skel w={92} h={44} />
+            )}
+          </div>
+        </div>
+      </div>
 
-      <form onSubmit={handleSearchSubmit} style={{ position: "relative", marginBottom: 36 }}>
-        <span style={{ position: "absolute", left: 14, top: 14, lineHeight: 0 }}>
-          <SearchIcon />
-        </span>
-        <input
-          className="vim-input"
-          type="text"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="Search across podcast summaries…"
-          style={{ paddingLeft: 40, paddingRight: query ? 84 : 14 }}
-        />
-        {query && (
+      <div className="filters">
+        <form
+          className="search"
+          style={{ flex: isDesktop ? "0 1 320px" : "1 1 100%" }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const next = new URLSearchParams();
+            if (searchInput.trim()) next.set("q", searchInput.trim());
+            setParams(next);
+          }}
+        >
+          <SearchIcon size={15} />
+          <input
+            className="input"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search episode summaries"
+            aria-label="Search episode summaries"
+          />
+        </form>
+        {searching ? (
           <button
             type="button"
+            className="chip"
             onClick={() => {
               setSearchInput("");
-              setSearchParams({});
+              setParams(new URLSearchParams());
             }}
-            className="vim-btn ghost"
-            style={{ position: "absolute", right: 6, top: 6, padding: "7px 12px", fontSize: 12 }}
           >
             Clear
           </button>
-        )}
-      </form>
+        ) : null}
+      </div>
 
-      {errorObj && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: "10px 14px",
-            borderRadius: "var(--vim-radius)",
-            background: "color-mix(in oklch, var(--vim-err) 10%, transparent)",
-            border: "1px solid color-mix(in oklch, var(--vim-err) 28%, transparent)",
-            color: "var(--vim-err)",
-            fontSize: 13,
-          }}
-        >
-          {(errorObj as Error).message}
+      {error ? (
+        <div className="banner">
+          <AlertIcon />
+          <span>{error.message}</span>
         </div>
-      )}
+      ) : null}
 
-      {isLoading ? (
-        <LoadingSkeleton count={3} />
+      {!loading && rows && rows.length === 0 ? (
+        <div className="empty">
+          <div className="kick">Podcasts</div>
+          <h3>{searching ? `Nothing matches “${query}”.` : "No episodes yet."}</h3>
+          <p>
+            {searching
+              ? "Only podcast summaries are searched here; videos have their own list."
+              : "Subscribe to a feed under Settings → Podcasts, or use the “Summarize in vimmary” button in cast2md."}
+          </p>
+          <Link
+            to={searching ? "/podcasts" : "/settings?tab=podcasts"}
+            className="btn btn-secondary"
+          >
+            {searching ? "Show all episodes" : "Open podcast settings"}
+          </Link>
+        </div>
+      ) : isDesktop ? (
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Episode</th>
+              <th style={{ width: 220 }}>Show</th>
+              <th style={{ width: 96 }}>Detail</th>
+              <th style={{ width: 130 }}>{searching ? "Match" : "Status"}</th>
+              <th className="right" style={{ width: 90 }}>Length</th>
+              <th className="right" style={{ width: 110 }}>{searching ? "Score" : "Added"}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading
+              ? Array.from({ length: 8 }, (_, i) => (
+                  <tr key={i}>
+                    <td><Skel w={`${70 - (i % 4) * 8}%`} /></td>
+                    <td><Skel w={120} /></td>
+                    <td><Skel w={48} /></td>
+                    <td><Skel w={64} h={18} /></td>
+                    <td className="right"><Skel w={44} /></td>
+                    <td className="right"><Skel w={62} /></td>
+                  </tr>
+                ))
+              : groups.map((g) => (
+                  <Fragment key={g.key}>
+                    <tr className="grp">
+                      <td colSpan={6} className="kick">{g.label}</td>
+                    </tr>
+                    {g.items.map((r) => (
+                      <tr key={r.id}>
+                        <td style={{ fontWeight: 500 }}>
+                          <Link to={`/podcast/${r.id}`} style={{ color: "inherit" }}>
+                            {r.title}
+                          </Link>
+                          {r.error_message ? (
+                            <div style={{ font: "400 11.5px var(--font-body)", color: "var(--color-neutral-600)", marginTop: 3 }}>
+                              {r.error_message}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td style={{ color: "var(--color-neutral-700)" }}>{r.channel}</td>
+                        <td>{r.detail_level ? <span className="tag tag-neutral">{r.detail_level}</span> : null}</td>
+                        <td>
+                          {r.status ? (
+                            <span className={`status ${statusClass(r.status)}`}>
+                              {statusLabel(r.status)}
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="num right">
+                          {r.duration_seconds ? formatDuration(r.duration_seconds) : ""}
+                        </td>
+                        <td className="num right" style={{ fontSize: 12.5, color: "var(--color-neutral-600)" }}>
+                          {r.score !== undefined ? r.score.toFixed(2) : clock(r.created_at)}
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                ))}
+          </tbody>
+        </table>
       ) : (
-        <div>
-          {rows && rows.length === 0 && (
-            <p
-              style={{
-                color: "var(--vim-ink-3)",
-                fontSize: 14,
-                padding: "48px 0",
-                textAlign: "center",
-              }}
-            >
-              {isSearching ? `No results found for "${query}"` : "No episodes yet"}
-            </p>
-          )}
-          {rows?.map((v, i) => (
-            <VideoCard
-              key={v.id}
-              id={v.id}
-              youtubeId={v.youtube_id}
-              source={v.source}
-              thumbnailUrl={v.thumbnail_url}
-              title={v.title}
-              channel={v.channel}
-              durationSeconds={v.duration_seconds}
-              summary={v.summary}
-              topics={v.metadata?.topics}
-              status={v.status}
-              errorMessage={v.error_message}
-              score={v.score}
-              matchType={v.match_type}
-              createdAt={v.created_at}
-              index={!isSearching ? total - offset - i : undefined}
-              isLast={i === rows.length - 1}
-            />
-          ))}
-
-          {!isSearching && listResult.data && listResult.data.total > PAGE_SIZE && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 16,
-                paddingTop: 28,
-              }}
-            >
-              <button
-                disabled={page <= 1}
-                onClick={() => setSearchParams({ page: String(page - 1) })}
-                className="vim-btn ghost"
-                style={{ padding: "7px 14px", fontSize: 12 }}
-              >
-                ← Previous
-              </button>
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11.5,
-                  color: "var(--vim-ink-3)",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                Page {page} of {Math.ceil(listResult.data.total / PAGE_SIZE)}
-              </span>
-              <button
-                disabled={offset + PAGE_SIZE >= listResult.data.total}
-                onClick={() => setSearchParams({ page: String(page + 1) })}
-                className="vim-btn ghost"
-                style={{ padding: "7px 14px", fontSize: 12 }}
-              >
-                Next →
-              </button>
-            </div>
-          )}
+        <div style={{ borderTop: "var(--rule-strong)" }}>
+          {loading
+            ? Array.from({ length: 6 }, (_, i) => (
+                <div key={i} className="row">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <Skel w={`${74 - (i % 3) * 11}%`} />
+                    <div style={{ marginTop: 5 }}><Skel w={128} h={11} /></div>
+                  </div>
+                  <Skel w={52} h={18} />
+                </div>
+              ))
+            : groups.map((g) => (
+                <Fragment key={g.key}>
+                  <div className="kick row-group">{g.label}</div>
+                  {g.items.map((r) => (
+                    <Link
+                      key={r.id}
+                      to={`/podcast/${r.id}`}
+                      className="row"
+                      style={{ color: "inherit", minHeight: 44 }}
+                    >
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span className="row-title" style={{ display: "block" }}>{r.title}</span>
+                        <span className="row-meta" style={{ display: "block" }}>
+                          {r.error_message ??
+                            [
+                              r.channel,
+                              r.duration_seconds ? formatDuration(r.duration_seconds) : null,
+                              r.detail_level,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                        </span>
+                      </span>
+                      {r.status ? (
+                        <span className={`status ${statusClass(r.status)}`}>
+                          {statusLabel(r.status)}
+                        </span>
+                      ) : null}
+                    </Link>
+                  ))}
+                </Fragment>
+              ))}
         </div>
       )}
-    </div>
+
+      {!searching && list.data && list.data.total > PAGE_SIZE ? (
+        <div className="page-x flex items-center gap-4" style={{ paddingTop: 14, paddingBottom: 14 }}>
+          <span className="num" style={{ font: "400 12px var(--font-body)", color: "var(--color-neutral-600)" }}>
+            Page {page} of {totalPages}
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary ml-auto"
+            style={{ fontSize: 12 }}
+            disabled={page <= 1}
+            onClick={() => setPage(page - 1)}
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ fontSize: 12 }}
+            disabled={offset + PAGE_SIZE >= list.data.total}
+            onClick={() => setPage(page + 1)}
+          >
+            Next
+          </button>
+        </div>
+      ) : null}
+
+      <div className="footer">
+        <Link className="btn btn-ghost" style={{ fontSize: 12.5 }} to="/settings?tab=podcasts">
+          Manage subscriptions →
+        </Link>
+        {feed.data ? (
+          <a className="btn btn-ghost" style={{ fontSize: 12.5 }} href={feed.data.urls.podcasts}>
+            Open the Atom feed →
+          </a>
+        ) : null}
+        <span className="spacer note num">
+          {stats.data ? `${stats.data.total_count} episodes` : ""}
+        </span>
+      </div>
+    </>
   );
 }

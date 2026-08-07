@@ -21,6 +21,93 @@ identifier rather than estimated.
 
 ---
 
+## 2026-08-07 — the web UI runs on the shared Modernist design language
+
+**Decided:** 2026-08-07
+
+**Decision.** `web/src/homelab.css` is the design system, copied verbatim from
+the handoff bundle and never edited per app; anything vimmary needs on its own
+goes in `web/src/index.css` below the import. The reference implementation is
+FreeReps (`server/web/src/index.css`), which is the authority whenever the
+handoff and the code disagree. `index.css` is now the Tailwind import, the
+Archivo import, the `homelab.css` import, an `@theme inline` bridge and about
+thirty lines of vimmary-only rules. The `--vim-*` token layer and the `.vim-*`
+class layer are gone, along with Fraunces, Geist, JetBrains Mono, every radius,
+the sticky blurred header, the coloured status pills, the drop cap and the
+centred 1040px column.
+
+Archivo is self-hosted through `@fontsource-variable/archivo`. **No font CDN.**
+The server is reachable over Tailscale only, so a client without a route to
+`fonts.googleapis.com` rendered the entire UI in `system-ui` — the three
+`<link>` tags this removes were vimmary's only external runtime dependency.
+
+There is one breakpoint, 768px, read in JS by `useIsDesktop()`
+(`web/src/hooks/useMediaQuery.ts`) because desktop and phone are different
+component trees rather than one tree reflowed. Above it a top `.nav`; below it a
+fixed `.tabs` bar whose column count follows the item count.
+
+**UI strings stay English.** The handoff specifies German labels throughout.
+`CLAUDE.md` § Language makes English the repo's only language, FreeReps is
+English, and vimmary had no German string in `web/` before this change. The
+German in the handoff is treated as design placeholder text.
+
+**Six places where the handoff describes something vimmary does not have:**
+
+1. *Podcasts are absent from the handoff.* `PodcastListPage`, `PodcastNewPage`
+   and `PodcastSection` follow the same four screens by analogy;
+   `SourceBadge` became a `.tag .tag-neutral`, because the palette is mono and
+   an icon is only used where language does not suffice.
+2. *The nav identity slot reads `Settings`.* The handoff wants the Tailscale
+   login at `margin-left: auto`. No endpoint returns it —
+   `GET /api/v1/config/features` carries `podcasts`, `cast2md_url` and
+   `is_admin` — and this change touches no Go.
+3. *The prescribed nav* (`Videos · Search · Stats`, mobile `… · Queue · More`)
+   names two routes vimmary does not have. It became `Videos · Podcasts* ·
+   Stats` with search as a `.search` field in each list's filter bar, and
+   `Podcasts` absent when cast2md is unconfigured, per the 2026-08-06 decision
+   below.
+4. *The filter chips are `All · Queue · Failed · No captions`,* not the
+   handoff's `… · Deep`. Every chip has to be a `status` the list endpoint
+   accepts; there is no detail-level filter, and filtering the current page
+   client-side would report a count that is not the library's.
+5. *The "last webhook" line in the Videos header is dropped.*
+   `GET /api/v1/settings/webhook` returns the token, not a delivery timestamp.
+6. *The Stats range control switches source, not time.* `fetchStats` takes a
+   source and returns a fixed 30-day series; a `7d · 30d · 90d · 1y` control
+   would have nothing behind it. `RangeControl` carries
+   `Everything · Videos · Podcasts` instead, with the same `.seg`-to-`.sheet`
+   collapse below 768px.
+
+**Row actions moved off the list.** Retry, Transcribe and Delete are on the
+detail page; the list keeps the bulk actions in its `.footer`. A row is one
+target, not five.
+
+**The app icon's mark must stay lighter than its field.** `web/scripts/build-icons.mjs`
+renders `vm` in `#f3f2f2` on `#ec3013` and writes the five PNGs plus
+`public/manifest.webmanifest`. iOS 18 derives the dark and tinted home-screen
+variants from the single icon; with a dark mark on a mid field both collapse
+toward black and the icon reads as an empty rounded square. This is the defect
+FreeReps fixed in its `c7319b0`, and it is invisible on desktop. The script is
+committed and run by hand (`npm run icons`) rather than wired into `npm run
+build`: it needs Chrome and ImageMagick, which CI does not have, and the output
+changes about once a year.
+
+**Reasoning.** vimmary's UI was a one-off editorial design that matched nothing
+else in the homelab, and the font CDN made it fail in a way peculiar to a
+tailnet-only service. Adopting the shared language costs a rewrite of the six
+page components once; keeping the divergence costs a second design to maintain
+for as long as the service exists.
+
+`web/src/homelab.css` is a copy rather than a dependency because there is no
+package to depend on — the bundle is a handoff, and FreeReps carries its own
+inlined copy for the same reason.
+
+**Trigger to re-open.** FreeReps changes `homelab.css`, at which point the copy
+here has to be refreshed rather than edited. Or the handoff bundle becomes a
+published package, which would make the copy unnecessary.
+
+---
+
 ## 2026-08-07 — a testable storage dependency gets a narrow seam, not one interface over `storage.DB`
 
 **Decided:** 2026-08-07 (`3fa3210`, `359551d`)

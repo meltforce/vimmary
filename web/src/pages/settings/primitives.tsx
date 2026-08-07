@@ -1,29 +1,40 @@
-import { useState, ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
+import { Skel } from "../../components/LoadingSkeleton.tsx";
 
 /**
- * The three building blocks every settings section is made of. They carry the
- * page's layout — the two-column grid, the card, the divider between rows — so
- * that a section file contains its own concern and nothing about how the page
- * looks.
+ * The building blocks every settings section is made of. They carry the tab's
+ * layout — the heading block, the label column, the rule between rows — so that
+ * a section file contains its own concern and nothing about how it looks.
  */
+
+/** Tokens render in monospace and are truncated rather than wrapped. */
+export const MONO: CSSProperties = {
+  fontFamily: "var(--font-mono)",
+  fontSize: 12.5,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
 
 export function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
+      type="button"
+      className="btn btn-ghost"
+      style={{ fontSize: 12 }}
       onClick={() => {
         navigator.clipboard.writeText(text);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}
-      className="vim-btn ghost"
-      style={{ padding: "6px 12px", fontSize: 12 }}
     >
-      {copied ? "Copied ✓" : label}
+      {copied ? "Copied" : label}
     </button>
   );
 }
 
+/** The head of a settings tab: h2, one explanatory sentence, a 2px rule. */
 export function Section({
   title,
   subtitle,
@@ -35,115 +46,125 @@ export function Section({
 }) {
   return (
     <section style={{ marginBottom: 40 }}>
-      <div className="vim-grid-settings">
-        <div>
-          <h3
-            style={{
-              fontFamily: "var(--font-serif)",
-              fontSize: 20,
-              fontWeight: 500,
-              margin: "0 0 6px",
-              letterSpacing: "-0.01em",
-              color: "var(--vim-ink)",
-            }}
-          >
-            {title}
-          </h3>
-          <p
-            style={{
-              fontSize: 12.5,
-              color: "var(--vim-ink-3)",
-              margin: 0,
-              lineHeight: 1.5,
-            }}
-          >
-            {subtitle}
-          </p>
-        </div>
-        <div
-          style={{
-            background: "var(--vim-surface)",
-            borderRadius: 12,
-            border: "1px solid var(--vim-line-soft)",
-            padding: "4px 20px",
-          }}
-        >
-          {children}
-        </div>
-      </div>
+      <h2 style={{ fontSize: 22 }}>{title}</h2>
+      <p
+        style={{
+          font: "400 13px/1.55 var(--font-body)",
+          color: "var(--color-neutral-700)",
+          maxWidth: "62ch",
+          margin: "8px 0 0",
+        }}
+      >
+        {subtitle}
+      </p>
+      <div style={{ borderTop: "var(--rule-strong)", marginTop: 14 }}>{children}</div>
     </section>
   );
 }
 
+/**
+ * A label column and its value on the same baseline. Below 768px the row stacks
+ * — `.set-row` handles that, so nothing here reads the viewport.
+ */
 export function Row({
   label,
   value,
   mono = false,
-  truncate = true,
-  isLast = false,
   children,
 }: {
   label: string;
   value?: ReactNode;
   mono?: boolean;
-  truncate?: boolean;
-  isLast?: boolean;
   children?: ReactNode;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "16px 0",
-        borderBottom: isLast ? "none" : "1px solid var(--vim-line-soft)",
-        gap: 16,
-      }}
-    >
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontSize: 13, color: "var(--vim-ink-3)", marginBottom: 3 }}>
-          {label}
-        </div>
-        {value && (
-          <div
-            style={{
-              fontFamily: mono ? "var(--font-mono)" : undefined,
-              fontSize: mono ? 12.5 : 14,
-              color: "var(--vim-ink)",
-              overflow: truncate ? "hidden" : undefined,
-              textOverflow: truncate ? "ellipsis" : undefined,
-              whiteSpace: truncate ? "nowrap" : undefined,
-            }}
-          >
-            {value}
-          </div>
-        )}
+    <div className="set-row">
+      <div className="kick">{label}</div>
+      <div className="val">
+        {value !== undefined && value !== null ? (
+          <div style={mono ? MONO : { fontSize: 14 }}>{value}</div>
+        ) : null}
+        {children}
       </div>
-      {children && <div style={{ flexShrink: 0 }}>{children}</div>}
     </div>
   );
 }
 
 /**
- * SectionError is what a section renders when its own query fails. Each section
- * owns its queries, so one failing backend takes out one card rather than the
- * page — before the split all four page-level queries shared a single
+ * What a section renders when its own query fails. Each section owns its
+ * queries, so one failing backend takes out one tab rather than the page —
+ * before the split all four page-level queries shared a single
  * isLoading/errorObj conjunction, and any one of them failing replaced the whole
  * Settings page with an error box.
  */
 export function SectionError({ error }: { error: Error }) {
   return (
-    <div style={{ padding: "16px 0", fontSize: 13, color: "var(--vim-err)" }}>
-      {error.message}
+    <div
+      className="banner"
+      style={{ paddingLeft: 0, paddingRight: 0, background: "transparent", borderTop: 0 }}
+    >
+      <span style={{ color: "var(--color-accent-700)" }}>{error.message}</span>
     </div>
   );
 }
 
-export function SectionLoading({ what }: { what: string }) {
+export function SectionLoading() {
   return (
-    <div style={{ padding: "16px 0", fontSize: 13, color: "var(--vim-ink-3)" }}>
-      Loading {what}…
+    <div className="set-row">
+      <div className="kick"><Skel w={90} h={10} /></div>
+      <div className="val"><Skel w="60%" h={14} /></div>
     </div>
+  );
+}
+
+/** Square, 44×26, accent ground when on. Never the native rounded control. */
+export function Switch({
+  checked,
+  onChange,
+  label,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      className="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+    >
+      <span />
+    </button>
+  );
+}
+
+/** Square, 15×15, 2px accent border and accent fill when checked. */
+export function Checkbox({
+  checked,
+  onChange,
+  label,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      className="check"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+    />
   );
 }
