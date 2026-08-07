@@ -57,6 +57,27 @@
   padding-bottom: 40px;
 }
 
+/* A summary can have up to five actions. Keeping them beside the title inside
+   the reading column leaves neither usable room, so the title owns the first
+   line and the actions form a wrapping row beneath it. */
+.detail-page .page-head {
+  display: block;
+}
+
+.detail-page .page-head-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  gap: 8px;
+}
+
+@media (max-width: 767px) {
+  .detail-page .page-head-actions {
+    justify-content: flex-start;
+    margin-top: 14px;
+  }
+}
+
 /* The summary body is markdown rendered into .reader. react-markdown emits
    links, lists and inline code, which homelab.css does not style inside .reader
    because not every app renders markdown. */
