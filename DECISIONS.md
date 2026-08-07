@@ -49,6 +49,13 @@ into the database on first start. It would have avoided a manual step at the
 cost of keeping the exact code path that caused the outage alive for one more
 release. The keys were entered by hand instead.
 
+All four `vimmary/*` secrets were deleted from setec on 2026-08-07, each once it
+was provably redundant: `postgres-password` held the same value as
+`docker/vimmary/db-password` (identical SHA-256), `karakeep-api-key` was read by
+no code, `mistral-api-key` had been confirmed serving from `app_settings`, and
+`claude-api-key` was revoked at Anthropic first. `docker/vimmary/db-password` is
+the only vimmary secret left in setec, and Ansible is its only reader.
+
 **Trigger to re-open.** A secret that has to be current at startup and cannot be
 supplied by the deployment — none exists today.
 
