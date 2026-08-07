@@ -19,6 +19,24 @@ type Metadata struct {
 	Language        string `json:"language"`
 }
 
+// ThumbnailURL is the poster image for a video ID.
+//
+// It is derived rather than fetched: InnerTube's metadata response carries no
+// thumbnail, and the path is stable for every video YouTube serves. `hqdefault`
+// is the variant that always exists — `maxresdefault` and `sddefault` 404 on
+// plenty of videos, and a broken image is worse than a soft one. It is 480x360
+// with letterbox bars on a 16:9 upload, and those bars are exactly the 45px the
+// feed's `object-fit: cover` crops off a 16:9 frame, so the displayed image is
+// the 480x270 picture itself.
+//
+// Returns "" for an empty ID, so a podcast row never gets a YouTube URL.
+func ThumbnailURL(videoID string) string {
+	if videoID == "" {
+		return ""
+	}
+	return "https://i.ytimg.com/vi/" + videoID + "/hqdefault.jpg"
+}
+
 // Client wraps YouTube transcript and metadata extraction.
 type Client struct {
 	subLangs         []string

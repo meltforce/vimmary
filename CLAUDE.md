@@ -85,6 +85,18 @@ unreachable for a client with no route to it, and the whole UI then renders in
 `system-ui`. One breakpoint, 768px, read in JS by `useIsDesktop()`, because
 desktop and phone are different component trees rather than one reflowed.
 
+**`thumbnail_url` is filled by two different mechanisms, and for a long time by
+only one.** Podcast rows take it from the feed's `image_url`
+(`internal/service/podcast.go:113`); YouTube rows derive it from the video ID
+through `youtube.ThumbnailURL` — `https://i.ytimg.com/vi/<id>/hqdefault.jpg` —
+because InnerTube's metadata response carries no thumbnail. `hqdefault` is the
+only variant that always exists, and its letterbox bars are exactly what the
+feed's `object-fit: cover` crops off. Until 2026-08-07 the YouTube path did not
+write the column at all, so every video row was NULL and the new media feed
+showed the neutral "no art" block for all of them; migration `000013` backfilled
+them. The check that missed it verified that the list query *returns* the column
+(`videoColumnsNoTranscript`) without asking whether anything *writes* it.
+
 **The two library screens are a media feed, not a table.** `/` and `/podcasts`
 both render `web/src/components/FeedList.tsx` — one centred `--reading-w` column,
 artwork on every row, `excerpt(summary, title)` as the row's body — and the

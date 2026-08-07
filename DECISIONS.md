@@ -64,10 +64,30 @@ editorial photography; a thumbnail here is an identifier, and desaturating it
 removes what makes it recognizable. This is the one deliberate exception to the
 imagery rule.
 
-**No Go change was needed.** The handoff named one precondition — that the list
-endpoint return `summary` and `thumbnail_url`, not only the detail endpoint.
-`videoColumnsNoTranscript` (`internal/storage/videos.go:100`) trims the
-transcript and nothing else, so both fields were already there.
+**YouTube thumbnails are derived from the video ID, not fetched.**
+`youtube.ThumbnailURL` returns `https://i.ytimg.com/vi/<id>/hqdefault.jpg`, and
+`ProcessVideo` writes it when the row is created. `hqdefault` is the one variant
+that always exists — `maxresdefault` and `sddefault` 404 on plenty of videos, and
+a broken image is worse than a soft one. It is 480x360 with letterbox bars on a
+16:9 upload, and those bars are exactly the 45px that `object-fit: cover` crops
+off a 16:9 frame, so what shows is the 480x270 picture. Migration `000013`
+backfills existing rows with the same expression.
+
+This is the server change the handoff anticipated, and the first check for it was
+wrong. The handoff's precondition was that the list endpoint return `summary` and
+`thumbnail_url`; `videoColumnsNoTranscript` (`internal/storage/videos.go:100`)
+trims the transcript and nothing else, so the field was confirmed present and the
+work went ahead. But the column was only ever written by the podcast path
+(`internal/service/podcast.go:113`) — the YouTube path never set it, so every
+YouTube row was NULL and the feed rendered the neutral block for all of them.
+**Verifying that a field is transported is not verifying that it is populated.**
+
+The image is loaded by the browser from `i.ytimg.com`, so the feed is the second
+place `web/` points outside the origin. That is not a new property: podcast
+artwork already loads from the URL in the feed, which is the podcast host's CDN.
+The rule the Modernist migration established was that no *asset the UI needs to
+render correctly* comes from outside — the font. A missing thumbnail degrades to
+the neutral block that a row without artwork shows anyway.
 
 **Two places where the handoff and the reference disagreed with the code:**
 

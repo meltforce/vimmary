@@ -97,8 +97,12 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 			UserID:             userID,
 			KarakeepBookmarkID: bookmarkID,
 			YouTubeID:          youtubeID,
-			DetailLevel:        s.summaryCfg.DefaultLevel,
-			Status:             "pending",
+			// Derived from the ID, not fetched — InnerTube's metadata carries
+			// no thumbnail. The podcast path fills the same column from the
+			// feed's image_url.
+			ThumbnailURL: youtube.ThumbnailURL(youtubeID),
+			DetailLevel:  s.summaryCfg.DefaultLevel,
+			Status:       "pending",
 		}
 		if err := s.db.InsertVideo(ctx, video); err != nil {
 			return fmt.Errorf("insert video: %w", err)

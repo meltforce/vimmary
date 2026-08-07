@@ -184,8 +184,13 @@ sweep() {
     # µ and ° appear legitimately in sensor and metric strings.
     # Dependency trees fetched by a tool are not repo artifacts — without the
     # prune, one `uv pip install` buries the real findings.
+    # AGENTS.md and .agents/ are generated copies of CLAUDE.md and
+    # .claude/skills/. The originals are swept and their legitimate German —
+    # the "Rolle" example, the spoken skill triggers — is in the allowlist by
+    # its real path, so the copies report those same lines as fresh findings.
     find . \
       \( -path ./.git -o -path ./.archive \
+         -o -path ./AGENTS.md -o -path ./.agents \
          -o -path ./tools/check-docs.sh -o -path ./tools/check-docs.allow \
          -o -name node_modules -o -name vendor \
          -o -name .venv -o -name venv -o -name site-packages \

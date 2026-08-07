@@ -42,6 +42,12 @@ web/tsconfig.tsbuildinfo
 # Internal docs
 plan.md
 internal_docs/
+
+# Generated mirrors of CLAUDE.md and .claude/skills/ for agents that read the
+# AGENTS.md convention. Copies of tracked files, so committing them would give
+# the same text two homes that drift apart.
+AGENTS.md
+.agents/
 # Design handoff bundles. What ships out of one is web/src/homelab.css and the
 # icon script; the bundle itself is a reference and stays out of the repo.
 design_handoff*/

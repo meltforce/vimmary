@@ -41,3 +41,32 @@ func TestParsePlayerResponse_NoMatch(t *testing.T) {
 		t.Error("expected no match for page without player response")
 	}
 }
+
+func TestThumbnailURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		videoID string
+		want    string
+	}{
+		{
+			name:    "video ID",
+			videoID: "dQw4w9WgXcQ",
+			want:    "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+		},
+		{
+			// A podcast row carries no youtube_id, and must not be handed a
+			// YouTube URL built from an empty string.
+			name:    "empty ID",
+			videoID: "",
+			want:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ThumbnailURL(tt.videoID); got != tt.want {
+				t.Errorf("ThumbnailURL(%q) = %q, want %q", tt.videoID, got, tt.want)
+			}
+		})
+	}
+}
