@@ -32,14 +32,23 @@ order in `cmd/vimmary/main.go` is config → tsnet → setec resolver → resolv
 secrets → migrations → DB → services → HTTP server. Moving secret resolution
 earlier leaves setec without a transport.
 
-**`tsServer.Up()` follows `Start()`, and removing it reintroduces an outage.**
-`Start()` returns while the node may still have no current netmap. A setec
-request sent in that window reaches setec, which cannot identify the peer and
-answers `access denied` — and the store never recovers from that answer, so the
-process sits in a retry loop and never opens its listener. Twice on 2026-08-06;
-see INCIDENTS.md. Everything before the listener can
-hang without the container noticing, which is what the loopback health endpoint
-below is for.
+**A start can lose a race against the tailnet, and `tsServer.Up()` does not
+prevent it.** `Start()` returns while the node may still have no current netmap.
+A setec request sent in that window reaches setec, which cannot identify the
+peer and answers `access denied` — an answer the store never recovers from.
+`Up()` was added on 2026-08-06 to close that window and does not: when tsnet
+loads its persisted state the AuthLoop short-circuits (`AuthLoop: state is
+Running; done`) and `Up()` returns satisfied within milliseconds. Measured over
+15 starts, `Running` lost 4 of 4 and `Starting` won 11 of 11; see INCIDENTS.md,
+2026-08-07.
+
+**What keeps a lost race short is the bound, not the wait.**
+`InitSetecStore` gets a 30 s context and the process exits non-zero on expiry,
+so `restart: unless-stopped` draws again. With `context.Background()` there the
+same race produced a 6h23min outage. The `HEALTHCHECK` lives in the `Dockerfile`
+rather than in a compose file, because a compose probe is owned by the
+deployment repo — the one added there on 2026-08-06 was reverted by an
+auto-rollback 94 seconds later.
 
 **The health endpoint is on loopback, and it is deliberate.** With Tailscale
 enabled the real listener runs on the tsnet netstack, which nothing inside the

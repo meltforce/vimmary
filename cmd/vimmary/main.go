@@ -101,7 +101,24 @@ func main() {
 	// Init secrets resolver
 	resolver := secrets.NewResolver(cfg.Secrets, "VIMMARY")
 	if cfg.SecretBackend.Type == "setec" {
-		if err := resolver.InitSetecStore(context.Background(), tsnetHTTPClient, cfg.SecretBackend.SetecURL); err != nil {
+		// Bounded, because setec.NewStore retries for as long as its context
+		// lives and this call used to get context.Background(). A start that
+		// dials setec before the tailnet can identify this node gets a plain
+		// "access denied" — an answer the store never recovers from, so an
+		// unbounded context turns a lost race into a process that retries
+		// forever and never reaches its listener. That was 6h23min on
+		// 2026-08-07; see INCIDENTS.md. Up() above does not prevent it: it is
+		// satisfied by the persisted state that makes tsnet report Running
+		// before it has a current netmap.
+		//
+		// 30 s, against a resolution that takes under 100 ms when the race is
+		// won and a few seconds on the recoverable "backend in state NoState"
+		// path. Exiting non-zero hands recovery to `restart: unless-stopped`,
+		// and a restart is a fresh draw on a race that 11 of 15 starts won.
+		initCtx, cancelInit := context.WithTimeout(context.Background(), 30*time.Second)
+		err := resolver.InitSetecStore(initCtx, tsnetHTTPClient, cfg.SecretBackend.SetecURL)
+		cancelInit()
+		if err != nil {
 			log.Error("init setec store", "error", err)
 			os.Exit(1)
 		}

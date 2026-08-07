@@ -14,6 +14,99 @@ on its own, plus a pointer — not a copy.
 
 ---
 
+## 2026-08-07 — the same race, for 6h23min, with the detection removed the evening before
+
+**Effect.** vimmary refused connections on 100.69.223.64:443 from 22:27:29 on
+2026-08-06 to 04:50:29 on 2026-08-07 CEST — 6 hours 23 minutes. Uptime Kuma
+recorded three earlier flaps between 19:51 and 20:16, which are the 2026-08-06
+incident below. Only vimmary was affected; the other 35 monitors stayed up, and
+the tsnet node answered ICMP throughout.
+
+**Cause — the 2026-08-06 remedy does not prevent the race.** The start at
+22:26:19 ran `edge-c10511e`, which contains `95c5b01` and therefore
+`tsServer.Up()`. `Up()` reported success:
+
+```
+2026/08/06 20:26:19 AuthLoop: state is Running; done
+level=INFO msg="tsnet up" state=Running ips="[100.69.223.64 fd7a:115c:a1e0::cf34:df40]"
+```
+
+It returned 15 ms after `Start()`, and every setec request that followed was
+answered `access denied`.
+
+`Up()` waits for `BackendState == Running` with an address. When tsnet loads its
+persisted state the AuthLoop short-circuits — `state is Running; done` — and
+that condition is already true before the node has a current netmap. The
+condition being waited on is the condition that holds in the failure case.
+
+**The discriminating signal is the AuthLoop line, not the backend state.**
+Across the 15 starts between 2026-08-06 18:32 and 2026-08-07 04:49:
+
+| AuthLoop | starts | listener opened |
+|---|---|---|
+| `Starting; done` | 11 | 11 |
+| `Running; done` | 4 | 0 |
+
+The separation is complete over all 15. The loss rate is 4 in 15. setec logged
+nothing: the unit has run unchanged since 2026-08-01 and wrote no entry in the
+22:20–22:35 window, so the rejection is not confirmable from that side.
+
+**Why it lasted 6h23min rather than one restart.** Three things, in order of
+how much each cost.
+
+`resolver.InitSetecStore` was called with `context.Background()`.
+`setec.NewStore` retries for as long as its context lives, so a start that got
+`access denied` retried until the process was killed. The process never reached
+`StartHealthListener`, and `restart: unless-stopped` does not act on a process
+that has not exited.
+
+The container had no healthcheck. `docker inspect` reported `Health=null`
+throughout. The probe existed for 94 seconds the previous evening: homelab
+commit `a7bc4cb` added it at 20:08:53, the container recreated at 20:09:22 lost
+the race and was correctly reported unhealthy, and the auto-redeploy read that
+unhealthy container as a fault of the commit that introduced the check and
+reverted it as `0bc1091` at 20:10:27. The one control that would have caught
+this outage was removed by an automation reacting to the failure mode the
+control was built to detect, 2 hours 16 minutes before the outage began.
+
+CI did detect it. The `health_url` step failed after 150 s and
+`notify-deploy-failure` published to `https://ntfy.coydog-fence.ts.net/claude`
+at 22:29:30 — three minutes after the outage began. That topic also carries
+routine traffic ("Ansible deploy needed", "converge: 0 errors").
+
+**How it ended.** Not on its own. The homelab `converge` sweep
+(`cron: '47 2 * * *'` UTC) recreated the container at 04:49:37; `docker inspect`
+shows `Created` and `StartedAt` both at 02:49:37 UTC with `RestartCount=0`. That
+start drew `Starting; done` and won. First 200 at 04:50:29.
+
+**What this corrects in the 2026-08-06 entry below.** Two statements there are
+wrong. "It removes the case where the request provably went out too early" —
+it does not; the 22:26:19 start went out after `Up()` returned success. "vimmary
+now opens a loopback health endpoint … and the compose file probes it with a
+120 s `start_period`" — the endpoint was added and works, the compose probe was
+reverted 94 seconds after it landed and never reached a second deploy.
+
+**The fix.**
+
+- `cmd/vimmary/main.go` bounds the setec store init at 30 s and exits non-zero
+  on expiry, against a resolution that takes under 100 ms when the race is won.
+  Recovery moves to `restart: unless-stopped`, and each restart is a fresh draw
+  on a race that 11 of 15 starts won.
+- The `HEALTHCHECK` moves into the `Dockerfile`, where no deployment-side revert
+  reaches it. It probes `127.0.0.1:8081/healthz`, the default of `health_addr`.
+  A deployment that moves `health_addr` has to override the `HEALTHCHECK` with
+  it.
+
+**Residual risk.** The race itself is untouched — the remedy shortens the
+outage, it does not prevent the lost start. Every deploy still has roughly a 1
+in 4 chance of a start that exits and restarts, which will show as a failed CI
+health step even where the restart recovers within minutes. Removing the race
+needs a readiness condition that reflects the netmap rather than the backend
+state, or a setec store that distinguishes "denied because the peer is not yet
+known" from "denied".
+
+---
+
 ## 2026-08-06 — the container ran, the service did not, and nothing said so
 
 **Effect.** After the CI deploy of `69f7bfd` at 17:50 UTC, vimmary answered
