@@ -25,11 +25,17 @@ identifier rather than estimated.
 
 **Decided:** 2026-08-07
 
-**Decision.** vimmary links no setec client. The database password is resolved
+**Decision.** vimmary makes no setec request. The database password is resolved
 from `VIMMARY_POSTGRES_PASSWORD` in the environment, and the LLM API keys and
 the summary provider live in `app_settings` and are read at the moment they are
 used. setec keeps the database password for the *deploy*: Ansible reads
 `docker/vimmary/db-password` and renders the stack's `.env`.
+
+The setec package remains linked, because meltkit's `secrets` resolver imports
+it and vimmary still uses that resolver for its environment-then-literal chain.
+`InitSetecStore` is never called, so no setec code executes. Cutting the last
+link would mean reimplementing the resolver here and diverging from every other
+service in the homelab — not worth it for a code path that cannot run.
 
 **Reasoning.** Every startup network call is a way for the process to hang
 before it opens its listener, and one of them did — 6h23min on 2026-08-07, with

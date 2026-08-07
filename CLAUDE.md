@@ -100,8 +100,15 @@ its trigger recorded in `DECISIONS.md`, not an oversight.
 **setec still holds the database password, but vimmary never talks to it.**
 Ansible reads `docker/vimmary/db-password` at deploy time and renders it into
 the stack's `.env`; the container receives it as `VIMMARY_POSTGRES_PASSWORD`,
-which meltkit's resolver checks before anything else. Nothing in the binary
-links a setec client.
+which meltkit's resolver checks before anything else.
+
+Precisely: `InitSetecStore` is never called, so no setec code runs and no
+request is made. The package is still *linked* — meltkit's `secrets` resolver
+imports it, and vimmary uses that resolver for the environment-then-literal
+chain. `go list -deps ./cmd/vimmary` therefore still names
+`github.com/tailscale/setec/client/setec`. Linked and unreachable is not the
+same as absent, and only the second would be worth the divergence from the
+resolver every other service here uses.
 
 **`videos` holds both kinds of row, and source-blind queries are bugs.** A
 `source` column discriminates `youtube` from `podcast`; podcast rows carry NULL
