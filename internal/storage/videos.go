@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -118,6 +119,12 @@ func scanVideo(row rowScanner) (*Video, error) {
 		&v.Source, &v.ExternalID, &v.SourceURL, &v.SourceFeedID,
 		&v.ThumbnailURL, &v.PublishedAt)
 	if err != nil {
+		// Every single-row lookup in this file goes through here, so this is the
+		// one place the driver's sentinel becomes ErrNotFound. In scanVideos the
+		// branch is unreachable — rows.Next() gates the call.
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	return &v, nil
@@ -240,7 +247,7 @@ func (db *DB) UpdateVideoSummary(ctx context.Context, id uuid.UUID, summary stri
 		return fmt.Errorf("update video summary: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return pgx.ErrNoRows
+		return ErrNotFound
 	}
 	return nil
 }
@@ -267,7 +274,7 @@ func (db *DB) UpdateVideoTranscript(ctx context.Context, id uuid.UUID, transcrip
 		return fmt.Errorf("update video transcript: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return pgx.ErrNoRows
+		return ErrNotFound
 	}
 	return nil
 }
@@ -343,7 +350,7 @@ func (db *DB) DeleteVideo(ctx context.Context, userID int, id uuid.UUID) error {
 		return fmt.Errorf("delete video: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return pgx.ErrNoRows
+		return ErrNotFound
 	}
 	return nil
 }

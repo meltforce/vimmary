@@ -5,8 +5,8 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/meltforce/vimmary/internal/service"
 	mkmcp "github.com/meltforce/meltkit/pkg/mcp"
+	"github.com/meltforce/vimmary/internal/service"
 )
 
 var (
@@ -42,7 +42,7 @@ Use stats for aggregate statistics, optionally per source.`)
 		server.ServerTool{Tool: toolResummarize, Handler: h.resummarize},
 		server.ServerTool{Tool: toolListRecent, Handler: h.listRecent},
 		server.ServerTool{Tool: toolStats, Handler: h.stats},
-)
+	)
 
 	return s
 }
@@ -119,4 +119,3 @@ var toolStats = mcp.NewTool("stats",
 		mcp.Description("Restrict the counts to 'youtube' or 'podcast'. Default: both."),
 	),
 )
-

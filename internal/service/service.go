@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/meltforce/vimmary/internal/config"
 	"github.com/meltforce/vimmary/internal/models"
 	"github.com/meltforce/vimmary/internal/storage"
@@ -341,7 +340,7 @@ func (s *Service) SetSummaryProvider(ctx context.Context, provider string) error
 func (s *Service) IsAdmin(ctx context.Context, userID int) (bool, error) {
 	primaryID, _, err := s.db.GetPrimaryUser(ctx)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return true, nil
 		}
 		return false, err

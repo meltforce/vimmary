@@ -2,10 +2,10 @@ package storage_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/meltforce/vimmary/internal/storage"
 )
 
@@ -100,8 +100,8 @@ func TestGetBySourceIDAndEnsureVideoRow(t *testing.T) {
 	}
 
 	// The same external ID under the other source is a different row.
-	if _, err := store.GetBySourceID(ctx, 1, storage.SourceYouTube, externalID); err != pgx.ErrNoRows {
-		t.Errorf("GetBySourceID(youtube) error = %v, want pgx.ErrNoRows", err)
+	if _, err := store.GetBySourceID(ctx, 1, storage.SourceYouTube, externalID); !errors.Is(err, storage.ErrNotFound) {
+		t.Errorf("GetBySourceID(youtube) error = %v, want storage.ErrNotFound", err)
 	}
 }
 

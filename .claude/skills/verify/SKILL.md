@@ -39,10 +39,10 @@ default set has no formatting linter, and CI runs neither. An unformatted file
 was committed on 2026-08-07 (`9afc86a`, a misaligned struct tag in
 `internal/models/models.go`) and no step objected.
 
-Two files predate this step and stay listed until someone fixes them:
-`internal/mcp/server.go` (import order) and
-`internal/storage/videos_integration_test.go`. Only act on files your change
-touched — reformatting the others widens an unrelated diff.
+The two files that predated this step — `internal/mcp/server.go` (import order)
+and `internal/storage/videos_integration_test.go` — were formatted on
+2026-08-07. `gofmt -l` now prints nothing on a clean tree, so any output is
+from the change in front of you.
 
 ## 3. Tests
 

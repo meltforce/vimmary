@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	vimmary "github.com/meltforce/vimmary"
 	"github.com/meltforce/meltkit/pkg/db"
+	vimmary "github.com/meltforce/vimmary"
 	"github.com/meltforce/vimmary/internal/storage"
 )
 

@@ -2,10 +2,10 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/meltforce/vimmary/internal/storage"
 )
@@ -69,7 +69,7 @@ func (h *handlers) getVideo(ctx context.Context, req mcp.CallToolRequest) (*mcp.
 	userID := UserIDFromContext(ctx)
 	video, err := h.svc.GetVideo(ctx, userID, id)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, storage.ErrNotFound) {
 			return mcp.NewToolResultError("video not found"), nil
 		}
 		h.log.Error("get video failed", "error", err)

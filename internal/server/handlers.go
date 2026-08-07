@@ -2,13 +2,13 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/meltforce/meltkit/pkg/middleware"
 	"github.com/meltforce/vimmary/internal/karakeep"
 	"github.com/meltforce/vimmary/internal/service"
@@ -114,7 +114,7 @@ func (s *Server) handleGetVideo(w http.ResponseWriter, r *http.Request) {
 
 	video, err := s.svc.GetVideo(r.Context(), uid, id)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, storage.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "video not found"})
 			return
 		}
@@ -151,7 +151,7 @@ func (s *Server) handleResummarize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.svc.ResummarizeAsync(uid, id, body.Level, body.Language, body.Provider); err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, storage.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "video not found"})
 			return
 		}
@@ -176,7 +176,7 @@ func (s *Server) handleRetryVideo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.svc.RetryVideo(r.Context(), uid, id); err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, storage.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "video not found"})
 			return
 		}
@@ -201,7 +201,7 @@ func (s *Server) handleDeleteVideo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.svc.DeleteVideo(r.Context(), uid, id); err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, storage.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "video not found"})
 			return
 		}
@@ -226,7 +226,7 @@ func (s *Server) handleTranscribeVideo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.svc.TranscribeVideo(r.Context(), uid, id); err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, storage.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "video not found"})
 			return
 		}

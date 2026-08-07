@@ -1,11 +1,11 @@
 package feed
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
 	"github.com/meltforce/vimmary/internal/service"
 	"github.com/meltforce/vimmary/internal/storage"
 )
@@ -60,7 +60,7 @@ func handleFeed(svc *service.Service, store *storage.DB, opts FeedOptions) http.
 
 		userID, err := store.GetUserByFeedToken(r.Context(), token)
 		if err != nil {
-			if err == pgx.ErrNoRows {
+			if errors.Is(err, storage.ErrNotFound) {
 				http.NotFound(w, r)
 				return
 			}

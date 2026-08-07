@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -38,6 +39,9 @@ func scanSubscription(row rowScanner) (*PodcastSubscription, error) {
 		&s.Enabled, &s.DetailLevel, &s.InitialBackfill, &s.Initialized, &s.Watermark,
 		&s.LastPolledAt, &s.LastError, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	return &s, nil

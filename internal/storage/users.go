@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
@@ -28,8 +29,8 @@ func (db *DB) GetPrimaryUser(ctx context.Context) (id int, login string, err err
 		ORDER BY created_at ASC
 		LIMIT 1
 	`).Scan(&id, &login)
-	if err == pgx.ErrNoRows {
-		return 0, "", pgx.ErrNoRows
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, "", ErrNotFound
 	}
 	return
 }
@@ -60,10 +61,14 @@ func (db *DB) GetOrCreateWebhookToken(ctx context.Context, userID int) (string, 
 	return newToken, nil
 }
 
-// GetUserByWebhookToken looks up a user ID by webhook token. Returns pgx.ErrNoRows if not found.
+// GetUserByWebhookToken looks up a user ID by webhook token. Returns ErrNotFound
+// if no user carries it.
 func (db *DB) GetUserByWebhookToken(ctx context.Context, token string) (int, error) {
 	var id int
 	err := db.Pool.QueryRow(ctx, `SELECT id FROM users WHERE webhook_token = $1`, token).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, ErrNotFound
+	}
 	return id, err
 }
 
@@ -91,10 +96,15 @@ func (db *DB) GetOrCreateFeedToken(ctx context.Context, userID int) (string, err
 	return newToken, nil
 }
 
-// GetUserByFeedToken looks up a user ID by feed token. Returns pgx.ErrNoRows if not found.
+// GetUserByFeedToken looks up a user ID by feed token. Returns ErrNotFound if no
+// user carries it — which is what turns an invalid feed URL into a 404 rather
+// than a 403, per CLAUDE.md.
 func (db *DB) GetUserByFeedToken(ctx context.Context, token string) (int, error) {
 	var id int
 	err := db.Pool.QueryRow(ctx, `SELECT id FROM users WHERE feed_token = $1`, token).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, ErrNotFound
+	}
 	return id, err
 }
 
