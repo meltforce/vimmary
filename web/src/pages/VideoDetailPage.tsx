@@ -126,7 +126,7 @@ export default function VideoDetailPage() {
 
   if (isLoading) {
     return (
-      <>
+      <div className="detail-page">
         <div className="page-head">
           <div>
             <Skel w={190} h={10} />
@@ -134,22 +134,24 @@ export default function VideoDetailPage() {
           </div>
         </div>
         <div style={{ borderTop: "var(--rule-strong)" }} />
-        <div className="page-x" style={{ paddingTop: 24, maxWidth: "68ch" }}>
+        <div className="page-x detail-content">
           {[92, 100, 84, 96, 70].map((w, i) => (
             <div key={i} style={{ marginBottom: 10 }}><Skel w={`${w}%`} h={16} /></div>
           ))}
         </div>
-      </>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <div className="empty">
-        <div className="kick">Error</div>
-        <h3>This summary could not be loaded.</h3>
-        <p>{(error as Error).message}</p>
-        <Link to="/" className="btn btn-secondary">Back to videos</Link>
+      <div className="detail-page">
+        <div className="empty">
+          <div className="kick">Error</div>
+          <h3>This summary could not be loaded.</h3>
+          <p>{(error as Error).message}</p>
+          <Link to="/" className="btn btn-secondary">Back to videos</Link>
+        </div>
       </div>
     );
   }
@@ -175,7 +177,7 @@ export default function VideoDetailPage() {
     .join(" · ");
 
   return (
-    <>
+    <div className="detail-page">
       <PageHeader
         kicker={kicker}
         title={video.title || video.youtube_id}
@@ -304,7 +306,7 @@ export default function VideoDetailPage() {
             </div>
           ) : null}
 
-          <div className="page-x" style={{ paddingTop: 24, paddingBottom: 40 }}>
+          <div className="page-x detail-content">
             {activeTab === "summary" ? (
               video.summary ? (
                 <div className="reader">
@@ -416,7 +418,7 @@ export default function VideoDetailPage() {
       ) : null}
 
       <Toast message={toast.message} onDismiss={toast.dismiss} />
-    </>
+    </div>
   );
 }
 

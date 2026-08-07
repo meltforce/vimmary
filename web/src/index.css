@@ -42,6 +42,21 @@
 
 /* ── vimmary-only ────────────────────────────────────────────────────────── */
 
+/* Detail views share the library's reading column. `width: 100%` keeps the
+   column fluid below its desktop measure, while the maximum aligns its header,
+   controls and text with the feed rather than leaving the summary on the left
+   side of a wide window. */
+.detail-page {
+  width: 100%;
+  max-width: var(--reading-w);
+  margin-inline: auto;
+}
+
+.detail-content {
+  padding-top: 24px;
+  padding-bottom: 40px;
+}
+
 /* The summary body is markdown rendered into .reader. react-markdown emits
    links, lists and inline code, which homelab.css does not style inside .reader
    because not every app renders markdown. */
