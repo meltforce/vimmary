@@ -30,7 +30,12 @@ Changing one does not change the other.
 **Nothing in the startup path fetches a secret over the network, and that is the
 point.** The init order in `cmd/vimmary/main.go` is config → tsnet → resolve the
 database password from the environment → migrations → DB → services → HTTP
-listener. The only remaining network dependency is tsnet itself. Until
+listener, and `run()` *is* that order — each step is a named function
+(`startTailscale`, `openDatabase`, `buildService`, `buildHTTPServer`,
+`openListener`), so the sequence is readable in one screen rather than inferred
+from 254 lines. Every `defer` stays in `run`; moving one into the function that
+created the thing it closes closes it immediately. The only remaining network
+dependency is tsnet itself. Until
 2026-08-07 vimmary read three secrets from setec over the tsnet node during
 startup, and a node the tailnet had not yet placed got `access denied` — an
 answer the setec store retries forever. That produced a 6h23min outage with the
@@ -44,6 +49,31 @@ Settings → LLM providers works without a restart. There is deliberately no
 startup check that the configured provider has a key: a service that refuses to
 start cannot serve the page on which the key would be entered. A missing key is
 a failed summary with a message saying so.
+
+**A storage dependency that needs testing gets a narrow seam, not one interface
+over `storage.DB`.** `internal/service/service.go` declares three:
+`settingsSource` (two methods, the summarizer path), `summarizerFactory` and
+`searchSource` (two methods, `Search`). `New` wires each to the real
+implementation; a test replaces only the one its path needs. The *why* is that a
+single interface would carry all 38 methods the service calls, every fake would
+implement all of them to exercise one, and a new query anywhere would break every
+fake. `Service.db` stays concrete for everything else — see `DECISIONS.md`,
+2026-08-07, which also records that `analysis/structure-report.md` recommended
+the single interface and why that was not followed.
+
+**`storage.ErrNotFound`, never `pgx.ErrNoRows`, outside `internal/storage`.**
+The translation sits in `scanVideo` and `scanSubscription`, which every
+single-row lookup passes through, and in the `RowsAffected() == 0` branches.
+Compare with `errors.Is`; the `==` comparisons this replaced were one wrapper
+away from being wrong and one of them was, answering 500 where the handler
+intended 404. Only `internal/storage` imports `jackc/pgx`, and a `grep` for it
+outside that package is the check.
+
+**Each Settings section owns its queries and its own error state**
+(`web/src/pages/settings/`, one file per concern). The page holds none. The why:
+a shared `isLoading`/`errorObj` pair is a hard conjunction, so one failing
+backend blanked the whole page — `LLMSection` already had to opt out because the
+server answers 404 to a non-admin.
 
 **The Mistral key is not only the summarizer's.** The same `app_settings` value
 feeds `internal/mistral.Client`, which is both the embedder and the podcast
@@ -159,8 +189,8 @@ length of its LLM call.
 **`PodcastSource` must be a nil interface, not a nil `*cast2md.Client`.** Every
 podcast entry point tests `s.cast2md == nil`; a typed nil pointer stored in the
 interface is not nil and would turn "podcasts disabled" into a nil dereference.
-`cmd/vimmary/main.go` declares the variable with the interface type for exactly
-that reason.
+`buildService` in `cmd/vimmary/main.go` declares the variable with the interface
+type for exactly that reason.
 
 **`max_tokens` is level-dependent** (`internal/summary/claude.go`): 4096 for
 `medium`, 16000 for `deep`. A truncated response ends inside its JSON object, and
@@ -181,6 +211,12 @@ it is about.
 | `ROADMAP.md` | Open work only. Status token `[open]`. |
 | `DECISIONS.md` | Decisions taken, including decisions not to do something — those are the ones most likely to be re-derived from scratch otherwise. |
 | `INCIDENTS.md` | Postmortems for things that broke. Newest first. |
+
+`analysis/structure-report.md` is not one of these and does not carry state: it
+is a measurement, dated and pinned to a commit, with the command for every
+number. Sections are appended when it is re-measured rather than edited, because
+a figure and the commit it was taken at belong together. Anything it *implies*
+becomes a row in `ROADMAP.md` or an entry in `DECISIONS.md`.
 
 **The movement rule.** When an item closes it is *removed* from `ROADMAP.md`,
 and its reasoning moves to whichever document above holds that kind of thing.

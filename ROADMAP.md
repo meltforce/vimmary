@@ -23,8 +23,21 @@ each becomes its own `[open]` row before the entry is moved out.
 
 | Status | Item | Where | Trigger | Notes |
 |---|---|---|---|---|
-| `[open]` | Remove the tsnet startup race | `cmd/vimmary/main.go`, or upstream | | Measured on 2026-08-07 over 15 starts: `AuthLoop: state is Running; done` lost 4 of 4, `Starting; done` won 11 of 11. **vimmary no longer gives the race a way to stop the process** — nothing dials over the node during startup since the setec client was removed — so this is no longer an availability item. It still costs a lost start on any future component that does dial early. `tsServer.Up()` cannot serve as the readiness condition, because the AuthLoop short-circuits to `Running` from persisted state before a current netmap exists; a condition that reflects the netmap would be needed. See INCIDENTS.md, 2026-08-07. |
-| `[open]` | Cover `summarizeAndStore` end to end | `internal/service` | | The seam added on 2026-08-07 covers provider and key resolution without a database. What it does not reach is the funnel below it: model resolution, custom prompts, token accounting and the embedding call all read `storage.DB` directly, which is a concrete struct with no interface. A test there needs the local test database, and would therefore skip in CI the way `internal/storage` already does. |
+| `[open]` | Remove the tsnet startup race | `cmd/vimmary/main.go`, or upstream | | Measured on 2026-08-07 over 15 starts: `AuthLoop: state is Running; done` lost 4 of 4, `Starting; done` won 11 of 11. **vimmary no longer gives the race a way to stop the process** — nothing dials over the node during startup since the setec client was removed — so this is no longer an availability item. It still costs a lost start on any future component that does dial early. `tsServer.Up()` cannot serve as the readiness condition, because the AuthLoop short-circuits to `Running` from persisted state before a current netmap exists; a condition that reflects the netmap would be needed. See INCIDENTS.md, 2026-08-07. The call now sits in `startTailscale`, not in `main`. |
+| `[open]` | Cover `summarizeAndStore` end to end | `internal/service` | | The seam added on 2026-08-07 covers provider and key resolution without a database. What it does not reach is the funnel below it: model resolution, custom prompts, token accounting and the embedding call all read `storage.DB` directly. The shape to follow is now settled — a narrow interface over the methods that one path uses, as `settingsSource` and `searchSource` do (`DECISIONS.md`, 2026-08-07) — so this no longer needs the local database the way it would have. |
+
+## Structure and coverage
+
+Everything here comes from `analysis/structure-report.md`, measured 2026-08-06
+at `105edde` and re-measured 2026-08-07 at `960ed8d` (section 6). Section 4 of
+that report is closed; these are the items its numbers left behind.
+
+| Status | Item | Where | Trigger | Notes |
+|---|---|---|---|---|
+| `[open]` | Cover `ProcessVideo` | `internal/service/process.go:70` | | CC 23, 143 lines, 15 commits, 0.0% — the highest-complexity Go function still untested. It needs `yt *youtube.Client` behind an interface, the way `Search` needed `searchSource`, and additionally reaches an LLM and Karakeep, so it needs more than one seam. `359551d` is the worked example. |
+| `[open]` | Cover `internal/mcp` and `internal/feed` | both packages | | Both at 0.0%, 16 functions between them. `DECISIONS.md` 2026-03 asserts REST and MCP must not diverge, and nothing today would detect it if they did — the structure report states this as measured (section 4.7), not conjectured. `BuildFeed` (`internal/feed/atom.go:66`, CC 10) is the single largest piece of untested logic in the two. |
+| `[open]` | Remove `karakeep.Client.GetBookmark` or show it is reachable | `internal/karakeep/client.go:42` | | The one candidate `go run golang.org/x/tools/cmd/deadcode@latest -test ./...` reports, unchanged since 2026-08-06. `deadcode` analyses reachability from `main` and the test binaries, so a call through reflection or an unknown interface would be a false positive; that is what has to be ruled out before deleting. |
+| `[open]` | Decide whether `internal/server` gets handler tests | `internal/server` | `internal/service` coverage stops rising | 40 of 40 functions at 0.0%, 658 lines. The handlers are thin — no function reaches CC 10 except `handleSetLLMSettings` — so the value is in the wiring (status codes, source defaults, admin gating), not in logic. Worth doing after the service layer, not instead of it. |
 
 ## Podcasts
 

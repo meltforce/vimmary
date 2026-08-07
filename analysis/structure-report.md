@@ -788,3 +788,91 @@ scratchpad and are described in full above (section 5.5): a `go/ast` walker
 measuring `FuncDecl` line spans and cross-package selector references, and a
 `typescript`-based equivalent for `.ts`/`.tsx`. Every other measurement is a
 single shell command, quoted at the point it is used.
+
+---
+
+## 6. Delta, measured 2026-08-07 against `960ed8d`
+
+Sections 1–5 stay as measured at `105edde` and are not edited: a number and the
+commit it was taken at belong together. This section records what changed since,
+and what each recommendation in section 4 now stands at.
+
+Two rounds of work sit between the two measurements. `9afc86a` and `3fa3210`
+landed before this section was written and were not driven by the report;
+`b6ebaa6`, `359551d`, `95b6ab8` and `960ed8d` implement section 4.
+
+### 6.1 The findings, re-measured before acting
+
+Same commands as section 5, run against `3fa3210` — the state the report's
+recommendations were checked against before any of them was implemented.
+
+| Finding | At `105edde` | At `3fa3210` | Verdict |
+|---|---|---|---|
+| 2.2 `pgx.ErrNoRows` outside `storage` | 7 sites, 3 packages | **8 sites, 4 packages** — `internal/service/service.go:344` added by `9afc86a` | held, and moving the wrong way |
+| 2.3 transports holding `*storage.DB` | 3 calls | unchanged | held |
+| 2.5 `internal/service` coverage | 13.4% | 17.3% | improved by `3fa3210` |
+| 2.5 packages at 0% | server, mcp, feed, models, mistral, cmd | the same six | held |
+| 3.1 `SettingsPage.tsx` | 1029 lines, 22 hooks | **1193 lines, 24 hooks** | grown |
+| 3.2 `cmd/vimmary/main.go` | 299 lines, CC 34 | 288 lines, **CC 26** | held, eased |
+| 3.5 `internal/server/handlers.go` | 566 lines, max CC 9 | **658 lines**, `handleSetLLMSettings` **CC 10** | first function over the threshold |
+| Functions at CC ≥ 10 | 17, 15 at 0% | 18, 16 at 0% | held |
+| 5.8 dead code | `karakeep.Client.GetBookmark` | unchanged | held |
+
+**One correction to section 4.1.** The recommendation reads as one interface
+over `Service.db`. `3fa3210` had already established the opposite shape —
+`settingsSource`, two methods, for one path — and that is what the
+implementation followed. See 6.3.
+
+### 6.2 State after the work
+
+| Measure | `105edde` | `960ed8d` |
+|---|---|---|
+| `pgx` importers outside `internal/storage` | 3 | **0** |
+| `internal/service` coverage | 13.4% | **26.2%** |
+| `Search` coverage | 0.0% | **98.6%** |
+| Highest CC in the Go code | `main` 34 | `ProcessVideo` / `Search` / `GetStats` 23 |
+| Longest Go function | `main`, 264 lines | `ProcessVideo`, 143 lines |
+| Largest file in the repository | `SettingsPage.tsx`, 1029 lines | `VideoListPage.tsx`, 760 lines |
+| Highest hook count in one file | `SettingsPage` 22 | `SummariesSection` 7 |
+| Functions at CC ≥ 10 | 17, 15 at 0% coverage | 18, 15 at 0% coverage |
+
+The CC ≥ 10 count did not fall, and that is not a failure of the work: `main`
+CC 34 left the list and `run` CC 11 joined it, while `handleSetLLMSettings`
+CC 10 arrived with `9afc86a`. The distribution moved; the count did not.
+
+### 6.3 Recommendation by recommendation
+
+| # | Item | State |
+|---|---|---|
+| 4.1 | `*storage.DB` behind an interface | **Done differently**, `359551d`. Not one interface over `Service.db` but a third narrow seam, `searchSource`, over the two methods `Search` uses — following `settingsSource` from `3fa3210` rather than the report. The reasoning is in `DECISIONS.md`, 2026-08-07. |
+| 4.2 | Cover `Search` | **Done**, `359551d`. 0.0% → 98.6%, nine tests, seven mutations checked. |
+| 4.3 | Split `main()` | **Done**, `95b6ab8`. CC 26 → `run` at 11, 254-line function → 60. Found and fixed a defect on the way: a `Serve()` error called `os.Exit(1)` from inside the goroutine, skipping every defer. |
+| 4.4 | Split `SettingsPage.tsx` | **Done**, `960ed8d`. 1193 → 38 lines plus six files. Changed error isolation deliberately; see `DECISIONS.md`. |
+| 4.5 | `storage.ErrNotFound` | **Done**, `b6ebaa6`, and it was worth more than the report judged. The eight comparisons used `==`, so a wrapper made them false — and one already had: `ResummarizeAsync` wraps the lookup, so a resummarize on an unknown ID answered 500 where the handler intended 404. The report weighed the change by driver-swap blast radius and did not check whether the existing sites worked. |
+| 4.6 | Explicitly not recommended | Unchanged. `VideoListPage` CC 74, `handlers.go` width, `GetStats`, the three direct storage calls and `mistral.post` were all left alone. |
+| 4.7 | Not measured | Still not measured. REST and MCP are both at 0%, so nothing would detect them diverging; `internal/feed` likewise. Each is an `[open]` row in `ROADMAP.md`. |
+
+### 6.4 What is left, from the same numbers
+
+Carried into `ROADMAP.md` rather than kept here:
+
+- `ProcessVideo` — CC 23, 15 commits, 0.0%. Needs `yt *youtube.Client` behind an
+  interface the way `Search` needed `searchSource`; the pattern now exists.
+- `internal/mcp` and `internal/feed` at 0.0% — the packages where a REST/MCP
+  divergence would live.
+- `karakeep.Client.GetBookmark`, still the one `deadcode` candidate.
+
+### 6.5 Commands for this section
+
+```
+git log --oneline 105edde..HEAD
+grep -rn "jackc/pgx" --include='*.go' . | grep -v _test.go
+go test -coverprofile=cover.out ./... && go tool cover -func=cover.out
+go run github.com/fzipp/gocyclo/cmd/gocyclo@latest -over 9 \
+  $(find . -name '*.go' -not -name '*_test.go' -not -path './web/*')
+cd web && find src -name '*.ts' -o -name '*.tsx' | xargs wc -l | sort -rn
+```
+
+Coverage needs the local database (`docker compose up -d db`), as in section
+5.10 — the `internal/storage` figure is unreachable without it and is lower in
+CI, where those tests skip.

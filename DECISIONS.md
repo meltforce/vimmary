@@ -21,6 +21,100 @@ identifier rather than estimated.
 
 ---
 
+## 2026-08-07 — a testable storage dependency gets a narrow seam, not one interface over `storage.DB`
+
+**Decided:** 2026-08-07 (`3fa3210`, `359551d`)
+
+**Decision.** When a code path in `internal/service` needs to be testable
+without Postgres, it gets its own interface over exactly the `storage.DB`
+methods it calls, declared next to the field it replaces. There are three so
+far, all in `internal/service/service.go`: `settingsSource` (two methods, the
+summarizer path), `summarizerFactory` (the construction step) and
+`searchSource` (two methods, `Search`). `Service.db` stays a concrete
+`*storage.DB` for everything else.
+
+There is deliberately no single interface over `storage.DB`. It would carry all
+38 methods the service calls, every fake would implement all of them to exercise
+one, and adding a query anywhere would break every fake.
+
+**Reasoning.** `analysis/structure-report.md` section 4.1 recommended the single
+interface, on the measurement that 15 of 17 functions at CC ≥ 10 sat at 0%
+coverage and the two exceptions were the ones reached through `PodcastSource`.
+The measurement holds; the shape does not follow from it. What the covered
+functions have in common is a *substitutable dependency for their path*, not one
+abstraction over the store — and `3fa3210` had already demonstrated the narrow
+form on the summarizer path before the recommendation was acted on.
+
+The result on the case that motivated it: `Search` went from 0.0% to 98.6%
+behind a two-method interface, and `internal/service` from 13.4% to 26.2%.
+
+**Trigger to re-open.** Enough seams accumulate that they overlap — three or
+four interfaces naming the same methods — or a fake has to implement methods its
+test does not use. Either is the signal that the boundary is in the wrong place.
+
+---
+
+## 2026-08-07 — `storage.ErrNotFound` replaces `pgx.ErrNoRows` at the boundary
+
+**Decided:** 2026-08-07 (`b6ebaa6`)
+
+**Decision.** `internal/storage` returns its own `ErrNotFound` for a lookup that
+matches no row, and for an update or delete that affects none. Callers compare
+with `errors.Is`, never with `==`. The translation sits in `scanVideo` and
+`scanSubscription`, which every single-row lookup already passes through, and in
+the three `RowsAffected() == 0` branches in `videos.go`. Only `internal/storage`
+imports `jackc/pgx`.
+
+Comparisons *inside* `internal/storage` against `pgx.ErrNoRows` stay — that
+package owns the driver, which is where `CLAUDE.md`'s layer table puts it.
+
+**Reasoning.** Two reasons, and the second is the one that decided it.
+
+The layering reason is the one the structure report gives (section 2.2): three
+transports and the service layer had to know which driver the storage layer
+uses. The report weighed it by the blast radius of a driver swap, found 7 lines,
+and recommended doing it opportunistically.
+
+The reason it was worth doing on its own is that the existing comparisons were
+`==`, so any wrapper between the query and the handler made them silently false
+— and one already did. `ResummarizeAsync` wraps its lookup with
+`fmt.Errorf("get video: %w", err)`, so `POST /api/v1/videos/{id}/resummarize`
+on an unknown ID answered 500 where `handlers.go` intended 404. A sentinel that
+callers compare with `errors.Is` cannot fail that way.
+
+**Trigger to re-open.** None expected. If a caller ever needs to distinguish
+"row absent" from "update matched nothing", those are one error today and would
+have to become two.
+
+---
+
+## 2026-08-07 — every Settings section owns its queries and its errors
+
+**Decided:** 2026-08-07 (`960ed8d`)
+
+**Decision.** `web/src/pages/settings/` holds one file per concern — Karakeep,
+LLM providers, summaries, RSS, podcasts — and each renders its own loading and
+error state. `SettingsPage.tsx` is the page that stacks them and holds no query
+and no state. A failing backend costs one card.
+
+**Reasoning.** The page previously combined four queries into one
+`isLoading`/`errorObj` pair. That is a hard conjunction: one failing query
+replaced the whole Settings page with an error box, including the sections that
+had loaded. `LLMSection` had already been written to opt out of it, because the
+server answers 404 to a non-admin and the page would have gone with it — so the
+exception existed before the rule was changed, and generalising it costs
+nothing.
+
+The split is also what the size measurement asked for: 1193 lines and 24 hooks
+in one file, largest in the repository, against five concerns sharing no state
+(`analysis/structure-report.md` 4.4).
+
+**Trigger to re-open.** A section needs data another section already fetched.
+React Query dedupes by key across components, so this is only a real problem if
+two sections need to stay in step within one render.
+
+---
+
 ## 2026-08-07 — no secret is fetched over the network during startup
 
 **Decided:** 2026-08-07
