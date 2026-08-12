@@ -7,7 +7,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/horiagug/youtube-transcript-api-go v0.0.13
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/mark3labs/mcp-go v0.57.0
+	github.com/mark3labs/mcp-go v0.58.0
 	github.com/meltforce/meltkit v0.2.0
 	github.com/pgvector/pgvector-go v0.4.1
 	github.com/yuin/goldmark v1.8.5
