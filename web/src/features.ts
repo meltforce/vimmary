@@ -12,17 +12,36 @@ import type { Features } from "./api.ts";
  *
  * The answer changes only on a server restart, so it is cached for the session.
  */
-export function useFeatures(): Features {
-  const { data } = useQuery({
+function useFeaturesQuery() {
+  return useQuery({
     queryKey: ["features"],
     queryFn: fetchFeatures,
     staleTime: Infinity,
     gcTime: Infinity,
     retry: false,
   });
+}
+
+export function useFeatures(): Features {
+  const { data } = useFeaturesQuery();
   // Default to off while loading. Showing the podcast UI and then removing it
   // would be worse than showing it a moment late on a deployment that has it.
   return data ?? { podcasts: false, cast2md_url: "", is_admin: false };
+}
+
+/**
+ * useFeaturesResolved reports whether the answer has arrived — with data or
+ * with an error, since `retry: false` makes a failure final.
+ *
+ * Anything that *removes* UI on the default-off answer has to wait for this.
+ * The routes are the case that matters: App renders the podcast routes only
+ * when `podcasts` is true, so on a direct hit of /podcasts or /podcasts/new the
+ * first render has no such route, the catch-all redirects to / with `replace`,
+ * and the deep link is gone before the flags arrive. Rendering the podcast UI a
+ * moment late is fine; redirecting away from it a moment early is not.
+ */
+export function useFeaturesResolved(): boolean {
+  return !useFeaturesQuery().isPending;
 }
 
 export function usePodcastsEnabled(): boolean {

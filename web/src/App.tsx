@@ -3,7 +3,7 @@ import { Suspense, lazy } from "react";
 import ErrorBoundary from "./components/ErrorBoundary.tsx";
 import Layout from "./components/Layout.tsx";
 import { Skel } from "./components/LoadingSkeleton.tsx";
-import { usePodcastsEnabled } from "./features.ts";
+import { useFeaturesResolved, usePodcastsEnabled } from "./features.ts";
 
 const VideoListPage = lazy(() => import("./pages/VideoListPage.tsx"));
 const VideoDetailPage = lazy(() => import("./pages/VideoDetailPage.tsx"));
@@ -30,6 +30,7 @@ function Loading() {
 
 export default function App() {
   const podcasts = usePodcastsEnabled();
+  const featuresResolved = useFeaturesResolved();
 
   return (
     <Layout>
@@ -54,7 +55,16 @@ export default function App() {
             )}
             <Route path="/stats" element={<StatsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            {/* The redirect waits for the feature flags. Until they arrive
+                `podcasts` is false, the routes above do not exist, and a direct
+                hit on /podcasts or /podcasts/new — the cast2md deep link, a
+                bookmark, an RSS entry — would match here and lose its URL to
+                `replace` before the answer came back. Once resolved this route
+                behaves as before. */}
+            <Route
+              path="*"
+              element={featuresResolved ? <Navigate to="/" replace /> : <Loading />}
+            />
           </Routes>
         </Suspense>
       </ErrorBoundary>
