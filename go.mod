@@ -1,6 +1,6 @@
 module github.com/meltforce/vimmary
 
-go 1.26.5
+go 1.26.6
 
 require (
 	github.com/go-chi/chi/v5 v5.3.1
@@ -11,7 +11,7 @@ require (
 	github.com/meltforce/meltkit v0.2.0
 	github.com/pgvector/pgvector-go v0.4.1
 	github.com/yuin/goldmark v1.8.5
-	tailscale.com v1.102.2
+	tailscale.com v1.102.3
 )
 
 require (
