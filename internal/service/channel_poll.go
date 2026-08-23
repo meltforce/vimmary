@@ -64,6 +64,12 @@ func (s *Service) pollChannelsOnce(ctx context.Context) {
 			case <-time.After(channelPollGap):
 			}
 		}
+		// The Takeout import creates subscriptions from the CSV alone — no
+		// avatar. Fetch the channel page once here; after the first success
+		// the column is filled and this branch never runs again.
+		if sub.ThumbnailURL == "" {
+			s.backfillChannelIdentity(ctx, sub)
+		}
 		if err := s.pollChannel(ctx, sub); err != nil {
 			s.log.Warn("channel poll failed",
 				"channel_id", sub.ChannelID, "user_id", sub.UserID, "error", err)
@@ -76,6 +82,23 @@ func (s *Service) pollChannelsOnce(ctx context.Context) {
 			s.log.Error("failed to record channel poll", "channel_id", sub.ChannelID, "error", err)
 		}
 	}
+}
+
+// backfillChannelIdentity resolves a subscription's avatar and current title
+// from its channel page. Best effort: a failed fetch leaves the column NULL
+// and the next cycle retries.
+func (s *Service) backfillChannelIdentity(ctx context.Context, sub storage.ChannelSubscription) {
+	info, err := s.channels.ResolveChannel(ctx, "https://www.youtube.com/channel/"+sub.ChannelID)
+	if err != nil || info.ThumbnailURL == "" {
+		s.log.Warn("channel identity backfill failed",
+			"channel_id", sub.ChannelID, "error", err)
+		return
+	}
+	if err := s.db.UpdateChannelIdentity(ctx, sub.ID, info.Title, info.ThumbnailURL); err != nil {
+		s.log.Warn("failed to store channel identity", "channel_id", sub.ChannelID, "error", err)
+		return
+	}
+	s.log.Info("channel identity backfilled", "channel_id", sub.ChannelID, "title", info.Title)
 }
 
 // isShort wraps the probe so a transient failure lets the video into the

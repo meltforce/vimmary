@@ -345,6 +345,45 @@ func TestPollChannel_ProbeFiltersShorts(t *testing.T) {
 	}
 }
 
+// A subscription without artwork — the Takeout import creates exactly those —
+// gets avatar and current title backfilled on the next poll cycle.
+func TestPollChannelsOnce_BackfillsIdentity(t *testing.T) {
+	channelID := uniqueChannelID(t)
+	src := &fakeChannelSource{
+		info: &youtube.ChannelInfo{ID: channelID, Title: "Resolved Title", ThumbnailURL: "https://art.example/a.jpg"},
+	}
+	svc := newChannelTestService(t, src)
+	ctx := context.Background()
+	cleanupChannel(t, svc, 1, channelID)
+
+	// The import path: ID and CSV title, no artwork.
+	sub, err := svc.db.UpsertChannelSubscription(ctx, 1, channelID, "CSV Title", "")
+	if err != nil {
+		t.Fatalf("UpsertChannelSubscription: %v", err)
+	}
+
+	svc.pollChannelsOnce(ctx)
+
+	after, err := svc.db.GetChannelSubscription(ctx, 1, sub.ID)
+	if err != nil {
+		t.Fatalf("GetChannelSubscription: %v", err)
+	}
+	if after.ThumbnailURL != "https://art.example/a.jpg" {
+		t.Errorf("thumbnail = %q, want the resolved artwork", after.ThumbnailURL)
+	}
+	if after.Title != "Resolved Title" {
+		t.Errorf("title = %q, want the resolved title", after.Title)
+	}
+
+	// The filled column ends the backfill: no further resolve calls.
+	resolvesAfterFirst := src.resolves
+	svc.pollChannelsOnce(ctx)
+	if src.resolves != resolvesAfterFirst {
+		t.Errorf("second cycle resolved again (%d -> %d), want the filled column to stop it",
+			resolvesAfterFirst, src.resolves)
+	}
+}
+
 // A subscription whose channel cannot be resolved is not created.
 func TestSubscribeChannel_ResolveFailure(t *testing.T) {
 	src := &fakeChannelSource{}

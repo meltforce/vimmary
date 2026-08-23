@@ -197,7 +197,12 @@ an unread badge or MCP tools.
   proportion for one import. Takeout's `subscriptions.csv` carries channel ID
   and title, so the import performs no page fetches; the inboxes fill through
   one background poll pass rather than inside the request, which would hold
-  the response for two seconds per channel.
+  the response for two seconds per channel. The avatars arrive afterwards:
+  the poller fetches the channel page once for any subscription whose artwork
+  column is NULL and stores avatar plus current title
+  (`backfillChannelIdentity`), so an import is complete after its first poll
+  cycle — visible on 2026-08-23, when the Takeout-imported channels showed
+  video thumbnails instead of avatars in the channel rail.
 - 2026-08-23: channel handle resolution reads the page's `rel="canonical"`
   link before the body's first `"channelId"` — the data island on a handle
   page can carry a localized sibling channel (`@veritasium` resolved to

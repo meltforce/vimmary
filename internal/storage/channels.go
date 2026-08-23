@@ -139,6 +139,22 @@ func (db *DB) UpsertChannelSubscription(ctx context.Context, userID int, channel
 	return sub, nil
 }
 
+// UpdateChannelIdentity stores a freshly resolved title and artwork. Unlike
+// the upsert it leaves `enabled` alone, so an artwork backfill cannot revive
+// a paused subscription.
+func (db *DB) UpdateChannelIdentity(ctx context.Context, id int, title, thumbnailURL string) error {
+	_, err := db.Pool.Exec(ctx, `
+		UPDATE channel_subscriptions
+		SET title = CASE WHEN $2 <> '' THEN $2 ELSE title END,
+			thumbnail_url = NULLIF($3, ''),
+			updated_at = NOW()
+		WHERE id = $1`, id, title, thumbnailURL)
+	if err != nil {
+		return fmt.Errorf("update channel identity: %w", err)
+	}
+	return nil
+}
+
 func (db *DB) SetChannelEnabled(ctx context.Context, userID, id int, enabled bool) error {
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE channel_subscriptions SET enabled = $3, updated_at = NOW()
