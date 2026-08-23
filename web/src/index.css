@@ -134,19 +134,23 @@
 
 /* ── Transcript player ──────────────────────────────────────────────────── */
 
-/* Video and transcript share the reading column: side by side on desktop,
-   stacked on the phone with the video pinned so it stays visible while the
-   transcript scrolls underneath. */
+/* Video above, transcript below, at every width. The side-by-side split this
+   replaces halved the video to ~400px on a desktop viewport — too small to
+   watch — and read-along works top-down anyway. The frame is sticky so the
+   video stays in view while the transcript scrolls underneath it. */
 .player-grid {
   display: grid;
   gap: 16px;
 }
 
-@media (min-width: 768px) {
-  .player-grid {
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-    align-items: start;
-  }
+/* The sticky block is video plus search together: a search field that
+   scrolls away is unusable mid-playback. The background stops the cues from
+   shining through the gaps while the transcript passes underneath. */
+.player-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-bg);
 }
 
 .player-frame {
@@ -155,25 +159,22 @@
   background: var(--color-neutral-100);
 }
 
+/* The hook mounts the iframe inside an intermediate host div; without an
+   explicit height on that chain the iframe's percentage height resolves
+   against nothing and falls back to its attribute height, leaving the frame
+   mostly empty. */
+.player-frame > div,
 .player-frame iframe {
   width: 100%;
   height: 100%;
   display: block;
 }
 
-@media (max-width: 767px) {
-  .player-frame {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-  }
-}
-
 .player-search {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 8px;
+  padding: 10px 0 8px;
 }
 
 .player-hits {

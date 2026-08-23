@@ -78,27 +78,29 @@ export default function TranscriptPlayer({
 
   return (
     <div className="player-grid">
-      {embedError ? (
-        <div className="empty" style={{ padding: "32px 0" }}>
-          <div className="kick">Player unavailable</div>
-          <h3>This video cannot be embedded.</h3>
-          <p>The creator disabled external playback, or the player failed to load.</p>
-          <a
-            className="btn btn-secondary"
-            href={`https://youtube.com/watch?v=${youtubeId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Watch on YouTube
-          </a>
-        </div>
-      ) : (
-        <div className="player-frame">
-          <div ref={containerRef} />
-        </div>
-      )}
+      {/* Video and search pin together while the transcript scrolls under
+          them — a search field that scrolls away is unusable mid-playback. */}
+      <div className="player-head">
+        {embedError ? (
+          <div className="empty" style={{ padding: "32px 0" }}>
+            <div className="kick">Player unavailable</div>
+            <h3>This video cannot be embedded.</h3>
+            <p>The creator disabled external playback, or the player failed to load.</p>
+            <a
+              className="btn btn-secondary"
+              href={`https://youtube.com/watch?v=${youtubeId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Watch on YouTube
+            </a>
+          </div>
+        ) : (
+          <div className="player-frame">
+            <div ref={containerRef} />
+          </div>
+        )}
 
-      <div className="player-transcript">
         <form
           className="player-search"
           onSubmit={(e) => {
@@ -128,8 +130,9 @@ export default function TranscriptPlayer({
             </span>
           ) : null}
         </form>
+      </div>
 
-        <div className="transcript player-pane" ref={paneRef} onWheel={markScrolled} onTouchMove={markScrolled}>
+      <div className="transcript player-pane" ref={paneRef} onWheel={markScrolled} onTouchMove={markScrolled}>
           {segments.map((seg, i) => (
             <div
               key={i}
@@ -159,7 +162,6 @@ export default function TranscriptPlayer({
               <div className="player-cue-text">{highlight(seg.t, query)}</div>
             </div>
           ))}
-        </div>
       </div>
     </div>
   );
