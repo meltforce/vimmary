@@ -475,6 +475,16 @@
   margin-top: 8px;
 }
 
+/* The unit beside a figure. `.hero .unit` in the system stylesheet does not
+   reach these — the figures moved out of `.hero` into the page head — and
+   without it the podcast library read "154hours" in the display face. */
+.page-head-figures .unit {
+  font: 500 13px var(--font-body);
+  letter-spacing: normal;
+  color: var(--color-text-2);
+  margin-left: 7px;
+}
+
 /* The one line of state under the date. */
 .dash-state {
   padding: 0 var(--page-x) 18px;
