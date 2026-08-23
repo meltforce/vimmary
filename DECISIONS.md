@@ -114,6 +114,14 @@ for sort options.
   to their **newest video's thumbnail** instead of an initial: a real avatar
   would need per-channel scraping and a cache, and for Karakeep-only
   channels nothing but the channel name is known to scrape by.
+- 2026-08-23: that scraping and cache exist now — **unfollowed channels get
+  real avatars via the `channel_art` cache** (migration `000016`). The
+  channel name alone is not scrapeable, but each channel's videos are: the
+  watch page names the channel ID (`ResolveVideoChannel`), the channel page
+  carries the avatar. The poller resolves up to 20 channels per cycle, two
+  page fetches each; a failed resolution is cached as a NULL row and retried
+  after a 7-day cool-down. The video-thumbnail fallback remains only as the
+  transitional state before the cache reaches a channel.
 
 ---
 

@@ -66,6 +66,32 @@ func (c *Client) ResolveChannel(ctx context.Context, input string) (*ChannelInfo
 	return info, nil
 }
 
+var watchChannelIDRe = regexp.MustCompile(`"channelId":"(UC[\w-]{22})"`)
+
+// ResolveVideoChannel resolves a video's channel identity through its watch
+// page: the page's player response names the channel ID — reliably its own,
+// unlike a handle page's localized data island — and the channel page then
+// carries title and avatar. Two requests, used once per channel by the
+// artwork cache.
+func (c *Client) ResolveVideoChannel(ctx context.Context, videoID string) (*ChannelInfo, error) {
+	body, err := c.fetchPage(ctx, "https://www.youtube.com/watch?v="+videoID)
+	if err != nil {
+		return nil, err
+	}
+	m := watchChannelIDRe.FindSubmatch(body)
+	if m == nil {
+		return nil, fmt.Errorf("no channel ID on watch page for %s", videoID)
+	}
+	channelID := string(m[1])
+
+	info, err := c.fetchChannelPage(ctx, "https://www.youtube.com/channel/"+channelID)
+	if err != nil {
+		return nil, err
+	}
+	info.ID = channelID
+	return info, nil
+}
+
 // normalizeChannelURL maps the accepted input forms onto a fetchable page URL.
 func normalizeChannelURL(input string) (string, error) {
 	if strings.HasPrefix(input, "@") {
@@ -84,8 +110,8 @@ func normalizeChannelURL(input string) (string, error) {
 	return "https://www.youtube.com/@" + input, nil
 }
 
-// fetchChannelPage loads a channel page and extracts ID, title and artwork.
-func (c *Client) fetchChannelPage(ctx context.Context, url string) (*ChannelInfo, error) {
+// fetchPage loads one YouTube page with the standard browser headers.
+func (c *Client) fetchPage(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -95,17 +121,26 @@ func (c *Client) fetchChannelPage(ctx context.Context, url string) (*ChannelInfo
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch channel page: %w", err)
+		return nil, fmt.Errorf("fetch page: %w", err)
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("channel page returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("page returned status %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read channel page: %w", err)
+		return nil, fmt.Errorf("read page: %w", err)
+	}
+	return body, nil
+}
+
+// fetchChannelPage loads a channel page and extracts ID, title and artwork.
+func (c *Client) fetchChannelPage(ctx context.Context, url string) (*ChannelInfo, error) {
+	body, err := c.fetchPage(ctx, url)
+	if err != nil {
+		return nil, fmt.Errorf("channel page: %w", err)
 	}
 	return parseChannelPage(body), nil
 }

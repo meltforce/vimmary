@@ -36,6 +36,7 @@ func (s *Service) StartChannelPoller(ctx context.Context) {
 
 		for {
 			s.pollChannelsOnce(ctx)
+			s.backfillLibraryChannelArt(ctx)
 			select {
 			case <-ctx.Done():
 				return
@@ -45,7 +46,13 @@ func (s *Service) StartChannelPoller(ctx context.Context) {
 	}()
 }
 
-// pollChannelsOnce advances every enabled subscription.
+// artBackfillPerCycle caps how many unfollowed channels get their avatar
+// resolved per poll cycle — two page fetches each, so the cap keeps a large
+// Karakeep history from turning one cycle into a scrape run.
+const artBackfillPerCycle = 20
+
+// pollChannelsOnce advances every enabled subscription. The art backfill runs
+// as its own step in the ticker loop, not here.
 func (s *Service) pollChannelsOnce(ctx context.Context) {
 	subs, err := s.db.ListEnabledChannelSubscriptions(ctx)
 	if err != nil {
@@ -81,6 +88,46 @@ func (s *Service) pollChannelsOnce(ctx context.Context) {
 		if err := s.db.SetChannelPolled(ctx, sub.ID); err != nil {
 			s.log.Error("failed to record channel poll", "channel_id", sub.ChannelID, "error", err)
 		}
+	}
+}
+
+// backfillLibraryChannelArt resolves avatars for channels that exist only
+// through their videos — Karakeep imports, manual submissions — where the
+// channel name is all the rows carry. One of the channel's videos leads to
+// the channel page; the result lands in the channel_art cache, a failure as
+// a NULL row so the retry waits out the cool-down.
+func (s *Service) backfillLibraryChannelArt(ctx context.Context) {
+	missing, err := s.db.ListChannelsMissingArt(ctx, artBackfillPerCycle)
+	if err != nil {
+		s.log.Error("failed to list channels missing art", "error", err)
+		return
+	}
+
+	for i, m := range missing {
+		if ctx.Err() != nil {
+			return
+		}
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(channelPollGap):
+			}
+		}
+		info, err := s.channels.ResolveVideoChannel(ctx, m.YouTubeID)
+		art := ""
+		if err != nil {
+			s.log.Warn("channel art resolution failed",
+				"channel", m.Channel, "video_id", m.YouTubeID, "error", err)
+		} else {
+			art = info.ThumbnailURL
+		}
+		if err := s.db.UpsertChannelArt(ctx, m.UserID, m.Channel, art); err != nil {
+			s.log.Warn("failed to store channel art", "channel", m.Channel, "error", err)
+		}
+	}
+	if len(missing) > 0 {
+		s.log.Info("channel art backfill pass finished", "channels", len(missing))
 	}
 }
 

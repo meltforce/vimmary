@@ -14,6 +14,7 @@ import (
 // testable without the network. *youtube.Client satisfies it.
 type channelFeedSource interface {
 	ResolveChannel(ctx context.Context, input string) (*youtube.ChannelInfo, error)
+	ResolveVideoChannel(ctx context.Context, videoID string) (*youtube.ChannelInfo, error)
 	FetchChannelFeed(ctx context.Context, channelID string) ([]youtube.FeedEntry, error)
 	IsShort(ctx context.Context, videoID string) (bool, error)
 }

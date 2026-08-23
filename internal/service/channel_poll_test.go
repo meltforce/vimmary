@@ -42,6 +42,14 @@ func (f *fakeChannelSource) FetchChannelFeed(context.Context, string) ([]youtube
 	return f.entries, nil
 }
 
+func (f *fakeChannelSource) ResolveVideoChannel(context.Context, string) (*youtube.ChannelInfo, error) {
+	f.resolves++
+	if f.info == nil {
+		return nil, errors.New("no channel ID found")
+	}
+	return f.info, nil
+}
+
 func (f *fakeChannelSource) IsShort(_ context.Context, videoID string) (bool, error) {
 	f.probes++
 	if f.shortErr != nil {
@@ -381,6 +389,59 @@ func TestPollChannelsOnce_BackfillsIdentity(t *testing.T) {
 	if src.resolves != resolvesAfterFirst {
 		t.Errorf("second cycle resolved again (%d -> %d), want the filled column to stop it",
 			resolvesAfterFirst, src.resolves)
+	}
+}
+
+// A library channel without any artwork source gets its avatar resolved
+// through one of its videos and cached in channel_art.
+func TestBackfillLibraryChannelArt(t *testing.T) {
+	const artURL = "https://art.example/resolved.jpg"
+	src := &fakeChannelSource{
+		info: &youtube.ChannelInfo{ID: "UCresolved00000000000000", Title: "Resolved", ThumbnailURL: artURL},
+	}
+	svc := newChannelTestService(t, src)
+	ctx := context.Background()
+
+	channelName := "Art Test Channel " + uniqueChannelID(t)
+	video := &storage.Video{
+		ID:        uuid.New(),
+		UserID:    1,
+		YouTubeID: "chtest_art_" + uniqueChannelID(t)[6:16],
+		Channel:   channelName,
+		Status:    "completed",
+	}
+	if err := svc.db.InsertVideo(ctx, video); err != nil {
+		t.Fatalf("insert video: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = svc.db.DeleteVideo(ctx, 1, video.ID)
+		// The backfill sweeps every channel missing art in the shared dev
+		// database, all resolved to the fake URL — remove them all.
+		_, _ = svc.db.Pool.Exec(ctx, `DELETE FROM channel_art WHERE thumbnail_url = $1`, artURL)
+	})
+
+	svc.backfillLibraryChannelArt(ctx)
+
+	var stored string
+	err := svc.db.Pool.QueryRow(ctx,
+		`SELECT COALESCE(thumbnail_url, '') FROM channel_art WHERE user_id = 1 AND channel = $1`,
+		channelName).Scan(&stored)
+	if err != nil {
+		t.Fatalf("read channel_art: %v", err)
+	}
+	if stored != artURL {
+		t.Errorf("cached art = %q, want the resolved avatar", stored)
+	}
+
+	// The facets pick the cached avatar over the video-thumbnail fallback.
+	facets, err := svc.db.ListVideoFacets(ctx, 1, storage.SourceYouTube)
+	if err != nil {
+		t.Fatalf("ListVideoFacets: %v", err)
+	}
+	for _, c := range facets.Channels {
+		if c.Channel == channelName && c.ThumbnailURL != artURL {
+			t.Errorf("facet art = %q, want the cached avatar", c.ThumbnailURL)
+		}
 	}
 }
 

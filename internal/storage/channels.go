@@ -310,6 +310,66 @@ func (db *DB) SetInboxItemState(ctx context.Context, userID, id int, state strin
 	return nil
 }
 
+// ChannelMissingArt is one library channel without a cached avatar, with a
+// sample video to resolve it through.
+type ChannelMissingArt struct {
+	UserID    int
+	Channel   string
+	YouTubeID string
+}
+
+// ListChannelsMissingArt returns YouTube library channels that have no avatar
+// from any source — no subscription artwork and no fresh channel_art row. A
+// failed resolution (thumbnail_url NULL) is retried only after the cool-down.
+func (db *DB) ListChannelsMissingArt(ctx context.Context, limit int) ([]ChannelMissingArt, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := db.Pool.Query(ctx, `
+		SELECT v.user_id, v.channel,
+			(array_agg(v.youtube_id ORDER BY v.created_at DESC))[1]
+		FROM videos v
+		LEFT JOIN channel_subscriptions cs
+			ON cs.user_id = v.user_id AND cs.title = v.channel AND cs.thumbnail_url IS NOT NULL
+		LEFT JOIN channel_art ca ON ca.user_id = v.user_id AND ca.channel = v.channel
+		WHERE v.source = 'youtube' AND v.channel <> '' AND v.youtube_id IS NOT NULL
+			AND cs.id IS NULL
+			AND (ca.channel IS NULL
+				OR (ca.thumbnail_url IS NULL AND ca.fetched_at < NOW() - INTERVAL '7 days'))
+		GROUP BY v.user_id, v.channel
+		ORDER BY COUNT(*) DESC
+		LIMIT $1`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list channels missing art: %w", err)
+	}
+	defer rows.Close()
+
+	var missing []ChannelMissingArt
+	for rows.Next() {
+		var m ChannelMissingArt
+		if err := rows.Scan(&m.UserID, &m.Channel, &m.YouTubeID); err != nil {
+			return nil, fmt.Errorf("scan channel missing art: %w", err)
+		}
+		missing = append(missing, m)
+	}
+	return missing, rows.Err()
+}
+
+// UpsertChannelArt records a resolution attempt. An empty thumbnail stores
+// NULL — the negative cache the cool-down in ListChannelsMissingArt reads.
+func (db *DB) UpsertChannelArt(ctx context.Context, userID int, channel, thumbnailURL string) error {
+	_, err := db.Pool.Exec(ctx, `
+		INSERT INTO channel_art (user_id, channel, thumbnail_url, fetched_at)
+		VALUES ($1, $2, NULLIF($3, ''), NOW())
+		ON CONFLICT (user_id, channel) DO UPDATE SET
+			thumbnail_url = EXCLUDED.thumbnail_url,
+			fetched_at    = NOW()`, userID, channel, thumbnailURL)
+	if err != nil {
+		return fmt.Errorf("upsert channel art: %w", err)
+	}
+	return nil
+}
+
 // DismissAllInbox dismisses every new item of one user and returns how many.
 func (db *DB) DismissAllInbox(ctx context.Context, userID int) (int, error) {
 	tag, err := db.Pool.Exec(ctx, `
