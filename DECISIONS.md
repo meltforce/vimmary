@@ -211,8 +211,8 @@ subscription pattern.
   failed probe keeps the video — a Short that slips through costs one
   dismiss, a real video eaten by a flaky probe would just be gone.
 - **No watch status, no tags, no folders — explicitly rejected.** The
-  operator used all three in the Play app and found them a chore, not a
-  benefit ("hat eh nur genervt", 2026-08-23). Navigation needs are served by
+  operator used all three in the Play app and found them a chore rather
+  than a benefit (stated 2026-08-23). Navigation needs are served by
   channels and the LLM topics, which require no upkeep. The trigger to
   re-open is the operator asking, not a feature-parity argument.
 - **Always-on, no feature flag.** Podcasts are gated because cast2md is an

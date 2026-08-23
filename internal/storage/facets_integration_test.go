@@ -84,7 +84,7 @@ func TestListVideoFacets(t *testing.T) {
 		if c.Channel == "Facet Go Channel" && c.ThumbnailURL != "https://art.example/go.jpg" {
 			t.Errorf("followed channel artwork = %q, want the subscription's thumbnail", c.ThumbnailURL)
 		}
-		// An unfollowed channel falls back to its newest video's thumbnail.
+		// An unfollowed channel gets its newest video's thumbnail instead.
 		if c.Channel == "Facet Google Talks" &&
 			c.ThumbnailURL != "https://i.ytimg.com/vi/facet_Facet Google Talks/hqdefault.jpg" {
 			t.Errorf("unfollowed channel artwork = %q, want the video-thumbnail fallback", c.ThumbnailURL)
