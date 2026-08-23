@@ -83,6 +83,16 @@ func (s *Server) routes() {
 		r.Get("/api/v1/podcasts/episodes/{episodeID}", s.handleGetEpisodePreview)
 		r.Post("/api/v1/podcasts/episodes", s.handleSubmitEpisode)
 
+		// Channels inbox
+		r.Get("/api/v1/channels", s.handleListChannels)
+		r.Post("/api/v1/channels", s.handleSubscribeChannel)
+		r.Put("/api/v1/channels/{id}", s.handleSetChannelEnabled)
+		r.Delete("/api/v1/channels/{id}", s.handleDeleteChannel)
+		r.Get("/api/v1/inbox", s.handleListInbox)
+		r.Post("/api/v1/inbox/dismiss-all", s.handleDismissAllInbox)
+		r.Post("/api/v1/inbox/{id}/summarize", s.handleSummarizeInboxItem)
+		r.Post("/api/v1/inbox/{id}/dismiss", s.handleDismissInboxItem)
+
 		// Settings
 		r.Get("/api/v1/settings/feed", s.handleGetFeed)
 		r.Get("/api/v1/settings/webhook", s.handleGetWebhook)

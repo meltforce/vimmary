@@ -467,6 +467,100 @@ export function submitEpisode(
   });
 }
 
+// Channels inbox
+
+export interface ChannelSubscription {
+  id: number;
+  user_id: number;
+  channel_id: string;
+  title: string;
+  thumbnail_url?: string;
+  enabled: boolean;
+  last_polled_at?: string;
+  last_error?: string;
+  created_at: string;
+  updated_at: string;
+  /** Items still awaiting triage; filled by the list endpoint. */
+  new_count: number;
+}
+
+export interface InboxItem {
+  id: number;
+  subscription_id: number;
+  user_id: number;
+  youtube_id: string;
+  title: string;
+  published_at?: string;
+  state: "new" | "queued" | "dismissed";
+  created_at: string;
+  updated_at: string;
+  channel_title: string;
+}
+
+export interface ChannelsResponse {
+  count: number;
+  channels: ChannelSubscription[];
+}
+
+export interface InboxResponse {
+  total: number;
+  count: number;
+  items: InboxItem[];
+}
+
+export function listChannels(): Promise<ChannelsResponse> {
+  return fetchJSON("/api/v1/channels");
+}
+
+/** Accepts a channel URL, an @handle or a bare handle. Subscribing runs the
+ * first poll in place, so the inbox is filled when this resolves. */
+export function addChannel(url: string): Promise<ChannelSubscription> {
+  return fetchJSON("/api/v1/channels", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+}
+
+export function setChannelEnabled(id: number, enabled: boolean): Promise<{ status: string }> {
+  return fetchJSON(`/api/v1/channels/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export function deleteChannel(id: number): Promise<{ status: string }> {
+  return fetchJSON(`/api/v1/channels/${id}`, { method: "DELETE" });
+}
+
+export function listInbox(opts?: {
+  subscriptionId?: number;
+  limit?: number;
+  offset?: number;
+}): Promise<InboxResponse> {
+  const params = new URLSearchParams();
+  if (opts?.subscriptionId) params.set("subscription_id", String(opts.subscriptionId));
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  if (opts?.offset) params.set("offset", String(opts.offset));
+  const qs = params.toString();
+  return fetchJSON(`/api/v1/inbox${qs ? `?${qs}` : ""}`);
+}
+
+/** Sends the video through the normal pipeline and returns its library row —
+ * "Watch" navigates to it, "Summarize" stays. One backend action either way. */
+export function summarizeInboxItem(id: number): Promise<Video> {
+  return fetchJSON(`/api/v1/inbox/${id}/summarize`, { method: "POST" });
+}
+
+export function dismissInboxItem(id: number): Promise<{ status: string }> {
+  return fetchJSON(`/api/v1/inbox/${id}/dismiss`, { method: "POST" });
+}
+
+export function dismissAllInbox(): Promise<{ dismissed: number }> {
+  return fetchJSON("/api/v1/inbox/dismiss-all", { method: "POST" });
+}
+
 export function fetchModels(): Promise<ModelsResponse> {
   return fetchJSON("/api/v1/config/models");
 }

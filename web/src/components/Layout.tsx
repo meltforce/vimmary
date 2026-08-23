@@ -12,6 +12,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const items = [
     { to: "/", label: "Videos", end: true },
     ...(podcasts ? [{ to: "/podcasts", label: "Podcasts", end: false }] : []),
+    { to: "/inbox", label: "Inbox", end: false },
     { to: "/stats", label: "Stats", end: false },
   ];
 

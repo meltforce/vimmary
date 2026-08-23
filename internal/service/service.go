@@ -58,14 +58,16 @@ type episodeJob struct {
 // Service contains all business logic for vimmary.
 type Service struct {
 	db *storage.DB
-	// settings, newSummarizer and search are the seams: New wires all three to
-	// the real implementations, and a test replaces the ones its path needs.
+	// settings, newSummarizer, search and channels are the seams: New wires
+	// them to the real implementations, and a test replaces the ones its path
+	// needs.
 	// Everything else reaches storage through db directly. Each is a narrow
 	// interface over the methods one path uses, not one abstraction over
 	// storage.DB — see DECISIONS.md, 2026-08-07.
 	settings        settingsSource
 	newSummarizer   summarizerFactory
 	search          searchSource
+	channels        channelFeedSource
 	registry        *models.Registry
 	yt              *youtube.Client
 	cast2md         PodcastSource
@@ -106,6 +108,7 @@ func New(
 		settings:        db,
 		newSummarizer:   newSummarizer,
 		search:          db,
+		channels:        yt,
 		registry:        registry,
 		yt:              yt,
 		cast2md:         c2m,

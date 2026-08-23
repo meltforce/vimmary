@@ -107,6 +107,8 @@ func run(configPath string, migrateOnly, mcpMode bool, log *slog.Logger) error {
 	pollCtx, stopPoller := context.WithCancel(context.Background())
 	defer stopPoller()
 	svc.StartPodcastPoller(pollCtx)
+	// Poll the RSS feeds of followed YouTube channels for the inbox.
+	svc.StartChannelPoller(pollCtx)
 
 	srv, err := buildHTTPServer(svc, store, log)
 	if err != nil {

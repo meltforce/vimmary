@@ -206,3 +206,51 @@
   background: var(--color-accent-100);
   color: inherit;
 }
+
+/* ── Channels inbox ─────────────────────────────────────────────────────── */
+
+.inbox-row {
+  display: flex;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--color-neutral-300);
+}
+
+/* Same crop logic as the feed rows: hqdefault's letterbox bars are exactly
+   what object-fit: cover removes from a 16:9 frame. */
+.inbox-art {
+  flex: none;
+  width: 128px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: var(--color-neutral-100);
+}
+
+.inbox-body {
+  min-width: 0;
+}
+
+.inbox-title {
+  font-size: 14.5px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.inbox-meta {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--color-neutral-600);
+}
+
+.inbox-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 767px) {
+  .inbox-art {
+    width: 96px;
+  }
+}

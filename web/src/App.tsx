@@ -7,6 +7,7 @@ import { useFeaturesResolved, usePodcastsEnabled } from "./features.ts";
 
 const VideoListPage = lazy(() => import("./pages/VideoListPage.tsx"));
 const VideoDetailPage = lazy(() => import("./pages/VideoDetailPage.tsx"));
+const InboxPage = lazy(() => import("./pages/InboxPage.tsx"));
 const PodcastListPage = lazy(() => import("./pages/PodcastListPage.tsx"));
 const PodcastNewPage = lazy(() => import("./pages/PodcastNewPage.tsx"));
 const StatsPage = lazy(() => import("./pages/StatsPage.tsx"));
@@ -39,6 +40,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<VideoListPage />} />
             <Route path="/video/:id" element={<VideoDetailPage />} />
+            <Route path="/inbox" element={<InboxPage />} />
             {/* Without cast2md the podcast routes are not registered at all, so
                 a bookmarked or pasted podcast URL lands on the video list
                 rather than on an empty page explaining a missing feature. The

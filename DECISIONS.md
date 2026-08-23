@@ -21,6 +21,73 @@ identifier rather than estimated.
 
 ---
 
+## 2026-08-23 — the channels inbox: RSS polling, video-ID dedup, and no watch status
+
+**Decided:** 2026-08-23
+
+**Decision.** Users follow YouTube channels; new videos land in an inbox
+(`/inbox`) for triage — summarize, watch (summarize and navigate to the
+detail page, where the transcript player lives), or dismiss. Subscriptions
+are managed under Settings → Channels. Two tables (migration `000015`):
+`channel_subscriptions` and `inbox_items`, modeled on the podcast
+subscription pattern.
+
+**Reasoning, per part:**
+
+- **Discovery via the public per-channel RSS feed**
+  (`youtube.com/feeds/videos.xml?channel_id=UC…`, the newest ~15 entries),
+  parsed with `encoding/xml` — no API key, no new dependency, and the poller
+  never touches InnerTube, so following many channels puts zero pressure on
+  the transcript pipeline's `adaptiveDelay` budget. InnerTube is reached only
+  when an item is actually summarized, through the existing queue.
+- **Channel resolution at subscribe time.** A `/channel/UC…` URL is parsed
+  directly; an @handle or /c//user/ URL costs one fetch of the channel page,
+  extracting `"channelId":"UC…"` plus `og:title`/`og:image` — the same
+  scraping approach `FetchMetadata` already uses for watch pages.
+- **Dedup by video ID, not a timestamp watermark.** RSS reorders entries and
+  republishes them on edits, so a published-time watermark can skip or
+  duplicate; `UNIQUE (user_id, youtube_id)` with `ON CONFLICT DO NOTHING` is
+  exact. The inbox table itself is the seen-set: dismissed and queued rows
+  stay, because deleting one still inside the feed's window would resurrect
+  it. No retention job in v1 — rows are ~200 bytes and accumulate slowly;
+  the trigger is visible growth (ROADMAP row).
+- **A video already in the library never becomes an inbox item** — the
+  poller skips entries `GetByYouTubeID` finds, in any status. Absence is the
+  marker.
+- **Subscribing imports the current feed window synchronously**, mirroring
+  `SetPodcastSubscription` running its first poll inside the PUT. Dedup makes
+  the first and every later poll the same operation, so there is no
+  `initialized` flag.
+- **"Watch" and "summarize" are one backend action** (operator decision):
+  `SummarizeInboxItem` creates the row synchronously via `EnsureVideoRow` —
+  the UI needs the UUID to navigate — and `ProcessVideo`'s existing-row
+  branch adopts it. Side effect: inbox-sourced YouTube rows carry
+  `published_at` and a title from day one.
+- **Shorts are filtered by title heuristic only** (`#shorts`,
+  case-insensitive). A duration check would cost an InnerTube call per new
+  video; the `/shorts/` redirect probe is unofficial. An untagged Short costs
+  one dismiss. The redirect probe is the recorded upgrade path.
+- **No watch status, no tags, no folders — explicitly rejected.** The
+  operator used all three in the Play app and found them a chore, not a
+  benefit ("hat eh nur genervt", 2026-08-23). Navigation needs are served by
+  channels and the LLM topics, which require no upkeep. The trigger to
+  re-open is the operator asking, not a feature-parity argument.
+- **Always-on, no feature flag.** Podcasts are gated because cast2md is an
+  external service; channels need nothing external. An empty inbox explains
+  itself and links to Settings.
+- **No MCP tools in v1.** All logic sits in `internal/service/channels.go`,
+  so an MCP tool later is wiring, not divergence; triage is an interactive
+  surface, and an agent that wants a summary already has submission by URL.
+- **Poll interval fixed at 30 minutes** with ~2 s between channels. The RSS
+  endpoint is a public CDN; unlike the cast2md interval there is no
+  deployment-specific load to make configurable.
+
+**Trigger to re-open:** Shorts in the inbox proving annoying (redirect-probe
+upgrade); `inbox_items` growth becoming visible (retention job); a want for
+an unread badge or MCP tools.
+
+---
+
 ## 2026-08-23 — the transcript player: timed segments in a JSONB column, a lazy endpoint, and YouTube's IFrame API
 
 **Decided:** 2026-08-23

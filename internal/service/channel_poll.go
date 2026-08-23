@@ -1,0 +1,130 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"time"
+
+	"github.com/meltforce/vimmary/internal/storage"
+)
+
+// channelPollInterval is fixed rather than configured: the per-channel RSS
+// feed is a public CDN endpoint, so unlike the cast2md interval there is no
+// deployment-specific load to tune for. 30 minutes is fast enough for an
+// inbox and polite enough for a feed that updates a few times a week.
+const channelPollInterval = 30 * time.Minute
+
+// channelPollGap spaces the per-channel fetches inside one cycle.
+const channelPollGap = 2 * time.Second
+
+// StartChannelPoller runs the channel RSS poll loop until ctx is cancelled.
+// Unlike the podcast poller it has no configuration gate — channels need no
+// external service.
+func (s *Service) StartChannelPoller(ctx context.Context) {
+	s.log.Info("channel poller starting", "interval", channelPollInterval)
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(pollStartDelay):
+		}
+
+		ticker := time.NewTicker(channelPollInterval)
+		defer ticker.Stop()
+
+		for {
+			s.pollChannelsOnce(ctx)
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+}
+
+// pollChannelsOnce advances every enabled subscription.
+func (s *Service) pollChannelsOnce(ctx context.Context) {
+	subs, err := s.db.ListEnabledChannelSubscriptions(ctx)
+	if err != nil {
+		s.log.Error("failed to list channel subscriptions", "error", err)
+		return
+	}
+
+	for i, sub := range subs {
+		if ctx.Err() != nil {
+			return
+		}
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(channelPollGap):
+			}
+		}
+		if err := s.pollChannel(ctx, sub); err != nil {
+			s.log.Warn("channel poll failed",
+				"channel_id", sub.ChannelID, "user_id", sub.UserID, "error", err)
+			if dbErr := s.db.SetChannelError(ctx, sub.ID, err.Error()); dbErr != nil {
+				s.log.Error("failed to record channel poll error", "channel_id", sub.ChannelID, "error", dbErr)
+			}
+			continue
+		}
+		if err := s.db.SetChannelPolled(ctx, sub.ID); err != nil {
+			s.log.Error("failed to record channel poll", "channel_id", sub.ChannelID, "error", err)
+		}
+	}
+}
+
+// pollChannel reads one channel's feed and inserts what is new. There is no
+// watermark: the (user, video) unique index is the seen-set, so the first poll
+// after subscribing and every later poll are the same operation.
+func (s *Service) pollChannel(ctx context.Context, sub storage.ChannelSubscription) error {
+	entries, err := s.channels.FetchChannelFeed(ctx, sub.ChannelID)
+	if err != nil {
+		return err
+	}
+
+	inserted := 0
+	for _, entry := range entries {
+		// The feed does not mark Shorts; the title tag is the only free
+		// signal. Untagged Shorts land in the inbox and cost one dismiss.
+		if strings.Contains(strings.ToLower(entry.Title), "#shorts") {
+			continue
+		}
+
+		// A video already in the library — summarized via Karakeep, manual
+		// submission or an earlier inbox action — is not new to triage.
+		if _, err := s.db.GetByYouTubeID(ctx, sub.UserID, entry.VideoID); err == nil {
+			continue
+		} else if !errors.Is(err, storage.ErrNotFound) {
+			return err
+		}
+
+		published := entry.Published
+		item := &storage.InboxItem{
+			SubscriptionID: sub.ID,
+			UserID:         sub.UserID,
+			YouTubeID:      entry.VideoID,
+			Title:          entry.Title,
+		}
+		if !published.IsZero() {
+			item.PublishedAt = &published
+		}
+		fresh, err := s.db.InsertInboxItem(ctx, item)
+		if err != nil {
+			return err
+		}
+		if fresh {
+			inserted++
+		}
+	}
+
+	if inserted > 0 {
+		s.log.Info("inbox items added",
+			"channel_id", sub.ChannelID, "user_id", sub.UserID, "count", inserted)
+	}
+	return nil
+}

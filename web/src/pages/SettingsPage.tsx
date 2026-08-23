@@ -8,6 +8,7 @@ import LLMSection from "./settings/LLMSection.tsx";
 import SummariesSection from "./settings/SummariesSection.tsx";
 import RSSSection from "./settings/RSSSection.tsx";
 import PodcastSection from "./settings/PodcastSection.tsx";
+import ChannelsSection from "./settings/ChannelsSection.tsx";
 
 /**
  * Settings is six unrelated concerns, and each one owns its queries, its state
@@ -32,6 +33,8 @@ export default function SettingsPage() {
   const tabs = [
     { id: "identity", label: "Identity", render: () => <IdentitySection /> },
     { id: "karakeep", label: "Karakeep", render: () => <KarakeepSection /> },
+    // Always present: channels need no external service, unlike podcasts.
+    { id: "channels", label: "Channels", render: () => <ChannelsSection /> },
     { id: "feed", label: "Feed", render: () => <RSSSection /> },
     { id: "summaries", label: "Summaries", render: () => <SummariesSection /> },
     // Service-wide keys: the server answers 404 to everyone but the primary user.
