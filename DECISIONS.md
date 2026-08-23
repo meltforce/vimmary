@@ -100,6 +100,13 @@ for sort options.
   library content. The artwork hotlink to `yt3.googleusercontent.com` needs
   `referrerPolicy="no-referrer"`: with a foreign referrer the host answers a
   response Chrome's CORB blocks (observed 2026-08-23).
+- 2026-08-23: on viewports from 1280px the channels render as a **vertical
+  rail in the margin left of the reading column** — the subscription-list
+  shape of YouTube's sidebar, which the operator asked for over the
+  horizontal strip. The rail is `position: fixed` inside the otherwise empty
+  margin, so the centered column and the nav stay exactly where they are;
+  below 1280px the margin cannot hold it and the horizontal strip remains
+  the control. Same component, same data, CSS decides which form shows.
 
 ---
 

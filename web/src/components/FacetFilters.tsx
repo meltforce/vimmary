@@ -85,19 +85,70 @@ export default function FacetFilters({
     ? [...visibleTopics, ...topics.filter((t) => t.topic === topic)]
     : visibleTopics;
 
+  const toggleChannel = (name: string) =>
+    onChange({ channel: channel === name ? "" : name, topic });
+
   return (
     <div className="filters" style={{ flexWrap: "wrap", rowGap: 8 }}>
       {channels.length >= 2 ? (
-        <div className="channel-strip" role="group" aria-label="Filter by channel">
-          {channels.map((c) => (
-            <ChannelTile
-              key={c.channel}
-              facet={c}
-              selected={channel === c.channel}
-              onClick={() => onChange({ channel: channel === c.channel ? "" : c.channel, topic })}
-            />
-          ))}
-        </div>
+        <>
+          {/* Wide viewports: a YouTube-style subscription rail in the empty
+              margin left of the reading column. Narrow viewports swap it for
+              the horizontal strip below — CSS toggles the two. */}
+          <aside className="channel-rail" role="group" aria-label="Filter by channel">
+            <div className="kick" style={{ marginBottom: 8 }}>
+              Channels
+            </div>
+            <button
+              type="button"
+              className="channel-row"
+              aria-pressed={channel === ""}
+              onClick={() => onChange({ channel: "", topic })}
+            >
+              <span className="channel-row-art" aria-hidden>
+                ∗
+              </span>
+              <span className="channel-row-name">All channels</span>
+            </button>
+            {channels.map((c) => (
+              <button
+                key={c.channel}
+                type="button"
+                className="channel-row"
+                aria-pressed={channel === c.channel}
+                title={`${c.channel} · ${c.count} in library`}
+                onClick={() => toggleChannel(c.channel)}
+              >
+                {c.thumbnail_url ? (
+                  <img
+                    className="channel-row-art"
+                    src={c.thumbnail_url}
+                    alt=""
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <span className="channel-row-art" aria-hidden>
+                    {c.channel.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                <span className="channel-row-name">{c.channel}</span>
+                <span className="channel-row-count num">{c.count}</span>
+              </button>
+            ))}
+          </aside>
+
+          <div className="channel-strip" role="group" aria-label="Filter by channel">
+            {channels.map((c) => (
+              <ChannelTile
+                key={c.channel}
+                facet={c}
+                selected={channel === c.channel}
+                onClick={() => toggleChannel(c.channel)}
+              />
+            ))}
+          </div>
+        </>
       ) : null}
 
       {shownTopics.map((t) => (

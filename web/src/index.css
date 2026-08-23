@@ -330,3 +330,80 @@
   color: var(--color-accent);
   font-weight: 600;
 }
+
+/* The vertical form of the same navigation: a subscription rail the way
+   YouTube draws it, placed in the empty margin left of the reading column.
+   It exists only where that margin actually fits it — below 1280px the
+   horizontal strip takes over. Fixed, not sticky: the margin is outside the
+   page's flow, and a constant offset keeps it put while the feed scrolls. */
+.channel-rail {
+  display: none;
+}
+
+@media (min-width: 1280px) {
+  .channel-strip {
+    display: none;
+  }
+
+  .channel-rail {
+    display: block;
+    position: fixed;
+    top: 96px;
+    right: calc(50% + (var(--reading-w) / 2) + 20px);
+    width: 216px;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+  }
+}
+
+.channel-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--color-neutral-700);
+  font-size: 13px;
+  text-align: left;
+}
+
+.channel-row:hover {
+  background: var(--color-neutral-100);
+  color: var(--color-text);
+}
+
+.channel-row[aria-pressed="true"] {
+  color: var(--color-accent);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.channel-row-art {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  object-fit: cover;
+  background: var(--color-neutral-100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 11px var(--font-body);
+  color: var(--color-neutral-500);
+}
+
+.channel-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-row-count {
+  flex: none;
+  font-size: 11px;
+  color: var(--color-neutral-500);
+}
