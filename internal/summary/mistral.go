@@ -31,9 +31,30 @@ func (m *MistralSummarizer) Summarize(ctx context.Context, req Request) (*Summar
 	if req.CustomPrompt != "" {
 		template = req.CustomPrompt
 	}
-	prompt := BuildPrompt(template, req.Title, req.Language, truncateTranscript(req.Transcript))
+	prompt := WithTopicReuseHint(
+		BuildPrompt(template, req.Title, req.Language, truncateTranscript(req.Transcript)),
+		req.ExistingTopics)
 
-	model := req.Model
+	text, usage, err := m.complete(ctx, req.Model, prompt, maxOutputTokens(req.Level), true)
+	if err != nil {
+		return nil, err
+	}
+
+	sum, err := parseSummaryJSON(text)
+	if err != nil {
+		return nil, err
+	}
+	sum.Usage = *usage
+	return sum, nil
+}
+
+// Complete sends one free-form prompt and returns the raw text answer.
+func (m *MistralSummarizer) Complete(ctx context.Context, prompt string, maxTokens int) (string, error) {
+	text, _, err := m.complete(ctx, "", prompt, maxTokens, false)
+	return text, err
+}
+
+func (m *MistralSummarizer) complete(ctx context.Context, model, prompt string, maxTokens int, jsonMode bool) (string, *Usage, error) {
 	if model == "" {
 		model = "mistral-large-latest"
 	}
@@ -45,36 +66,38 @@ func (m *MistralSummarizer) Summarize(ctx context.Context, req Request) (*Summar
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
-		"response_format": map[string]string{"type": "json_object"},
-		"temperature":     0,
-		"max_tokens":      maxOutputTokens(req.Level),
+		"temperature": 0,
+		"max_tokens":  maxTokens,
+	}
+	if jsonMode {
+		body["response_format"] = map[string]string{"type": "json_object"}
 	}
 
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
+		return "", nil, fmt.Errorf("marshal request: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", mistralAPIURL, bytes.NewReader(jsonBody))
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+		return "", nil, fmt.Errorf("create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+m.apiKey)
 
 	resp, err := m.http.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("mistral API request: %w", err)
+		return "", nil, fmt.Errorf("mistral API request: %w", err)
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
+		return "", nil, fmt.Errorf("read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("mistral API error %d: %s", resp.StatusCode, string(respBody))
+		return "", nil, fmt.Errorf("mistral API error %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	var result struct {
@@ -89,19 +112,14 @@ func (m *MistralSummarizer) Summarize(ctx context.Context, req Request) (*Summar
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
+		return "", nil, fmt.Errorf("parse response: %w", err)
 	}
 	if len(result.Choices) == 0 {
-		return nil, fmt.Errorf("empty response from Mistral")
+		return "", nil, fmt.Errorf("empty response from Mistral")
 	}
 
-	sum, err := parseSummaryJSON(result.Choices[0].Message.Content)
-	if err != nil {
-		return nil, err
-	}
-	sum.Usage = Usage{
+	return result.Choices[0].Message.Content, &Usage{
 		InputTokens:  result.Usage.PromptTokens,
 		OutputTokens: result.Usage.CompletionTokens,
-	}
-	return sum, nil
+	}, nil
 }

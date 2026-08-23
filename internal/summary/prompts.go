@@ -157,6 +157,17 @@ func DefaultPromptFor(source, level string) string {
 	return promptFor(source, level)
 }
 
+// WithTopicReuseHint prepends the existing tag vocabulary to a prompt. It is
+// a preface rather than a template placeholder so it also reaches custom
+// prompts, which know nothing about a {{TOPICS}} slot.
+func WithTopicReuseHint(prompt string, topics []string) string {
+	if len(topics) == 0 {
+		return prompt
+	}
+	return "For the topic tags: prefer reusing tags from this existing set when they fit the content, " +
+		"and invent a new tag only when none fits: " + strings.Join(topics, ", ") + "\n\n" + prompt
+}
+
 // BuildPrompt replaces named placeholders in a prompt template with actual values.
 func BuildPrompt(template, title, language, transcript string) string {
 	r := strings.NewReplacer(

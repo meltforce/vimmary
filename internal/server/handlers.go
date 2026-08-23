@@ -95,6 +95,23 @@ func (s *Server) handleVideoFacets(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, facets)
 }
 
+// handleConsolidateTopics runs the LLM-backed topic merge over the caller's
+// library. Synchronous: one model call plus one UPDATE per affected row.
+func (s *Server) handleConsolidateTopics(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	result, err := s.svc.ConsolidateTopics(r.Context(), uid)
+	if err != nil {
+		s.log.Error("topic consolidation failed", "error", err)
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (s *Server) handleSubmitVideo(w http.ResponseWriter, r *http.Request) {
 	uid, ok := mustUserID(w, r)
 	if !ok {

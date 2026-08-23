@@ -43,6 +43,9 @@ func (s *Service) summarizeAndStore(ctx context.Context, req summarizeRequest) (
 		Language:     req.language,
 		CustomPrompt: customPrompt,
 		Model:        model,
+		// The existing vocabulary steers new tags onto old ones, so the tag
+		// set converges instead of growing a near-synonym per video.
+		ExistingTopics: s.existingTopics(ctx, req.userID),
 	})
 	if err != nil {
 		return "", fmt.Errorf("generate summary: %w", err)

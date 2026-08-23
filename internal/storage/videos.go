@@ -594,6 +594,84 @@ func (db *DB) ListVideoFacets(ctx context.Context, userID int, source string) (*
 	return facets, topicRows.Err()
 }
 
+// VideoTopics is one row's id with its topic tags, for bulk topic rewrites.
+type VideoTopics struct {
+	ID     uuid.UUID
+	Topics []string
+}
+
+// ListTopicCounts returns every topic tag of one user with its usage count,
+// most used first, across all sources and statuses — topic maintenance covers
+// the whole library, unlike the facets, which only navigate completed rows.
+func (db *DB) ListTopicCounts(ctx context.Context, userID int) ([]TopicCount, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT topic, COUNT(*) FROM videos,
+			jsonb_array_elements_text(metadata->'topics') AS topic
+		WHERE user_id = $1
+		GROUP BY topic ORDER BY COUNT(*) DESC, topic`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list topic counts: %w", err)
+	}
+	defer rows.Close()
+
+	var counts []TopicCount
+	for rows.Next() {
+		var t TopicCount
+		if err := rows.Scan(&t.Topic, &t.Count); err != nil {
+			return nil, fmt.Errorf("scan topic count: %w", err)
+		}
+		counts = append(counts, t)
+	}
+	return counts, rows.Err()
+}
+
+// ListVideoTopics returns every row that carries topic tags.
+func (db *DB) ListVideoTopics(ctx context.Context, userID int) ([]VideoTopics, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT id, metadata->'topics' FROM videos
+		WHERE user_id = $1 AND jsonb_array_length(COALESCE(metadata->'topics', '[]'::jsonb)) > 0`,
+		userID)
+	if err != nil {
+		return nil, fmt.Errorf("list video topics: %w", err)
+	}
+	defer rows.Close()
+
+	var result []VideoTopics
+	for rows.Next() {
+		var vt VideoTopics
+		var raw []byte
+		if err := rows.Scan(&vt.ID, &raw); err != nil {
+			return nil, fmt.Errorf("scan video topics: %w", err)
+		}
+		if err := json.Unmarshal(raw, &vt.Topics); err != nil {
+			return nil, fmt.Errorf("decode topics for %s: %w", vt.ID, err)
+		}
+		result = append(result, vt)
+	}
+	return result, rows.Err()
+}
+
+// UpdateVideoTopics rewrites one row's topic tags inside metadata, leaving
+// key_points and action_items untouched.
+func (db *DB) UpdateVideoTopics(ctx context.Context, id uuid.UUID, topics []string) error {
+	payload, err := json.Marshal(topics)
+	if err != nil {
+		return fmt.Errorf("marshal topics: %w", err)
+	}
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE videos
+		SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{topics}', $1::jsonb),
+			updated_at = NOW()
+		WHERE id = $2`, payload, id)
+	if err != nil {
+		return fmt.Errorf("update video topics: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // GetStats aggregates over one source, or over both when source is empty.
 func (db *DB) GetStats(ctx context.Context, userID int, source string) (*VideoStats, error) {
 	stats := &VideoStats{

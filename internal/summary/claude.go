@@ -40,16 +40,37 @@ func (c *ClaudeSummarizer) Summarize(ctx context.Context, req Request) (*Summary
 	if req.CustomPrompt != "" {
 		template = req.CustomPrompt
 	}
-	prompt := BuildPrompt(template, req.Title, req.Language, truncateTranscript(req.Transcript))
+	prompt := WithTopicReuseHint(
+		BuildPrompt(template, req.Title, req.Language, truncateTranscript(req.Transcript)),
+		req.ExistingTopics)
 
-	model := req.Model
+	text, usage, err := c.complete(ctx, req.Model, prompt, maxOutputTokens(req.Level))
+	if err != nil {
+		return nil, err
+	}
+
+	sum, err := parseSummaryJSON(text)
+	if err != nil {
+		return nil, err
+	}
+	sum.Usage = *usage
+	return sum, nil
+}
+
+// Complete sends one free-form prompt and returns the raw text answer.
+func (c *ClaudeSummarizer) Complete(ctx context.Context, prompt string, maxTokens int) (string, error) {
+	text, _, err := c.complete(ctx, "", prompt, maxTokens)
+	return text, err
+}
+
+func (c *ClaudeSummarizer) complete(ctx context.Context, model, prompt string, maxTokens int) (string, *Usage, error) {
 	if model == "" {
 		model = "claude-sonnet-4-20250514"
 	}
 
 	body := map[string]any{
 		"model":      model,
-		"max_tokens": maxOutputTokens(req.Level),
+		"max_tokens": maxTokens,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
@@ -57,12 +78,12 @@ func (c *ClaudeSummarizer) Summarize(ctx context.Context, req Request) (*Summary
 
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
+		return "", nil, fmt.Errorf("marshal request: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/v1/messages", bytes.NewReader(jsonBody))
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+		return "", nil, fmt.Errorf("create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-api-key", c.apiKey)
@@ -70,17 +91,17 @@ func (c *ClaudeSummarizer) Summarize(ctx context.Context, req Request) (*Summary
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("claude API request: %w", err)
+		return "", nil, fmt.Errorf("claude API request: %w", err)
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
+		return "", nil, fmt.Errorf("read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("claude API error %d: %s", resp.StatusCode, string(respBody))
+		return "", nil, fmt.Errorf("claude API error %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	var result struct {
@@ -93,21 +114,16 @@ func (c *ClaudeSummarizer) Summarize(ctx context.Context, req Request) (*Summary
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
+		return "", nil, fmt.Errorf("parse response: %w", err)
 	}
 	if len(result.Content) == 0 {
-		return nil, fmt.Errorf("empty response from Claude")
+		return "", nil, fmt.Errorf("empty response from Claude")
 	}
 
-	sum, err := parseSummaryJSON(result.Content[0].Text)
-	if err != nil {
-		return nil, err
-	}
-	sum.Usage = Usage{
+	return result.Content[0].Text, &Usage{
 		InputTokens:  result.Usage.InputTokens,
 		OutputTokens: result.Usage.OutputTokens,
-	}
-	return sum, nil
+	}, nil
 }
 
 // maxOutputTokens is the output budget per detail level. A deep summary of a

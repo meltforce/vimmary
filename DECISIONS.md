@@ -21,6 +21,41 @@ identifier rather than estimated.
 
 ---
 
+## 2026-08-23 — topic upkeep is an LLM merge plus a reuse hint, not a taxonomy
+
+**Decided:** 2026-08-23
+
+**Decision.** Two mechanisms keep the topic tags from sprawling. Forward: every
+summarize call carries the library's 40 most-used tags with the instruction to
+reuse one where it fits (`summary.WithTopicReuseHint`, prepended so custom
+prompts get it too). Backward: `POST /api/v1/videos/consolidate-topics`
+(Settings → Summaries → "Consolidate topics") sends every tag with its usage
+count to the configured provider, gets back an old→new merge mapping, and
+rewrites `metadata->'topics'` on the affected rows. Summaries, key points and
+embeddings stay untouched — embeddings are built from the summary text, not
+the tags.
+
+**Reasoning.** The tags are LLM-generated per video with no shared vocabulary,
+so the set grew a near-synonym per video — measured on 2026-08-23: most tags
+carried exactly one video, which makes them worthless for navigation. The
+alternatives were worse: manual tag management is the part of Play the
+operator rejected, and string heuristics (case, plural, hyphens) miss exactly
+the merges that matter (translations, synonyms). The model that created the
+tags is the right tool to merge them.
+
+**Mechanics worth keeping:** the mapping is sanitized before it is applied —
+targets must be existing tags, identity entries drop, chains flatten to their
+terminal target, and a cycle drops every entry on it (the model contradicted
+itself there; merging in arbitrary order would encode the contradiction).
+`Summarizer` gained a generic `Complete(ctx, prompt, maxTokens)` for this —
+the summary JSON contract does not fit a maintenance call.
+
+**Trigger to re-open:** the reuse hint failing to hold the set stable (then
+the hint needs to become a constraint, e.g. a closed vocabulary per run); a
+consolidation run merging tags that should have stayed apart.
+
+---
+
 ## 2026-08-23 — library navigation runs on channels and LLM topics, not manual tags
 
 **Decided:** 2026-08-23
@@ -120,6 +155,22 @@ subscription pattern.
 **Trigger to re-open:** Shorts in the inbox proving annoying (redirect-probe
 upgrade); `inbox_items` growth becoming visible (retention job); a want for
 an unread badge or MCP tools.
+
+**Revisions.**
+
+- 2026-08-23: **Google Takeout import added** (`POST /api/v1/channels/import`,
+  Settings → Channels). The user's YouTube account cannot be read directly:
+  Google closed the Watch Later API to third parties in 2016 (the Play app
+  documents the same limitation), and reading the subscription list live would
+  require an OAuth app in a Google Cloud project with verification — out of
+  proportion for one import. Takeout's `subscriptions.csv` carries channel ID
+  and title, so the import performs no page fetches; the inboxes fill through
+  one background poll pass rather than inside the request, which would hold
+  the response for two seconds per channel.
+- 2026-08-23: channel handle resolution reads the page's `rel="canonical"`
+  link before the body's first `"channelId"` — the data island on a handle
+  page can carry a localized sibling channel (`@veritasium` resolved to
+  "Veritasium en Français" until this).
 
 ---
 

@@ -31,9 +31,17 @@ type Request struct {
 	CustomPrompt string
 	// Model is empty to use the provider default.
 	Model string
+	// ExistingTopics are the library's current topic tags; the prompt asks
+	// the model to reuse them where they fit, so the tag set converges
+	// instead of growing a new near-synonym per video.
+	ExistingTopics []string
 }
 
 // Summarizer generates summaries from transcripts.
 type Summarizer interface {
 	Summarize(ctx context.Context, req Request) (*Summary, error)
+	// Complete sends one free-form prompt and returns the raw text answer.
+	// It exists for maintenance calls (topic consolidation) that need the
+	// configured provider without the summary JSON contract.
+	Complete(ctx context.Context, prompt string, maxTokens int) (string, error)
 }

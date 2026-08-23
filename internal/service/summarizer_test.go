@@ -46,6 +46,10 @@ func (s *stubSummarizer) Summarize(_ context.Context, _ summary.Request) (*summa
 	return &summary.Summary{Text: "stub"}, nil
 }
 
+func (s *stubSummarizer) Complete(_ context.Context, _ string, _ int) (string, error) {
+	return "{}", nil
+}
+
 // newTestService builds a Service with both seams replaced and no database.
 // configProvider is what config.yaml would supply as the initial provider.
 func newTestService(settings *fakeSettings, configProvider string) *Service {

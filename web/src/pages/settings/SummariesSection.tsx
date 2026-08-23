@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  consolidateTopics,
   fetchSummaryPrompts,
   setSummaryPrompt,
   fetchProviders,
@@ -9,7 +10,63 @@ import {
 } from "../../api.ts";
 import type { ContentSource, ModelInfo, ModelsResponse } from "../../api.ts";
 import { usePodcastsEnabled } from "../../features.ts";
+import ConfirmDialog from "../../components/ConfirmDialog.tsx";
 import { Row, Section, SectionError, SectionLoading } from "./primitives.tsx";
+
+/** One button, one LLM call: merge near-duplicate topic tags library-wide. */
+function TopicMaintenance() {
+  const queryClient = useQueryClient();
+  const [confirm, setConfirm] = useState(false);
+
+  const consolidate = useMutation({
+    mutationFn: consolidateTopics,
+    onSuccess: () => {
+      setConfirm(false);
+      queryClient.invalidateQueries({ queryKey: ["facets"] });
+      queryClient.invalidateQueries({ queryKey: ["videos"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+    },
+  });
+
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={consolidate.isPending}
+          onClick={() => setConfirm(true)}
+        >
+          {consolidate.isPending ? "Consolidating…" : "Consolidate topics"}
+        </button>
+        <span style={{ font: "400 12px/1.5 var(--font-body)", color: "var(--color-neutral-600)" }}>
+          Merges singular/plural pairs, spelling variants and one-off tags into the tags already
+          in use. New summaries are steered toward the existing set on their own.
+        </span>
+      </div>
+      {consolidate.isSuccess ? (
+        <p className="field-hint">
+          {consolidate.data.merged === 0
+            ? `Nothing to merge — ${consolidate.data.before} tags stand.`
+            : `${consolidate.data.before} → ${consolidate.data.after} tags · ${consolidate.data.merged} merged · ${consolidate.data.updated_videos} videos updated.`}
+        </p>
+      ) : null}
+      {consolidate.error ? (
+        <p className="field-error">{(consolidate.error as Error).message}</p>
+      ) : null}
+
+      <ConfirmDialog
+        open={confirm}
+        title="Consolidate topic tags?"
+        body="The configured model reads every tag with its usage count and merges near-duplicates into the more-used variant. Summaries and key points stay untouched; only tags are renamed. Costs one model call."
+        confirmLabel="Consolidate"
+        busy={consolidate.isPending}
+        onConfirm={() => consolidate.mutate()}
+        onCancel={() => setConfirm(false)}
+      />
+    </>
+  );
+}
 
 function ModelSelector() {
   const queryClient = useQueryClient();
@@ -200,6 +257,10 @@ export default function SummariesSection() {
           <ModelSelector />
         </Row>
       ) : null}
+
+      <Row label="Topics">
+        <TopicMaintenance />
+      </Row>
 
       {podcastsEnabled ? (
         <Row label="Prompts for">
