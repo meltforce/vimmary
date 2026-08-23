@@ -566,3 +566,15 @@
 .page-head,
 .hero,
 .filters { width: 100%; }
+
+/* ── Podcast lead card: the tag row ───────────────────────────────────────── */
+
+/* `FeedList` renders the podcast tag row as a direct grid child so it can drop
+   below the cover at 390px. On the lead card the grid has two columns, so that
+   put the chips under the cover with the text column empty beside them. Placing
+   the row in the second column keeps it under the text where the video lead
+   already has it; the phone rule above collapses the grid to one column, where
+   the original behaviour returns on its own. */
+@media (min-width: 768px) {
+  .feed[data-variant="podcast"] .feed-lead .feed-topics { grid-column: 2; }
+}
