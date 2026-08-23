@@ -21,6 +21,40 @@ identifier rather than estimated.
 
 ---
 
+## 2026-08-23 — vimmary leaves the shared Modernist language; direction "D — Shelf"
+
+**Decided:** 2026-08-23 (operator decision)
+
+**Decision.** vimmary gets its own media-first design system and stops
+following the shared homelab Modernist language. The direction is "D —
+Shelf": warm paper ground, white cards with soft radii and shadows, pill
+navigation, artwork-forward shelves, round avatars for video channels and
+square covers for podcast shows, dark accent cards for inbox and player.
+Chosen from four sketched directions (YouTube-genre grid, dark media-server
+theater, split editorial studio, warm shelf) on the canvas referenced in
+`design/redesign-brief.md`; the deciding factor was that D carries video and
+podcast content as one library with two media types.
+
+**Reasoning.** The Modernist system is document-first and serves the text
+apps; a media library fights it — artwork cropped into a text layout, the
+feed reading as a document list. The intended "one look for all homelab
+apps" does not hold across tool genres, and the mechanics already permit
+divergence: every app owns its stylesheet copy and nothing synchronizes them
+(see the 2026-08-07 per-app-copy decision), so leaving costs nothing
+mechanically.
+
+**Process.** The full system is designed in Claude Design against
+`design/redesign-brief.md` (app description, goal, direction values,
+constraints, open questions) and arrives as the usual handoff package, which
+then replaces vimmary's `homelab.css` copy. The brief is superseded by the
+handoff when it lands.
+
+**Trigger to re-open:** the handoff proving unimplementable within the
+one-breakpoint/two-trees convention; the operator wanting the shared
+language back.
+
+---
+
 ## 2026-08-23 — topic upkeep is an LLM merge plus a reuse hint, not a taxonomy
 
 **Decided:** 2026-08-23

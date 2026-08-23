@@ -57,6 +57,12 @@ that report is closed; these are the items its numbers left behind.
 | `[open]` | Inbox retention job | `internal/storage/channels.go` | `inbox_items` growth becomes visible | Dismissed and queued rows are kept as the dedup seen-set. A retention job may only delete rows whose videos have left the feed window, or dedup breaks. |
 | `[open]` | Unread count badge on the Inbox nav entry | `web/src/components/Layout.tsx` | the operator asks for it | Needs the channels query in the layout, which currently loads no data. |
 
+## Redesign
+
+| Status | Item | Where | Trigger | Notes |
+|---|---|---|---|---|
+| `[open]` | Execute the "D — Shelf" redesign | `web/src/` | the Claude Design handoff package arrives | Direction decided 2026-08-23 (DECISIONS.md); brief in `design/redesign-brief.md`. The handoff replaces vimmary's `homelab.css` copy; the brief file is removed when superseded. |
+
 ## Transcript player
 
 | Status | Item | Where | Trigger | Notes |
