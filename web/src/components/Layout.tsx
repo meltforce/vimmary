@@ -11,8 +11,10 @@ export default function Layout({ children }: { children: ReactNode }) {
   // rather than disabled. The tab bar takes its column count from the list.
   const items = [
     { to: "/", label: "Videos", end: true },
-    ...(podcasts ? [{ to: "/podcasts", label: "Podcasts", end: false }] : []),
+    // Inbox sits next to Videos: both are YouTube surfaces, and triage feeds
+    // the video list.
     { to: "/inbox", label: "Inbox", end: false },
+    ...(podcasts ? [{ to: "/podcasts", label: "Podcasts", end: false }] : []),
     { to: "/stats", label: "Stats", end: false },
   ];
 

@@ -93,7 +93,11 @@ export default function InboxPage() {
   const allNewCount = followedChannels.reduce((sum, c) => sum + c.new_count, 0);
 
   return (
-    <div className="detail-page">
+    // feed-page, not detail-page: the inbox is a list screen like the two
+    // libraries, and homelab.css centers the nav into the reading column only
+    // while a .feed-page is on the page — a detail-page root here left the nav
+    // at the viewport edge, jumping on every switch from Videos or Podcasts.
+    <div className="feed-page">
       <PageHeader
         kicker="New from followed channels"
         title="Inbox"
