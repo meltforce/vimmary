@@ -54,7 +54,6 @@ that report is closed; these are the items its numbers left behind.
 | Status | Item | Where | Trigger | Notes |
 |---|---|---|---|---|
 | `[open]` | Verify the channel poller against a live subscription | deployment | a channel is followed under Settings → Channels | The service tests cover the poll logic against a fake feed source. Unconfirmed against the real endpoint: that the RSS fetch passes YouTube's front door with the pinned User-Agent over time, and that the 30-minute tick picks up a fresh upload end to end. |
-| `[open]` | Shorts detection beyond the title heuristic | `internal/service/channel_poll.go` | Shorts in the inbox prove annoying | Only `#shorts` in the title is filtered. The upgrade path is probing `youtube.com/shorts/{id}` for a redirect — unofficial, one request per new video; see DECISIONS.md, 2026-08-23. |
 | `[open]` | Inbox retention job | `internal/storage/channels.go` | `inbox_items` growth becomes visible | Dismissed and queued rows are kept as the dedup seen-set. A retention job may only delete rows whose videos have left the feed window, or dedup breaks. |
 | `[open]` | Unread count badge on the Inbox nav entry | `web/src/components/Layout.tsx` | the operator asks for it | Needs the channels query in the layout, which currently loads no data. |
 

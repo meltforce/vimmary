@@ -113,3 +113,36 @@ func TestParseChannelFeed_Invalid(t *testing.T) {
 		t.Fatal("parseChannelFeed should fail on invalid XML")
 	}
 }
+
+func TestClassifyShortsProbe(t *testing.T) {
+	tests := []struct {
+		name     string
+		status   int
+		location string
+		short    bool
+		fails    bool
+	}{
+		{name: "200 is a Short", status: 200, short: true},
+		{name: "303 to /watch is a regular video", status: 303, location: "https://www.youtube.com/watch?v=x"},
+		{name: "302 to /watch is a regular video", status: 302, location: "https://www.youtube.com/watch?v=x&pp=y"},
+		{name: "consent redirect is unknown", status: 302, location: "https://consent.youtube.com/m?continue=x", fails: true},
+		{name: "server error is unknown", status: 503, fails: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			short, err := classifyShortsProbe(tt.status, tt.location)
+			if tt.fails {
+				if err == nil {
+					t.Error("expected an error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("classifyShortsProbe: %v", err)
+			}
+			if short != tt.short {
+				t.Errorf("short = %v, want %v", short, tt.short)
+			}
+		})
+	}
+}

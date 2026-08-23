@@ -133,10 +133,15 @@ subscription pattern.
   the UI needs the UUID to navigate — and `ProcessVideo`'s existing-row
   branch adopts it. Side effect: inbox-sourced YouTube rows carry
   `published_at` and a title from day one.
-- **Shorts are filtered by title heuristic only** (`#shorts`,
-  case-insensitive). A duration check would cost an InnerTube call per new
-  video; the `/shorts/` redirect probe is unofficial. An untagged Short costs
-  one dismiss. The redirect probe is the recorded upgrade path.
+- **Shorts are filtered twice: the `#shorts` title tag skips the entry for
+  free, and every remaining video is probed once on first sight** — a GET on
+  `/shorts/{id}` without following redirects answers 200 for a Short and
+  redirects to `/watch` for a regular video (with the `SOCS=CAI` cookie past
+  the EU consent wall, which otherwise intercepts both kinds). A detected
+  Short is stored dismissed, not deleted: the row is the dedup memory that
+  both keeps it out and limits the probe to one request per video ever. A
+  failed probe keeps the video — a Short that slips through costs one
+  dismiss, a real video eaten by a flaky probe would just be gone.
 - **No watch status, no tags, no folders — explicitly rejected.** The
   operator used all three in the Play app and found them a chore, not a
   benefit ("hat eh nur genervt", 2026-08-23). Navigation needs are served by
@@ -171,6 +176,11 @@ an unread badge or MCP tools.
   link before the body's first `"channelId"` — the data island on a handle
   page can carry a localized sibling channel (`@veritasium` resolved to
   "Veritasium en Français" until this).
+- 2026-08-23: **Shorts filtering upgraded from title-tag-only to the redirect
+  probe** (original form: "title heuristic only, the probe is the recorded
+  upgrade path"). The trigger fired the day the inbox shipped: 10 of the 15
+  entries in Veritasium's feed window were untagged Shorts, measured
+  2026-08-23, so the inbox arrived two-thirds noise.
 
 ---
 

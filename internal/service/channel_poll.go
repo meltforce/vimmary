@@ -78,6 +78,18 @@ func (s *Service) pollChannelsOnce(ctx context.Context) {
 	}
 }
 
+// isShort wraps the probe so a transient failure lets the video into the
+// inbox instead of losing it — a Short that slips through costs one dismiss,
+// a real video filtered by a flaky probe would just be gone.
+func (s *Service) isShort(ctx context.Context, videoID string) bool {
+	short, err := s.channels.IsShort(ctx, videoID)
+	if err != nil {
+		s.log.Warn("shorts probe failed, keeping video", "video_id", videoID, "error", err)
+		return false
+	}
+	return short
+}
+
 // pollChannel reads one channel's feed and inserts what is new. There is no
 // watermark: the (user, video) unique index is the seen-set, so the first poll
 // after subscribing and every later poll are the same operation.
@@ -89,8 +101,8 @@ func (s *Service) pollChannel(ctx context.Context, sub storage.ChannelSubscripti
 
 	inserted := 0
 	for _, entry := range entries {
-		// The feed does not mark Shorts; the title tag is the only free
-		// signal. Untagged Shorts land in the inbox and cost one dismiss.
+		// The cheap Shorts signal first: a #shorts title skips the entry
+		// without a row and without a probe.
 		if strings.Contains(strings.ToLower(entry.Title), "#shorts") {
 			continue
 		}
@@ -117,9 +129,21 @@ func (s *Service) pollChannel(ctx context.Context, sub storage.ChannelSubscripti
 		if err != nil {
 			return err
 		}
-		if fresh {
-			inserted++
+		if !fresh {
+			continue
 		}
+
+		// Most Shorts carry no title tag, so every video is probed once, on
+		// first sight — the row already exists, which is what limits the
+		// probe to one request per video ever. A Short is dismissed rather
+		// than deleted: the row is the dedup memory that keeps it out.
+		if s.isShort(ctx, entry.VideoID) {
+			if err := s.db.SetInboxItemState(ctx, sub.UserID, item.ID, storage.InboxStateDismissed); err != nil {
+				s.log.Warn("failed to dismiss short", "video_id", entry.VideoID, "error", err)
+			}
+			continue
+		}
+		inserted++
 	}
 
 	if inserted > 0 {

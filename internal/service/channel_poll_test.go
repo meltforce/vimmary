@@ -20,6 +20,10 @@ type fakeChannelSource struct {
 	feedErr  error
 	fetches  int
 	resolves int
+	// shorts marks video IDs the probe reports as Shorts; probes counts calls.
+	shorts   map[string]bool
+	shortErr error
+	probes   int
 }
 
 func (f *fakeChannelSource) ResolveChannel(context.Context, string) (*youtube.ChannelInfo, error) {
@@ -36,6 +40,14 @@ func (f *fakeChannelSource) FetchChannelFeed(context.Context, string) ([]youtube
 		return nil, f.feedErr
 	}
 	return f.entries, nil
+}
+
+func (f *fakeChannelSource) IsShort(_ context.Context, videoID string) (bool, error) {
+	f.probes++
+	if f.shortErr != nil {
+		return false, f.shortErr
+	}
+	return f.shorts[videoID], nil
 }
 
 // newChannelTestService wires a Service against the development database and a
@@ -277,6 +289,59 @@ func TestSummarizeInboxItem(t *testing.T) {
 	}
 	if again.ID != video.ID {
 		t.Errorf("second call returned row %s, want the same row %s", again.ID, video.ID)
+	}
+}
+
+// A video the probe marks as a Short lands dismissed, never in the triage
+// list — and is probed exactly once, because the dismissed row blocks the
+// re-insert on the next poll.
+func TestPollChannel_ProbeFiltersShorts(t *testing.T) {
+	channelID := uniqueChannelID(t)
+	src := &fakeChannelSource{
+		info: &youtube.ChannelInfo{ID: channelID, Title: "Mixed"},
+		entries: []youtube.FeedEntry{
+			{VideoID: "chtest_long", Title: "A real video"},
+			{VideoID: "chtest_untagged", Title: "Sneaky short without tag"},
+		},
+		shorts: map[string]bool{"chtest_untagged": true},
+	}
+	svc := newChannelTestService(t, src)
+	ctx := context.Background()
+	cleanupChannel(t, svc, 1, channelID)
+
+	sub, err := svc.SubscribeChannel(ctx, 1, "@mixed")
+	if err != nil {
+		t.Fatalf("SubscribeChannel: %v", err)
+	}
+
+	items, total, err := svc.ListInbox(ctx, 1, "", sub.ID, 0, 0)
+	if err != nil {
+		t.Fatalf("ListInbox: %v", err)
+	}
+	if total != 1 || items[0].YouTubeID != "chtest_long" {
+		t.Errorf("inbox = %+v, want only the real video", items)
+	}
+	if src.probes != 2 {
+		t.Errorf("first poll probed %d times, want 2 (every fresh video once)", src.probes)
+	}
+
+	// The next poll re-sees both entries but probes neither: the rows exist.
+	if err := svc.pollChannel(ctx, *sub); err != nil {
+		t.Fatalf("second pollChannel: %v", err)
+	}
+	if src.probes != 2 {
+		t.Errorf("second poll probed again (total %d), want the dedup to prevent that", src.probes)
+	}
+
+	// A probe failure keeps the video rather than losing it.
+	src.shortErr = errors.New("probe timeout")
+	src.entries = append(src.entries, youtube.FeedEntry{VideoID: "chtest_flaky", Title: "Arrives despite probe error"})
+	if err := svc.pollChannel(ctx, *sub); err != nil {
+		t.Fatalf("third pollChannel: %v", err)
+	}
+	_, total, _ = svc.ListInbox(ctx, 1, "", sub.ID, 0, 0)
+	if total != 2 {
+		t.Errorf("inbox holds %d after flaky probe, want 2 — the video must not be lost", total)
 	}
 }
 

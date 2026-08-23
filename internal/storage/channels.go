@@ -190,18 +190,23 @@ func (db *DB) SetChannelError(ctx context.Context, id int, message string) error
 	return nil
 }
 
-// InsertInboxItem writes one item and reports whether it was new. A conflict
-// on (user_id, youtube_id) is the dedup working, not an error.
+// InsertInboxItem writes one item and reports whether it was new, filling
+// item.ID on a fresh insert. A conflict on (user_id, youtube_id) is the dedup
+// working, not an error.
 func (db *DB) InsertInboxItem(ctx context.Context, item *InboxItem) (bool, error) {
-	tag, err := db.Pool.Exec(ctx, `
+	err := db.Pool.QueryRow(ctx, `
 		INSERT INTO inbox_items (subscription_id, user_id, youtube_id, title, published_at)
 		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (user_id, youtube_id) DO NOTHING`,
-		item.SubscriptionID, item.UserID, item.YouTubeID, item.Title, item.PublishedAt)
+		ON CONFLICT (user_id, youtube_id) DO NOTHING
+		RETURNING id`,
+		item.SubscriptionID, item.UserID, item.YouTubeID, item.Title, item.PublishedAt).Scan(&item.ID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
 		return false, fmt.Errorf("insert inbox item: %w", err)
 	}
-	return tag.RowsAffected() > 0, nil
+	return true, nil
 }
 
 const inboxItemColumns = `i.id, i.subscription_id, i.user_id, i.youtube_id, i.title, ` +

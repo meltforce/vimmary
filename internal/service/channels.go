@@ -15,6 +15,7 @@ import (
 type channelFeedSource interface {
 	ResolveChannel(ctx context.Context, input string) (*youtube.ChannelInfo, error)
 	FetchChannelFeed(ctx context.Context, channelID string) ([]youtube.FeedEntry, error)
+	IsShort(ctx context.Context, videoID string) (bool, error)
 }
 
 // SubscribeChannel resolves the pasted URL or handle, stores the subscription
