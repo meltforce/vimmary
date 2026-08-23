@@ -208,6 +208,20 @@ export default function VideoDetailPage() {
                 {statusLabel(video.status)}
               </span>
             ) : null}
+            {/* The player lives on the Transcript tab; without this the summary
+                view offers only the external link and the in-page player stays
+                undiscovered. Hidden while that tab is already showing. */}
+            {!isPodcast && !failed && video.status === "completed" && video.transcript &&
+            activeTab !== "transcript" ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ fontSize: 12 }}
+                onClick={() => setTab("transcript")}
+              >
+                Watch here
+              </button>
+            ) : null}
             {externalUrl ? (
               <a
                 className="btn btn-secondary"
