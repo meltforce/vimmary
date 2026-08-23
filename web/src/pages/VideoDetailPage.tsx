@@ -24,14 +24,18 @@ import { useIsDesktop } from "../hooks/useMediaQuery.ts";
 import { usePodcastsEnabled } from "../features.ts";
 import { isInFlight, shortDate, statusClass, statusLabel } from "../display.ts";
 
-type Tab = "summary" | "chapters" | "transcript" | "topics";
+type Tab = "summary" | "chapters" | "transcript";
 
-const TAB_LABEL: Record<Tab, string> = {
-  summary: "Summary",
-  chapters: "Chapters",
-  transcript: "Transcript",
-  topics: "Topics",
-};
+/* The transcript tab is labelled "Watch": the tab and the rail's player button
+   are one destination, and calling it Transcript made them read as two. A
+   podcast has no video to watch, so it keeps the literal name — the timed
+   Listen player is designed but not shippable (no timed segments from cast2md,
+   no audio source). */
+function tabLabel(tab: Tab, isPodcast: boolean): string {
+  if (tab === "summary") return "Summary";
+  if (tab === "chapters") return "Chapters";
+  return isPodcast ? "Transcript" : "Watch";
+}
 
 /** `12:04 — Title` splits into a timestamp column and a body; anything else
  *  keeps its position as the column instead. */
@@ -42,6 +46,13 @@ function parseChapter(raw: string, index: number): { ts: string; body: string; s
   const seconds =
     parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
   return { ts: m[1], body: m[2].trim(), seconds };
+}
+
+/* The rail lists chapters as one clamped line each, so it renders plain text
+   rather than markdown — the emphasis markers the summaries carry would show
+   as literal asterisks there. The Chapters tab still renders them. */
+function stripMarkdown(s: string): string {
+  return s.replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").replace(/`(.+?)`/g, "$1");
 }
 
 function wordCount(s: string): number {
@@ -140,7 +151,6 @@ export default function VideoDetailPage() {
     const t: Tab[] = ["summary"];
     if (video.metadata?.key_points?.length) t.push("chapters");
     if (video.transcript) t.push("transcript");
-    if (video.metadata?.topics?.length) t.push("topics");
     return t;
   }, [video]);
 
@@ -154,7 +164,7 @@ export default function VideoDetailPage() {
           </div>
         </div>
         <div style={{ borderTop: "var(--rule-strong)" }} />
-        <div className="page-x detail-content">
+        <div>
           {[92, 100, 84, 96, 70].map((w, i) => (
             <div key={i} style={{ marginBottom: 10 }}><Skel w={`${w}%`} h={16} /></div>
           ))}
@@ -186,9 +196,8 @@ export default function VideoDetailPage() {
   const failed = video.status === "failed" || video.status === "no_captions";
   const activeTab = tabs.includes(tab) ? tab : "summary";
 
-  const kicker = [
+  const meta = [
     podcastsEnabled ? (isPodcast ? "Podcast" : "Video") : null,
-    video.channel,
     shortDate(video.created_at),
     video.duration_seconds ? formatDuration(video.duration_seconds) : null,
     video.detail_level,
@@ -196,8 +205,33 @@ export default function VideoDetailPage() {
     .filter(Boolean)
     .join(" · ");
 
+  /* Round for a video channel, rounded-square for a podcast show — the app's
+     media-type marker. A podcast row's thumbnail is the show cover; a video
+     row's is the video still, which is not a channel avatar, so the channel
+     initial stands in there. */
+  const kicker = (
+    <span className="detail-kicker">
+      <span className={`avatar${isPodcast ? " is-show" : ""}`} aria-hidden>
+        {isPodcast && video.thumbnail_url ? (
+          <img src={video.thumbnail_url} alt="" loading="lazy" referrerPolicy="no-referrer" />
+        ) : (
+          (video.channel || "?").slice(0, 1).toUpperCase()
+        )}
+      </span>
+      <span className="channel">{video.channel}</span>
+      <span>{meta}</span>
+    </span>
+  );
+
+  const showPlayerCard =
+    !isPodcast && !failed && video.status === "completed" && !!video.transcript;
+  const chapters = video.metadata?.key_points ?? [];
+  const topics = video.metadata?.topics ?? [];
+  const hasRail = showPlayerCard || chapters.length > 0 || topics.length > 0;
+
   return (
     <div className="detail-page">
+      <div className="detail-content">
       <PageHeader
         kicker={kicker}
         title={video.title || video.youtube_id}
@@ -207,20 +241,6 @@ export default function VideoDetailPage() {
               <span className={`status ${statusClass(video.status)}`}>
                 {statusLabel(video.status)}
               </span>
-            ) : null}
-            {/* The player lives on the Transcript tab; without this the summary
-                view offers only the external link and the in-page player stays
-                undiscovered. Hidden while that tab is already showing. */}
-            {!isPodcast && !failed && video.status === "completed" && video.transcript &&
-            activeTab !== "transcript" ? (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ fontSize: 12 }}
-                onClick={() => setTab("transcript")}
-              >
-                Watch here
-              </button>
             ) : null}
             {externalUrl ? (
               <a
@@ -297,7 +317,7 @@ export default function VideoDetailPage() {
                       checked={activeTab === t}
                       onChange={() => setTab(t)}
                     />
-                    {TAB_LABEL[t]}
+                    {tabLabel(t, isPodcast)}
                   </label>
                 ))}
               </span>
@@ -310,7 +330,7 @@ export default function VideoDetailPage() {
                   aria-pressed={activeTab === t}
                   onClick={() => setTab(t)}
                 >
-                  {TAB_LABEL[t]}
+                  {tabLabel(t, isPodcast)}
                 </button>
               ))
             )}
@@ -340,7 +360,7 @@ export default function VideoDetailPage() {
             </div>
           ) : null}
 
-          <div className="page-x detail-content">
+          <div>
             {activeTab === "summary" ? (
               video.summary ? (
                 <div className="reader">
@@ -445,19 +465,77 @@ export default function VideoDetailPage() {
                 </>
               )
             ) : null}
-
-            {activeTab === "topics" ? (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {video.metadata!.topics!.map((t) => (
-                  <span key={t} className="tag tag-neutral">
-                    {t}
-                  </span>
-                ))}
-              </div>
-            ) : null}
           </div>
         </>
       )}
+      </div>
+
+      {/* The rail is where playback, chapters and topics live, so the reading
+          column stays prose. Below 768px it is one column and this sits after
+          the summary — the player teaser included, deliberately: on a phone the
+          summary is what the reader came for. */}
+      {hasRail && !failed ? (
+        <aside className="detail-rail">
+          {/* Hidden while the player is open: the card's only job is to lead
+              there. */}
+          {showPlayerCard && activeTab !== "transcript" ? (
+            <section className="card-ink">
+              <div className="kick">Watch</div>
+              <p style={{ margin: "6px 0 12px" }}>
+                Video and transcript side by side, the current line following along.
+              </p>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setTab("transcript")}
+              >
+                Open player
+              </button>
+            </section>
+          ) : null}
+
+          {chapters.length > 0 ? (
+            <section>
+              <div className="kick">Chapters</div>
+              <div style={{ marginTop: 8 }}>
+                {chapters.map((kp, i) => {
+                  const { ts, body, seconds } = parseChapter(kp, i);
+                  const seekable = seconds !== undefined && !isPodcast && !!video.transcript;
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      className="rail-chapter"
+                      disabled={!seekable}
+                      onClick={() => {
+                        if (!seekable) return;
+                        setSeekTarget(seconds!);
+                        setTab("transcript");
+                      }}
+                    >
+                      <time>{ts}</time>
+                      <span>{stripMarkdown(body)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+
+          {topics.length > 0 ? (
+            <section>
+              <div className="kick">Topics</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                {topics.map((t) => (
+                  <Link key={t} to={`/?topic=${encodeURIComponent(t)}`} className="chip chip-topic">
+                    {t}
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </aside>
+      ) : null}
 
       <ConfirmDialog
         open={confirmDelete}

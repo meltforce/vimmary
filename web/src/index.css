@@ -1,28 +1,35 @@
 @import "tailwindcss";
 
-/* Archivo, self-hosted. The server is reachable over Tailscale only, so a
-   Google Fonts link would leave the UI in system-ui whenever the client has no
-   route to the CDN. */
-@import "@fontsource-variable/archivo/wght.css";
+/* Self-hosted, for the same reason Archivo was: the server is reachable over
+   Tailscale only, so a Google Fonts link would leave the UI in system-ui
+   whenever the client has no route to the CDN. */
+@import "@fontsource-variable/bricolage-grotesque/wght.css";
+@import "@fontsource-variable/public-sans/wght.css";
+@import "@fontsource-variable/source-serif-4/wght.css";
 
-/* The Modernist stylesheet. The design language is shared with the other
-   homelab apps and steered in Claude Design, which issues changes as a handoff
-   package; this file is vimmary's copy of it and is edited when a handoff
-   assigns a rule to the system. Anything only vimmary ever needs goes below
-   this import. */
-@import "./homelab.css";
+/* The Shelf system stylesheet. vimmary left the shared Modernist language with
+   the 2026-08-23 handoff and owns this file outright; the other homelab apps
+   keep their homelab.css and nothing synchronises between them. A rule the
+   handoff assigns to the system goes there, a rule only vimmary ever needs
+   goes below this import. */
+@import "./vimmary.css";
 
 /* Expose the tokens to Tailwind so `bg-bg`, `text-neutral-600` and friends
-   resolve to the same variables the plain CSS uses. Radius is pinned to 0 so a
-   stray `rounded-*` utility cannot reintroduce one. */
+   resolve to the same variables the plain CSS uses. The radii carry the
+   system's values rather than the 0 the Modernist block pinned them to —
+   hard edges were the thing this redesign replaced. */
 @theme inline {
   --color-bg: var(--color-bg);
+  --color-card: var(--color-card);
   --color-surface: var(--color-surface);
+  --color-well: var(--color-well);
   --color-ink: var(--color-text);
+  --color-ink-surface: var(--color-ink-surface);
   --color-accent: var(--color-accent);
   --color-accent-100: var(--color-accent-100);
-  --color-accent-400: var(--color-accent-400);
+  --color-accent-600: var(--color-accent-600);
   --color-accent-700: var(--color-accent-700);
+  --color-amber: var(--color-amber);
   --color-divider: var(--color-divider);
   --color-neutral-100: var(--color-neutral-100);
   --color-neutral-200: var(--color-neutral-200);
@@ -34,376 +41,518 @@
   --color-neutral-800: var(--color-neutral-800);
   --color-neutral-900: var(--color-neutral-900);
   --font-sans: var(--font-body);
+  --font-serif: var(--font-reading);
   --font-mono: var(--font-mono);
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-lg: 0px;
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
 }
 
-/* ── vimmary-only ────────────────────────────────────────────────────────── */
 
-/* Detail views share the library's reading column. `width: 100%` keeps the
-   column fluid below its desktop measure, while the maximum aligns its header,
-   controls and text with the feed rather than leaving the summary on the left
-   side of a wide window. */
+/* ── Detail shell ────────────────────────────────────────────────────────── */
+
+/* The reader is a card on the paper ground, with a metadata rail beside it.
+   The rail is where playback, chapters and topics live — the reading column
+   stays prose. */
 .detail-page {
-  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 336px;
+  gap: 28px;
+  align-items: start;
+  padding: 26px var(--page-x) var(--space-8);
   max-width: var(--reading-w);
   margin-inline: auto;
+  width: 100%;
 }
 
 .detail-content {
-  padding-top: 24px;
-  padding-bottom: 40px;
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 34px 44px 40px;
+  min-width: 0;
 }
 
-/* A summary can have up to five actions. Keeping them beside the title inside
-   the reading column leaves neither usable room, so the title owns the first
-   line and the actions form a wrapping row beneath it. */
-.detail-page .page-head {
-  display: block;
+.detail-rail { display: flex; flex-direction: column; gap: var(--space-4); }
+.detail-rail > section {
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 18px;
 }
 
-.detail-page .page-head-actions {
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  margin-top: 18px;
-  gap: 8px;
-}
+/* Kicker line inside the reading card: avatar, channel, date, length, level,
+   then the actions. */
+.detail-kicker { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.detail-kicker .channel { font: 600 13.5px/1 var(--font-body); color: var(--color-neutral-800); }
+.detail-page .page-head h1 { font-size: 40px; letter-spacing: -0.03em; margin-top: 20px; max-width: 26ch; }
 
 @media (max-width: 767px) {
-  .detail-page .page-head-actions {
-    justify-content: flex-start;
-    margin-top: 14px;
-  }
+  /* One column, and no card around the reading text — see .reader in
+     vimmary.css. The rail's contents move below the summary. */
+  .detail-page { grid-template-columns: 1fr; gap: var(--space-4); padding: 14px var(--page-x) var(--space-8); }
+  .detail-content { background: transparent; box-shadow: none; border-radius: 0; padding: 0; }
+  .detail-page .page-head h1 { font-size: 28px; }
 }
 
-/* The summary body is markdown rendered into .reader. react-markdown emits
-   links, lists and inline code, which homelab.css does not style inside .reader
-   because not every app renders markdown. */
-.reader a {
-  text-decoration: underline;
-}
+/* ── Plain transcript (no timings) ───────────────────────────────────────── */
 
-/* Tailwind's preflight strips list markers from every ul and ol. Inside the
-   reader they are the structure the summary was written with, so they come
-   back. */
-.reader ul {
-  list-style: disc;
-}
-
-.reader ol {
-  list-style: decimal;
-}
-
-/* A markdown list item wraps its text in a paragraph, whose bottom margin would
-   otherwise space the items like paragraphs. */
-.reader li > p {
-  margin: 0;
-}
-
-.reader code {
-  font-family: var(--font-mono);
-  font-size: 0.86em;
-  background: var(--color-neutral-100);
-  padding: 1px 4px;
-}
-
-.reader pre {
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  overflow-x: auto;
-  border-left: var(--rule-strong);
-  padding: 10px 0 10px 14px;
-  margin: 0 0 1em;
-}
-
-.reader pre code {
-  background: none;
-  padding: 0;
-}
-
-/* The transcript pane scrolls inside the page rather than extending it: a
-   three-hour episode is tens of thousands of words. */
 .transcript {
-  max-height: 60vh;
-  overflow-y: auto;
-  border-top: var(--rule-strong);
-  border-bottom: var(--rule-strong);
+  font-family: var(--font-reading);
+  font-size: 16.5px;
+  line-height: 1.65;
+  color: var(--color-neutral-800);
+  white-space: pre-wrap;
+  max-width: 76ch;
 }
 
-/* ── Transcript player ──────────────────────────────────────────────────── */
+/* ── Synchronized player ─────────────────────────────────────────────────── */
 
-/* Video above, transcript below, at every width. The side-by-side split this
-   replaces halved the video to ~400px on a desktop viewport — too small to
-   watch — and read-along works top-down anyway. The frame is sticky so the
-   video stays in view while the transcript scrolls underneath it. */
-.player-grid {
-  display: grid;
-  gap: 16px;
-}
+/* The head pins; the cue pane scrolls under it. Video and search stay
+   together, which is the one behaviour the player cannot lose.
 
-/* The sticky block is video plus search together: a search field that
-   scrolls away is unusable mid-playback. The background stops the cues from
-   shining through the gaps while the transcript passes underneath. */
+   What changed in the redesign: the search field is no longer inside the dark
+   player block. It belongs to the transcript, so it sits on the paper ground
+   below the video, as the loudest control in the column. */
+.player-grid { display: flex; flex-direction: column; min-height: 0; }
+
 .player-head {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
   background: var(--color-bg);
+  padding-bottom: var(--space-3);
 }
 
 .player-frame {
+  background: var(--color-ink-surface);
+  border-radius: 18px;
+  padding: 14px;
+}
+.player-frame > div {
+  position: relative;
   aspect-ratio: 16 / 9;
-  width: 100%;
-  background: var(--color-neutral-100);
+  border-radius: 12px;
+  overflow: hidden;
+  background: repeating-linear-gradient(135deg, #2f2823 0 10px, #282219 10px 20px);
 }
+.player-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 
-/* The hook mounts the iframe inside an intermediate host div; without an
-   explicit height on that chain the iframe's percentage height resolves
-   against nothing and falls back to its attribute height, leaving the frame
-   mostly empty. */
-.player-frame > div,
-.player-frame iframe {
-  width: 100%;
-  height: 100%;
-  display: block;
+/* Podcast player: cover instead of a video frame, transport beside it. The
+   Listen tab only appears once cast2md serves timings and an audio source. */
+.player-audio { display: flex; gap: 18px; align-items: center; }
+.player-cover { width: 132px; height: 132px; flex: none; border-radius: 12px; overflow: hidden; background: var(--color-well); }
+.player-cover img { width: 100%; height: 100%; object-fit: cover; }
+.player-transport { display: flex; align-items: center; gap: 14px; }
+.player-transport .play {
+  width: 52px;
+  height: 52px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-amber);
+  color: #241f1a;
+  cursor: pointer;
 }
+.player-progress { height: 5px; border-radius: var(--radius-pill); background: #3a322b; position: relative; }
+.player-progress > span { position: absolute; inset: 0 auto 0 0; border-radius: var(--radius-pill); background: var(--color-amber); }
+
+/* The transcript's own head: a label, then the search field. */
+.player-searchhead { display: flex; align-items: baseline; gap: var(--space-3); margin-top: 20px; }
+.player-searchhead .count { font: 400 12.5px/1 var(--font-body); color: var(--color-text-2); }
 
 .player-search {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 0 8px;
+  gap: var(--space-3);
+  margin-top: 10px;
+  padding: 13px 20px;
+  border: 1.5px solid var(--color-text);
+  border-radius: var(--radius-pill);
+  background: var(--color-card);
+  box-shadow: 0 2px 8px rgba(36, 31, 26, 0.10);
 }
-
+.player-search .input {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font: 500 15px/1 var(--font-body);
+}
+.player-search .input:focus-visible { outline: none; }
 .player-hits {
   flex: none;
-  font-size: 12px;
-  color: var(--color-neutral-600);
+  font: 600 13px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-accent);
 }
 
-.player-pane .cue {
-  cursor: pointer;
+.player-pane { overflow-y: auto; min-height: 0; padding-top: var(--space-3); }
+.player-pane .cue { grid-template-columns: 64px 1fr; cursor: pointer; }
+.player-cue-text { font-family: var(--font-reading); font-size: 16.5px; line-height: 1.6; color: var(--color-neutral-800); }
+
+/* The active cue and a search hit need to stay distinguishable: the active
+   line is a filled amber row, a hit is an amber mark inside the text. */
+.cue-active { background: var(--color-amber-soft); }
+.cue-active > time { color: var(--color-accent-700); }
+.cue-active .player-cue-text { color: var(--color-text); }
+.cue-hit { box-shadow: inset 0 0 0 1.5px var(--color-amber); }
+.player-pane mark { background: var(--color-amber); color: #241f1a; border-radius: 3px; padding: 0 2px; }
+
+@media (max-width: 767px) {
+  .player-cover { width: 96px; height: 96px; }
+  .player-search { padding: 11px 16px; }
+  .player-search .input { font-size: 14px; }
+  .player-pane .cue { grid-template-columns: 54px 1fr; padding: 8px 10px; }
+  .player-cue-text { font-size: 15.5px; }
 }
 
-.player-cue-text {
-  font-size: 13.5px;
-  line-height: 1.55;
-  color: var(--color-neutral-800);
-}
+/* ── Inbox ───────────────────────────────────────────────────────────────── */
 
-.cue-active {
-  background: var(--color-accent-100);
-  box-shadow: inset 2px 0 0 var(--color-accent);
-}
-
-.cue-hit {
-  outline: 1px solid var(--color-accent-400);
-  outline-offset: -1px;
-}
-
-.player-pane mark {
-  background: var(--color-accent-100);
-  color: inherit;
-}
-
-/* ── Channels inbox ─────────────────────────────────────────────────────── */
-
+/* Triage rows are cards with three visible actions. Never dim a queued row:
+   the outlined status chip carries the state, and opacity on a card takes its
+   metadata below contrast. */
 .inbox-row {
-  display: flex;
-  gap: 14px;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--color-neutral-300);
+  display: grid;
+  grid-template-columns: 208px 1fr;
+  gap: 20px;
+  align-items: center;
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 14px;
+  margin-bottom: 14px;
 }
 
-/* Same crop logic as the feed rows: hqdefault's letterbox bars are exactly
-   what object-fit: cover removes from a 16:9 frame. */
 .inbox-art {
-  flex: none;
-  width: 128px;
+  width: 100%;
   aspect-ratio: 16 / 9;
   object-fit: cover;
-  background: var(--color-neutral-100);
+  border-radius: var(--radius-md);
+  background: var(--color-well);
+  display: block;
 }
 
-.inbox-body {
-  min-width: 0;
-}
-
+.inbox-body { min-width: 0; }
 .inbox-title {
-  font-size: 14.5px;
-  font-weight: 500;
-  line-height: 1.35;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 21px;
+  letter-spacing: -0.02em;
+  line-height: 1.18;
+  margin: 9px 0 0;
+  text-wrap: pretty;
+}
+.inbox-meta { display: flex; align-items: center; gap: var(--space-2); font: 400 12.5px/1 var(--font-body); color: var(--color-text-2); }
+.inbox-actions { display: flex; gap: var(--space-2); margin-top: 14px; }
+
+@media (max-width: 767px) {
+  .inbox-row { grid-template-columns: 1fr; gap: var(--space-3); padding: 12px; }
+  /* Three equal pills at 44px; Dismiss is outlined rather than ghost so the
+     third target is visible. */
+  .inbox-actions > .btn { flex: 1; justify-content: center; }
+  .inbox-actions > .btn-ghost { flex: 0 0 96px; border: 1px solid var(--color-divider); }
 }
 
-.inbox-meta {
-  margin-top: 3px;
-  font-size: 11.5px;
-  color: var(--color-neutral-600);
-}
+/* ── Channels and shows ──────────────────────────────────────────────────── */
 
-.inbox-actions {
+/* Two shelves of cards. Round avatar = video channel, rounded-square cover =
+   podcast show; the shape is the media-type marker everywhere in the app. */
+.shelf { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--space-4); }
+
+.shelf-card {
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+}
+.shelf-card .badge-new { position: absolute; top: 14px; right: 14px; }
+.shelf-card .name { font-family: var(--font-heading); font-weight: 600; font-size: 16px; letter-spacing: -0.015em; line-height: 1.25; margin-top: 14px; }
+.shelf-card .meta { font: 400 12.5px/1 var(--font-body); color: var(--color-text-2); margin-top: 6px; }
+
+/* Karakeep one-shot channels and the follow affordance: dashed, not filled. */
+.shelf-card.is-fold { border: 1px dashed var(--color-neutral-400); }
+.shelf-add {
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--color-neutral-400);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
 }
 
 @media (max-width: 767px) {
-  .inbox-art {
-    width: 96px;
-  }
+  .shelf { grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+  .shelf-card { padding: 16px; }
 }
 
-/* ── Channel strip ──────────────────────────────────────────────────────── */
-
-/* The channels that actually have videos here, as a scrollable row of
-   artwork tiles — the shape a subscription row has on YouTube, scoped to the
-   library. It replaces a <select>, so each tile is a toggle button. */
+/* The library's channel strip: below 1280px this replaces the rail. */
 .channel-strip {
   display: flex;
-  gap: 14px;
+  gap: 10px;
   overflow-x: auto;
-  width: 100%;
-  padding-bottom: 4px;
+  scrollbar-width: none;
+  padding: 2px 0;
 }
+.channel-strip::-webkit-scrollbar { display: none; }
 
 .channel-tile {
+  width: 62px;
   flex: none;
-  width: 84px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  background: none;
   border: 0;
-  padding: 0;
+  background: transparent;
   cursor: pointer;
-  color: var(--color-neutral-700);
 }
-
 .channel-art {
-  width: 56px;
-  height: 56px;
+  width: 50px;
+  height: 50px;
+  border-radius: var(--radius-pill);
   object-fit: cover;
-  background: var(--color-neutral-100);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: var(--color-neutral-200);
 }
-
-.channel-art-initial {
-  font: 600 20px var(--font-body);
-  color: var(--color-neutral-500);
-}
-
+.channel-strip[data-variant="podcast"] .channel-art { border-radius: var(--radius-md); }
+.channel-art-initial { display: grid; place-items: center; font: 600 15px/1 var(--font-body); color: var(--color-neutral-600); }
 .channel-name {
-  max-width: 100%;
-  font-size: 11.5px;
-  line-height: 1.25;
-  text-align: center;
+  font: 500 10.5px/1.2 var(--font-body);
+  color: var(--color-text-2);
+  max-width: 62px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.channel-count { display: none; }        /* the count lives in the rail, not under the tile */
+.channel-tile:hover .channel-name { color: var(--color-text); }
+.channel-tile[aria-pressed="true"] .channel-art { box-shadow: 0 0 0 2px var(--color-text); }
+.channel-tile[aria-pressed="true"] .channel-name { color: var(--color-text); font-weight: 600; }
 
-.channel-count {
-  font-size: 10.5px;
-  color: var(--color-neutral-500);
-}
-
-.channel-tile:hover .channel-name {
-  color: var(--color-text);
-}
-
-.channel-tile[aria-pressed="true"] {
-  color: var(--color-text);
-}
-
-.channel-tile[aria-pressed="true"] .channel-art {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-.channel-tile[aria-pressed="true"] .channel-name {
-  color: var(--color-accent);
-  font-weight: 600;
-}
-
-/* The vertical form of the same navigation: a subscription rail the way
-   YouTube draws it, placed in the empty margin left of the reading column.
-   It exists only where that margin actually fits it — below 1280px the
-   horizontal strip takes over. Fixed, not sticky: the margin is outside the
-   page's flow, and a constant offset keeps it put while the feed scrolls. */
-.channel-rail {
-  display: none;
-}
+/* The rail: a card in the left column, from 1280px up. */
+.channel-rail { display: none; }
 
 @media (min-width: 1280px) {
-  .channel-strip {
-    display: none;
-  }
-
   .channel-rail {
     display: block;
-    position: fixed;
-    top: 96px;
-    right: calc(50% + (var(--reading-w) / 2) + 20px);
-    width: 216px;
-    max-height: calc(100vh - 120px);
-    overflow-y: auto;
+    width: 244px;
+    flex: none;
+    background: var(--color-card);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+    padding: 16px 14px;
   }
+  .channel-strip { display: none; }
 }
 
 .channel-row {
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
-  padding: 5px 6px;
   border: 0;
-  background: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  padding: 7px 8px;
   cursor: pointer;
-  color: var(--color-neutral-700);
-  font-size: 13px;
   text-align: left;
 }
-
-.channel-row:hover {
-  background: var(--color-neutral-100);
-  color: var(--color-text);
-}
-
-.channel-row[aria-pressed="true"] {
-  color: var(--color-accent);
-  font-weight: 600;
-  box-shadow: inset 2px 0 0 var(--color-accent);
-}
+.channel-row:hover { background: var(--color-bg); }
+.channel-row[aria-pressed="true"] { background: var(--color-bg); }
+.channel-row[aria-pressed="true"] .channel-row-name { font-weight: 600; color: var(--color-text); }
 
 .channel-row-art {
+  width: 30px;
+  height: 30px;
   flex: none;
-  width: 24px;
-  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
   object-fit: cover;
-  background: var(--color-neutral-100);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font: 600 11px var(--font-body);
-  color: var(--color-neutral-500);
+  background: var(--color-neutral-200);
+  color: var(--color-neutral-600);
+  font: 600 12px/1 var(--font-body);
 }
+.channel-rail[data-variant="podcast"] .channel-row-art { border-radius: var(--radius-sm); }
 
 .channel-row-name {
-  flex: 1;
-  min-width: 0;
+  font: 500 13.5px/1 var(--font-body);
+  color: var(--color-neutral-800);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.channel-row-count { margin-left: auto; font: 400 12px/1 var(--font-body); font-variant-numeric: tabular-nums; color: var(--color-text-2); }
+.channel-row-others .channel-row-art { background: var(--color-bg); font-size: 11.5px; }
 
-.channel-row-count {
-  flex: none;
-  font-size: 11px;
-  color: var(--color-neutral-500);
+/* ── Detail shell: PageHeader inside the reading card ─────────────────────── */
+
+/* PageHeader carries the page-wide measure and gutter for the list screens.
+   Inside the reading card both are the card's, so they are removed here rather
+   than the reader growing a second header component. */
+.detail-content .page-head {
+  display: block;
+  padding: 0;
+  max-width: none;
+  margin-inline: 0;
 }
+
+/* A summary carries up to five actions. `.page-head` is a flex row with the
+   actions at `flex: none`, so beside them the title column collapses — inside
+   the reading card that left the h1 about 130px wide, one word per line. The
+   title owns the first line and the actions wrap beneath it. */
+.detail-content .page-head-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  gap: var(--space-2);
+}
+
+@media (max-width: 767px) {
+  .detail-content .page-head-actions { justify-content: flex-start; margin-top: 14px; }
+}
+
+/* The rail's chapter list is a navigation aid, not reading text: tighter than
+   the Chapters tab's prose and clipped to two lines per entry. */
+.rail-chapter {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.rail-chapter:hover { background: var(--color-neutral-100); }
+.rail-chapter > time {
+  font: 500 12px/1.5 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-2);
+}
+.rail-chapter > span {
+  font: 400 13px/1.45 var(--font-body);
+  color: var(--color-neutral-800);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Library dashboard head ──────────────────────────────────────────────── */
+
+/* Two figures beside the date, not the four-across strip the Modernist library
+   led with: the other two (queued, failed) are operational and moved to Stats,
+   where an operational figure belongs. */
+.page-head-figures { display: flex; gap: var(--space-3); }
+.page-head-figures > div {
+  min-width: 118px;
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 14px 18px;
+}
+.page-head-figures .value {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 30px;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  margin-top: 8px;
+}
+
+/* The one line of state under the date. */
+.dash-state {
+  padding: 0 var(--page-x) 18px;
+  font: 400 14px/1.5 var(--font-body);
+  color: var(--color-text-2);
+}
+.dash-state a { color: var(--color-accent); }
+.dash-state .alert { color: var(--color-accent); }
+
+@media (max-width: 767px) {
+  /* The figures sit under the date rather than beside it; PageHeader already
+     stacks at this width. `.page-head-actions` pushes itself right with an auto
+     margin, which on a stacked head left the two figures floated to the right
+     edge under a left-aligned title. */
+  .page-head-actions:has(.page-head-figures) { margin-left: 0; width: 100%; }
+  .page-head-figures { width: 100%; }
+  .page-head-figures > div { min-width: 0; flex: 1; padding: 12px 14px; }
+  .page-head-figures .value { font-size: 24px; }
+}
+
+/* ── Library columns: rail beside the feed ────────────────────────────────── */
+
+/* From 1280px the library is two columns: the inbox teaser and the channel rail
+   on the left, everything else on the right. The Modernist rail was fixed in
+   the page margin; at --reading-w: 1120px that margin is 80px and no longer
+   holds a 244px card, so the rail gets a column instead of a margin.
+
+   Below 1280px both the column and the rail are gone and .channel-strip takes
+   over — which is what the system stylesheet already toggles. */
+.rail-col { display: none; }
+.library-main { min-width: 0; }
+
+@media (min-width: 1280px) {
+  .library-cols {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-6);
+    padding-left: var(--page-x);
+  }
+  .library-main { flex: 1; }
+  /* The feed and the filter bar already carry --page-x; inside the right
+     column that gutter is the column's, not theirs. */
+  .library-cols .library-main > .filters,
+  .library-cols .library-main > .feed { padding-left: 0; }
+  .rail-col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    width: 244px;
+    flex: none;
+    position: sticky;
+    top: var(--space-4);
+  }
+  .rail-col .channel-rail { width: 100%; max-height: calc(100vh - 120px); overflow-y: auto; }
+}
+
+/* ── Lead card artwork inside the narrower library column ─────────────────── */
+
+/* .feed-lead stretches its artwork to the card's height and gives it a 16:9
+   aspect-ratio. With both in force the ratio computes the *width* from that
+   stretched height, so the artwork grows past its own grid column and eats the
+   gap to the text — measured at 414px in a 392px column. Pinning the width to
+   the column overconstrains the ratio, which is then ignored: the artwork fills
+   the column and `object-fit: cover` does the cropping, which is what it was
+   already doing on every other row. */
+.feed-lead .feed-art { width: 100%; min-width: 0; }
+
+/* ── Page head as a flex item ─────────────────────────────────────────────── */
+
+/* `.page-head` centres itself with `margin-inline: auto` under a `max-width`.
+   That works in a block container, where `width: auto` already fills the line.
+   Layout's <main> is a flex column, and there an auto inline margin shrinks the
+   item to its content and centres *that* — the Channels, Stats and Settings
+   heads rendered at 382px in a 1440px window, indented past their own content.
+   An explicit width makes the item fill the column, and the max-width still
+   holds the measure. `.hero` and `.filters` centre themselves the same way and
+   sit directly under <main> on Stats, so they take the same fix — without it
+   the figure strip was indented 180px past the section cards below it. */
+.page-head,
+.hero,
+.filters { width: 100%; }

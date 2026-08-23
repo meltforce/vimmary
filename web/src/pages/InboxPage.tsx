@@ -94,7 +94,7 @@ export default function InboxPage() {
 
   return (
     // feed-page, not detail-page: the inbox is a list screen like the two
-    // libraries, and homelab.css centers the nav into the reading column only
+    // libraries, and the system stylesheet centers the nav into the reading column only
     // while a .feed-page is on the page — a detail-page root here left the nav
     // at the viewport edge, jumping on every switch from Videos or Podcasts.
     <div className="feed-page">
@@ -114,6 +114,10 @@ export default function InboxPage() {
           ) : undefined
         }
       />
+
+      <p className="dash-state" style={{ paddingBottom: 12 }}>
+        Nothing is summarized until you pick it. Shorts are filtered automatically.
+      </p>
 
       {chipChannels.length > 1 ? (
         <div className="filters" style={{ flexWrap: "wrap" }}>
@@ -139,7 +143,7 @@ export default function InboxPage() {
         </div>
       ) : null}
 
-      <div className="page-x detail-content">
+      <div className="page-x" style={{ paddingBottom: 32 }}>
         {actionError ? <p className="field-error">{actionError.message}</p> : null}
 
         {inbox.isLoading ? (
@@ -170,7 +174,7 @@ export default function InboxPage() {
             </h3>
             {followedChannels.length === 0 ? (
               <p>
-                Follow a channel under <Link to="/settings">Settings → Channels</Link> and its new
+                Follow a channel under <Link to="/channels">Channels</Link> and its new
                 videos land here.
               </p>
             ) : null}
@@ -188,9 +192,14 @@ export default function InboxPage() {
             <div className="inbox-body">
               <div className="inbox-title">{item.title || item.youtube_id}</div>
               <div className="inbox-meta">
-                {[item.channel_title, item.published_at ? shortDate(item.published_at) : null]
-                  .filter(Boolean)
-                  .join(" · ")}
+                <span>
+                  {[item.channel_title, item.published_at ? shortDate(item.published_at) : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+                {/* An outlined chip, and the row keeps full contrast: dimming
+                    a queued card takes its metadata below AA. */}
+                {item.state === "queued" ? <span className="status status-queued">queued</span> : null}
               </div>
               <div className="inbox-actions">
                 <button

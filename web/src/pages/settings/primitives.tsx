@@ -117,7 +117,9 @@ export function SectionLoading() {
   );
 }
 
-/** Square, 44×26, accent ground when on. Never the native rounded control. */
+/** 44×26, rust ground when on, and round — a deliberate reversal of the
+ *  Modernist rule against the native rounded control: in a system built from
+ *  pills and cards the square toggle was the last hard edge left. */
 export function Switch({
   checked,
   onChange,

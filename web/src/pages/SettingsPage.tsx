@@ -8,7 +8,6 @@ import LLMSection from "./settings/LLMSection.tsx";
 import SummariesSection from "./settings/SummariesSection.tsx";
 import RSSSection from "./settings/RSSSection.tsx";
 import PodcastSection from "./settings/PodcastSection.tsx";
-import ChannelsSection from "./settings/ChannelsSection.tsx";
 
 /**
  * Settings is six unrelated concerns, and each one owns its queries, its state
@@ -23,6 +22,10 @@ import ChannelsSection from "./settings/ChannelsSection.tsx";
  *
  * The active tab lives in `?tab=` so a page can link straight at it — the empty
  * video list points at Karakeep, and a missing key points at LLM.
+ *
+ * Channels used to be a section here and is now its own nav destination
+ * (`/channels`): the shelf of followed channels only reads as a shelf at full
+ * page width, and following one is browsing rather than configuration.
  */
 export default function SettingsPage() {
   const isDesktop = useIsDesktop();
@@ -33,8 +36,6 @@ export default function SettingsPage() {
   const tabs = [
     { id: "identity", label: "Identity", render: () => <IdentitySection /> },
     { id: "karakeep", label: "Karakeep", render: () => <KarakeepSection /> },
-    // Always present: channels need no external service, unlike podcasts.
-    { id: "channels", label: "Channels", render: () => <ChannelsSection /> },
     { id: "feed", label: "Feed", render: () => <RSSSection /> },
     { id: "summaries", label: "Summaries", render: () => <SummariesSection /> },
     // Service-wide keys: the server answers 404 to everyone but the primary user.
@@ -52,13 +53,9 @@ export default function SettingsPage() {
     return (
       <>
         <PageHeader kicker="vimmary" title="Settings" />
-        <div style={{ borderTop: "var(--rule-strong)" }}>
+        <div className="page-x" style={{ display: "flex", flexDirection: "column", gap: 14, paddingBottom: 32 }}>
           {tabs.map((tab) => (
-            <section
-              key={tab.id}
-              className="page-x"
-              style={{ paddingTop: 20, paddingBottom: 4, borderBottom: "var(--rule-strong)" }}
-            >
+            <section key={tab.id} className="card">
               {tab.render()}
             </section>
           ))}
@@ -70,7 +67,11 @@ export default function SettingsPage() {
   return (
     <>
       <PageHeader kicker="vimmary" title="Settings" />
-      <div style={{ display: "flex", borderTop: "var(--rule-strong)", minHeight: 560 }}>
+      <div
+        className="page-x"
+        style={{ display: "flex", gap: 20, alignItems: "flex-start", minHeight: 560, paddingBottom: 40 }}
+      >
+        {/* .rail is already a card in the system. */}
         <div className="rail">
           {tabs.map((tab) => (
             <button
@@ -84,10 +85,7 @@ export default function SettingsPage() {
             </button>
           ))}
         </div>
-        <div
-          className="page-x"
-          style={{ flex: 1, minWidth: 0, maxWidth: 960, paddingTop: 26, paddingBottom: 40 }}
-        >
+        <div className="card" style={{ flex: 1, minWidth: 0, maxWidth: 960, padding: "24px 28px" }}>
           {tabs.find((t) => t.id === active)?.render()}
         </div>
       </div>

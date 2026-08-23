@@ -116,7 +116,7 @@ export default function StatsPage() {
           value={stats ? hoursLabel(totalHours) : undefined}
           unit="watched"
         />
-        <HeroCell label="Saved" value={stats ? hoursLabel(savedHours) : undefined} unit="vs 1×" />
+        <HeroCell label="Saved" value={stats ? hoursLabel(savedHours) : undefined} unit="vs 1×" ink />
         <HeroCell label="Completed" value={stats ? `${completion}%` : undefined} />
       </div>
 
@@ -283,9 +283,20 @@ function hoursLabel(h: number): string {
   return h >= 1 ? `${h.toFixed(0)} h` : `${Math.round(h * 60)} min`;
 }
 
-function HeroCell({ label, value, unit }: { label: string; value?: string; unit?: string }) {
+function HeroCell({
+  label,
+  value,
+  unit,
+  ink,
+}: {
+  label: string;
+  value?: string;
+  unit?: string;
+  /** The dark accent surface — one figure per strip at most. */
+  ink?: boolean;
+}) {
   return (
-    <div>
+    <div className={ink ? "is-ink" : undefined}>
       <div className="kick">{label}</div>
       <div className="value">
         {value ?? <Skel w={92} h={44} />}
@@ -301,8 +312,9 @@ function HeroCell({ label, value, unit }: { label: string; value?: string; unit?
   );
 }
 
-/* Section head, then the content. No card, no frame: a 2px rule and a kicker
-   carry the break. */
+/* Section head, then the content, in a card. Stats joins the card language
+   with the redesign: the 2px rule that used to carry the break is gone from
+   the system, and a framed table inside a carded page reads as two frames. */
 function Section({
   title,
   note,
@@ -313,19 +325,18 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section>
-      <div
-        className="page-x flex items-baseline gap-4"
-        style={{ paddingTop: 26, paddingBottom: 12, borderTop: "var(--rule-strong)" }}
-      >
-        <h2 style={{ fontSize: 22 }}>{title}</h2>
-        {note ? (
-          <span style={{ font: "400 12.5px var(--font-body)", color: "var(--color-neutral-600)" }}>
-            {note}
-          </span>
-        ) : null}
+    <section className="page-x" style={{ paddingBottom: 18 }}>
+      <div className="card">
+        <div className="flex items-baseline gap-4" style={{ paddingBottom: 14 }}>
+          <h2 style={{ fontSize: 22 }}>{title}</h2>
+          {note ? (
+            <span style={{ font: "400 12.5px var(--font-body)", color: "var(--color-text-2)" }}>
+              {note}
+            </span>
+          ) : null}
+        </div>
+        {children}
       </div>
-      {children}
     </section>
   );
 }
@@ -353,9 +364,9 @@ function Bar({ fraction, accent }: { fraction: number; accent?: boolean }) {
   );
 }
 
-/* No frame and no legend: a 2px zero line, 1px grid, .kick axis labels. Bars are
-   ink; the current day is the accent, because that is the series the page is
-   about. */
+/* No frame and no legend: a hairline zero line, one grid line, .kick axis
+   labels. Bars are ink; today is amber, because amber is the system's
+   highlight and rust is reserved for failure. */
 function DailyChart({ daily }: { daily: DailyCount[] }) {
   if (!daily.length) {
     return (
@@ -391,7 +402,8 @@ function DailyChart({ daily }: { daily: DailyCount[] }) {
               flex: 1,
               height: `${(d.count / max) * 100}%`,
               minHeight: d.count > 0 ? 2 : 0,
-              background: d.date === today ? "var(--color-accent)" : "var(--color-text)",
+              borderRadius: "3px 3px 0 0",
+              background: d.date === today ? "var(--color-amber)" : "var(--color-text)",
             }}
           />
         ))}

@@ -15,10 +15,11 @@ import {
 import PageHeader from "../components/PageHeader.tsx";
 import Toast, { useToast } from "../components/Toast.tsx";
 import FeedList, { type Row } from "../components/FeedList.tsx";
-import FacetFilters from "../components/FacetFilters.tsx";
+import FacetFilters, { ChannelRail } from "../components/FacetFilters.tsx";
 import { Skel } from "../components/LoadingSkeleton.tsx";
 import { AlertIcon, SearchIcon } from "../components/icons.tsx";
 import { useIsDesktop } from "../hooks/useMediaQuery.ts";
+import { useInboxCount } from "../hooks/useInboxCount.ts";
 import { isInFlight, longDate } from "../display.ts";
 
 const PAGE_SIZE = 20;
@@ -153,6 +154,16 @@ export default function VideoListPage() {
 
   /* The stats endpoint returns a daily series; the week is a sum over it rather
      than a second request. */
+  const inboxCount = useInboxCount();
+
+  /* Summaries stored today — the "3 new summaries" half of the state line. */
+  const today = (() => {
+    const days = stats.data?.daily_activity;
+    if (!days) return undefined;
+    const iso = new Date().toISOString().slice(0, 10);
+    return days.find((d) => d.date.slice(0, 10) === iso)?.count ?? 0;
+  })();
+
   const lastWeek = (() => {
     const days = stats.data?.daily_activity;
     if (!days) return undefined;
@@ -171,12 +182,52 @@ export default function VideoListPage() {
     setParams(next);
   };
 
+  const onFacetChange = (next: { channel: string; topic: string }) => {
+    const p = new URLSearchParams(params);
+    if (next.channel) p.set("channel", next.channel);
+    else p.delete("channel");
+    if (next.topic) p.set("topic", next.topic);
+    else p.delete("topic");
+    p.delete("page");
+    setParams(p);
+  };
+
   const totalPages = list.data ? Math.ceil(list.data.total / PAGE_SIZE) : 1;
   const isEmpty = !loading && rows && rows.length === 0;
 
   return (
     <div className="feed-page">
-      <PageHeader kicker={longDate(new Date())} title="Videos" />
+      <PageHeader
+        kicker="Videos"
+        title={longDate(new Date())}
+        actions={
+          <div className="page-head-figures">
+            <HeroCell label="In library" value={stats.data?.total_count} />
+            <HeroCell label="Last 7 days" value={lastWeek} />
+          </div>
+        }
+      />
+
+      {/* One line of state, in place of the four-figure strip: what arrived and
+          what is waiting, both of them things to act on. */}
+      <p className="dash-state">
+        {today === undefined ? "…" : `${today.toLocaleString()} new ${today === 1 ? "summary" : "summaries"} today`}
+        {inboxCount > 0 ? (
+          <>
+            {" · "}
+            <Link to="/inbox">{inboxCount.toLocaleString()} waiting in the inbox</Link>
+          </>
+        ) : null}
+        {queuedCount > 0 ? ` · ${queuedCount.toLocaleString()} in the queue` : ""}
+        {failedCount > 0 ? (
+          <>
+            {" · "}
+            <Link to="/?status=failed" className="alert">
+              {failedCount.toLocaleString()} failed
+            </Link>
+          </>
+        ) : null}
+      </p>
 
       <form
         className="cmdline page-x"
@@ -206,13 +257,28 @@ export default function VideoListPage() {
         </div>
       ) : null}
 
-      <div className="hero">
-        <HeroCell label="Videos" value={stats.data?.total_count} />
-        <HeroCell label="Last 7 days" value={lastWeek} />
-        <HeroCell label="Queued" value={queuedCount} loaded={!!stats.data} />
-        <HeroCell label="Failed" value={failedCount} loaded={!!stats.data} accent={failedCount > 0} />
-      </div>
+      {/* Two columns from 1280px: the rail's column, then everything the
+          library actually lists. */}
+      <div className="library-cols">
+        <ChannelRail
+          source="youtube"
+          channel={channel}
+          topic={topic}
+          onChange={onFacetChange}
+          header={
+            inboxCount > 0 ? (
+              <Link to="/inbox" className="card-ink" style={{ color: "inherit", display: "block" }}>
+                <div className="kick">Inbox</div>
+                <p style={{ margin: "6px 0 0" }}>
+                  {inboxCount.toLocaleString()} {inboxCount === 1 ? "video" : "videos"} waiting for
+                  triage.
+                </p>
+              </Link>
+            ) : null
+          }
+        />
 
+        <div className="library-main">
       <div className="filters">
         <form
           className="search"
@@ -266,15 +332,7 @@ export default function VideoListPage() {
           source="youtube"
           channel={channel}
           topic={topic}
-          onChange={(next) => {
-            const p = new URLSearchParams(params);
-            if (next.channel) p.set("channel", next.channel);
-            else p.delete("channel");
-            if (next.topic) p.set("topic", next.topic);
-            else p.delete("topic");
-            p.delete("page");
-            setParams(p);
-          }}
+          onChange={onFacetChange}
         />
       ) : null}
 
@@ -333,6 +391,8 @@ export default function VideoListPage() {
           </button>
         </div>
       ) : null}
+        </div>
+      </div>
 
       <div className="footer">
         {failedCount > 0 ? (

@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchFeedInfo, fetchStats, listVideos, searchVideos } from "../api.ts";
 import PageHeader from "../components/PageHeader.tsx";
 import FeedList, { type Row } from "../components/FeedList.tsx";
-import FacetFilters from "../components/FacetFilters.tsx";
+import FacetFilters, { ChannelRail } from "../components/FacetFilters.tsx";
 import { Skel } from "../components/LoadingSkeleton.tsx";
 import { AlertIcon, SearchIcon } from "../components/icons.tsx";
 import { useIsDesktop } from "../hooks/useMediaQuery.ts";
@@ -96,33 +96,54 @@ export default function PodcastListPage() {
 
   const hours = (stats.data?.total_duration_seconds ?? 0) / 3600;
 
+  const onFacetChange = (next: { channel: string; topic: string }) => {
+    const p = new URLSearchParams(params);
+    if (next.channel) p.set("channel", next.channel);
+    else p.delete("channel");
+    if (next.topic) p.set("topic", next.topic);
+    else p.delete("topic");
+    p.delete("page");
+    setParams(p);
+  };
+
   return (
     <div className="feed-page">
-      <PageHeader kicker={longDate(new Date())} title="Podcasts" />
-
-      {/* Two cells, side by side at every width — the strip's default is four. */}
-      <div className="hero" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <div>
-          <div className="kick">Episodes</div>
-          <div className="value">
-            {stats.data ? stats.data.total_count.toLocaleString() : <Skel w={92} h={44} />}
+      {/* The date is the title on both library screens; the two figures ride
+          beside it rather than in a strip of their own. */}
+      <PageHeader
+        kicker="Podcasts"
+        title={longDate(new Date())}
+        actions={
+          <div className="page-head-figures">
+            <div>
+              <div className="kick">Episodes</div>
+              <div className="value">
+                {stats.data ? stats.data.total_count.toLocaleString() : <Skel w={72} h={30} />}
+              </div>
+            </div>
+            <div>
+              <div className="kick">Runtime</div>
+              <div className="value">
+                {stats.data ? (
+                  <>
+                    {hours >= 1 ? hours.toFixed(0) : Math.round(hours * 60)}
+                    <span className="unit">{hours >= 1 ? "hours" : "min"}</span>
+                  </>
+                ) : (
+                  <Skel w={72} h={30} />
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-        <div>
-          <div className="kick">Runtime</div>
-          <div className="value">
-            {stats.data ? (
-              <>
-                {hours >= 1 ? hours.toFixed(0) : Math.round(hours * 60)}
-                <span className="unit">{hours >= 1 ? "hours" : "min"}</span>
-              </>
-            ) : (
-              <Skel w={92} h={44} />
-            )}
-          </div>
-        </div>
-      </div>
+        }
+      />
 
+      {/* Two columns from 1280px, the same shape as the video library: the show
+          rail on the left, the list on the right. */}
+      <div className="library-cols">
+        <ChannelRail source="podcast" channel={channel} topic={topic} onChange={onFacetChange} />
+
+        <div className="library-main">
       <div className="filters">
         <form
           className="search"
@@ -162,15 +183,7 @@ export default function PodcastListPage() {
           source="podcast"
           channel={channel}
           topic={topic}
-          onChange={(next) => {
-            const p = new URLSearchParams(params);
-            if (next.channel) p.set("channel", next.channel);
-            else p.delete("channel");
-            if (next.topic) p.set("topic", next.topic);
-            else p.delete("topic");
-            p.delete("page");
-            setParams(p);
-          }}
+          onChange={onFacetChange}
         />
       ) : null}
 
@@ -232,6 +245,8 @@ export default function PodcastListPage() {
           </button>
         </div>
       ) : null}
+        </div>
+      </div>
 
       <div className="footer">
         <Link className="btn btn-ghost" style={{ fontSize: 12.5 }} to="/settings?tab=podcasts">

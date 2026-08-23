@@ -88,7 +88,18 @@ export default function PodcastNewPage() {
     .join(" · ");
 
   return (
-    <>
+    <div className="feed-page">
+      <div className="page-x" style={{ maxWidth: 720, marginInline: "auto", paddingBottom: 40 }}>
+      <div className="card" style={{ padding: "26px 30px 30px", marginTop: 26 }}>
+      {preview.image_url ? (
+        <img
+          className="feed-art is-square"
+          src={preview.image_url}
+          alt=""
+          loading="lazy"
+          style={{ width: 96, marginBottom: 16 }}
+        />
+      ) : null}
       <PageHeader
         kicker={kicker}
         title={preview.title}
@@ -115,23 +126,29 @@ export default function PodcastNewPage() {
         </div>
       ) : null}
 
-      <div style={{ borderTop: "var(--rule-strong)" }} />
-
-      <div className="page-x" style={{ paddingTop: 22, paddingBottom: 32, maxWidth: "68ch" }}>
+      <div style={{ paddingTop: 20 }}>
         {!notReady ? (
           <>
-            <div className="field" style={{ maxWidth: 360 }}>
-              <label htmlFor="podcast-level">Detail level</label>
-              <select
-                id="podcast-level"
-                className="select"
-                value={level}
-                onChange={(e) => setLevel(e.target.value)}
-              >
-                <option value="">Default</option>
-                <option value="medium">medium — a few paragraphs</option>
-                <option value="deep">deep — segment by segment</option>
-              </select>
+            <div className="field" style={{ maxWidth: 420 }}>
+              <label>Detail level</label>
+              <span className="seg">
+                {[
+                  { value: "", label: "Default" },
+                  { value: "medium", label: "Medium" },
+                  { value: "deep", label: "Deep" },
+                ].map((opt) => (
+                  <label key={opt.value || "default"} className="seg-opt">
+                    <input
+                      type="radio"
+                      name="podcast-level"
+                      value={opt.value}
+                      checked={level === opt.value}
+                      onChange={() => setLevel(opt.value)}
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+              </span>
               <p className="field-hint">
                 A deep summary costs more tokens and takes longer. A three-hour episode is worth
                 the difference; a twenty-minute one usually is not.
@@ -158,7 +175,7 @@ export default function PodcastNewPage() {
             <div className="kick" style={{ marginBottom: 10 }}>From the feed</div>
             <p
               style={{
-                font: "400 14.5px/1.6 var(--font-body)",
+                font: "400 16px/1.6 var(--font-reading)",
                 color: "var(--color-neutral-800)",
                 margin: 0,
                 whiteSpace: "pre-wrap",
@@ -169,6 +186,8 @@ export default function PodcastNewPage() {
           </section>
         ) : null}
       </div>
-    </>
+      </div>
+      </div>
+    </div>
   );
 }

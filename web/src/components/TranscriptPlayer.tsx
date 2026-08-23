@@ -79,7 +79,7 @@ export default function TranscriptPlayer({
   return (
     <div className="player-grid">
       {/* Video and search pin together while the transcript scrolls under
-          them — a search field that scrolls away is unusable mid-playback. */}
+          them. */}
       <div className="player-head">
         {embedError ? (
           <div className="empty" style={{ padding: "32px 0" }}>
@@ -100,6 +100,15 @@ export default function TranscriptPlayer({
             <div ref={containerRef} />
           </div>
         )}
+
+        {/* The search field belongs to the transcript, not to the video, so it
+            sits on the paper ground under the transcript's own label rather
+            than inside the dark player block. It still pins with the video:
+            a search field that scrolls away is unusable mid-playback. */}
+        <div className="player-searchhead">
+          <span className="kick">Transcript</span>
+          <span className="count">{segments.length.toLocaleString()} lines</span>
+        </div>
 
         <form
           className="player-search"

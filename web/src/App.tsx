@@ -10,6 +10,7 @@ const VideoDetailPage = lazy(() => import("./pages/VideoDetailPage.tsx"));
 const InboxPage = lazy(() => import("./pages/InboxPage.tsx"));
 const PodcastListPage = lazy(() => import("./pages/PodcastListPage.tsx"));
 const PodcastNewPage = lazy(() => import("./pages/PodcastNewPage.tsx"));
+const ChannelsPage = lazy(() => import("./pages/ChannelsPage.tsx"));
 const StatsPage = lazy(() => import("./pages/StatsPage.tsx"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage.tsx"));
 
@@ -55,6 +56,9 @@ export default function App() {
                 <Route path="/podcast/:id" element={<VideoDetailPage />} />
               </>
             )}
+            {/* Promoted out of Settings by the Shelf redesign — following a
+                channel is browsing, not configuration. */}
+            <Route path="/channels" element={<ChannelsPage />} />
             <Route path="/stats" element={<StatsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             {/* The redirect waits for the feature flags. Until they arrive

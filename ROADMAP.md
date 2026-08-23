@@ -53,15 +53,19 @@ that report is closed; these are the items its numbers left behind.
 
 | Status | Item | Where | Trigger | Notes |
 |---|---|---|---|---|
-| `[open]` | Verify the channel poller against a live subscription | deployment | a channel is followed under Settings → Channels | The service tests cover the poll logic against a fake feed source. Unconfirmed against the real endpoint: that the RSS fetch passes YouTube's front door with the pinned User-Agent over time, and that the 30-minute tick picks up a fresh upload end to end. |
+| `[open]` | Verify the channel poller against a live subscription | deployment | a channel is followed under Channels | The service tests cover the poll logic against a fake feed source. Unconfirmed against the real endpoint: that the RSS fetch passes YouTube's front door with the pinned User-Agent over time, and that the 30-minute tick picks up a fresh upload end to end. |
 | `[open]` | Inbox retention job | `internal/storage/channels.go` | `inbox_items` growth becomes visible | Dismissed and queued rows are kept as the dedup seen-set. A retention job may only delete rows whose videos have left the feed window, or dedup breaks. |
-| `[open]` | Unread count badge on the Inbox nav entry | `web/src/components/Layout.tsx` | the operator asks for it | Needs the channels query in the layout, which currently loads no data. |
 
 ## Redesign
 
+The "D — Shelf" redesign was implemented on 2026-08-23; the package is
+`design/handoff.md` and the decisions it left open are in `DECISIONS.md` under
+that date. What it left behind:
+
 | Status | Item | Where | Trigger | Notes |
 |---|---|---|---|---|
-| `[open]` | Execute the "D — Shelf" redesign | `web/src/` | the Claude Design handoff package arrives | Direction decided 2026-08-23 (DECISIONS.md); brief in `design/redesign-brief.md`. The handoff replaces vimmary's `homelab.css` copy; the brief file is removed when superseded. |
+| `[open]` | Podcast Listen player | `internal/cast2md`, `internal/storage`, `web/src/components/TranscriptPlayer.tsx` | cast2md serves timed segments and an audio URL | Designed (handoff artboard 7), deliberately not built — see DECISIONS.md, 2026-08-23. The vimmary-side change is replacing the early `return emptySegments` for podcast rows in `GetTranscriptSegments`; the storage shape already fits. Tab is labelled `Listen`, not `Watch`. |
+| `[open]` | Clean up the four remaining `--rule-strong` call sites | `web/src/components/LoadingSkeleton.tsx:15`, `pages/VideoDetailPage.tsx:159`, `pages/settings/primitives.tsx:60`, `pages/StatsPage.tsx:390` | touching any of those four screens | The Shelf system replaced Modernist's 2px/1px rule pair with card edges. `--rule-strong` and `--rule-hair` still resolve — both are now a hairline — so components that pass them inline keep working and can be cleaned up screen by screen instead of in one pass. |
 
 ## Transcript player
 
@@ -77,5 +81,5 @@ Left behind by the Modernist migration; the decision itself is closed
 
 | Status | Item | Where | Trigger | Notes |
 |---|---|---|---|---|
-| `[open]` | Bring `docs/index.html` onto the Modernist language | `docs/index.html` | | The public homepage still carries the pre-migration design: `<html lang="en">` with its own inline styles, no `homelab.css`, and the old palette. Anyone arriving from the homepage now meets two different products. It is a static page with no build step, so the work is a rewrite against the same tokens rather than a port; the app-icon set under `web/public/app-icon/` can be reused for its favicon. Overlaps with the homepage row under Podcasts above — do them together. |
+| `[open]` | Bring `docs/index.html` onto the Shelf language | `docs/index.html` | | The public homepage still carries the pre-migration design: `<html lang="en">` with its own inline styles, no shared stylesheet, and the old palette. The target is now `web/src/vimmary.css`, not Modernist — vimmary left that language on 2026-08-23. Anyone arriving from the homepage now meets two different products. It is a static page with no build step, so the work is a rewrite against the same tokens rather than a port; the app-icon set under `web/public/app-icon/` can be reused for its favicon, and was re-derived to amber on ink with the redesign. Overlaps with the homepage row under Podcasts above — do them together. |
 | `[open]` | Make `tools/check-docs.sh` cover `*.tsx` | `tools/check-docs.sh:196` | | The German sweep globs `*.md *.sh *.py *.go *.ts *.js *.rs *.yml *.yaml *.j2 Dockerfile* *.json` and **not `*.tsx`** — which is where every user-facing string in the application lives. The rule that UI strings are English was decided on 2026-08-07 and is currently enforced by nothing. `web/node_modules` is already pruned, so adding the glob is a one-line change; the risk is false positives from German content in test fixtures, of which there are none today — the script's own umlaut pattern run over `web/src` matches nothing. |

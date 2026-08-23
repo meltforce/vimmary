@@ -21,6 +21,84 @@ identifier rather than estimated.
 
 ---
 
+## 2026-08-23 — the "Shelf" handoff, as implemented
+
+**Decided:** 2026-08-23
+
+**Decision.** The Claude Design handoff package for direction D was implemented
+as it arrived: `vimmary.css` replaces `homelab.css`, the app-specific rules
+replace the rule section of `index.css`, Bricolage Grotesque / Public Sans /
+Source Serif 4 replace Archivo, and the app icon is amber on ink. The package's
+own five settled questions (serif body text, a full dark twin, one pill nav on
+both trees, Stats in the card language, a re-derived icon) stand as written and
+are documented in `design/handoff.md` rather than repeated here.
+
+Four things the package did not decide, and one where two of its sections
+disagreed, were settled during implementation:
+
+- **Channels left Settings entirely.** The package's per-screen spec says
+  "promoting it to the nav is part of the redesign", while its Settings spec
+  still lists Channels among the rail's seven entries. Both cannot hold without
+  two places to follow a channel. The nav won: `web/src/pages/ChannelsPage.tsx`
+  is a new route, `settings/ChannelsSection.tsx` is deleted, and the inbox empty
+  state points at `/channels`. Following a channel is browsing, not
+  configuration, and the shelf only reads as a shelf at full page width.
+- **The channel rail got a column instead of the page margin.** Modernist fixed
+  it in the margin left of an 820px reading column. `--reading-w` is now 1120px,
+  which leaves 80px at the 1280px breakpoint — not enough for a 244px card. So
+  `FacetFilters` was split into `ChannelRail` and the chip bar, and the two
+  library screens wrap the rail and the feed in `.library-cols`. Both parts read
+  one React Query cache entry, so it is still one facets request.
+- **`.feed-lead` pins its artwork width.** The package gives the lead card's
+  artwork `align-items: stretch` and `aspect-ratio: 16/9` at once, so the ratio
+  computes the width from the stretched height: measured at 414px inside a 392px
+  column, eating the gap to the text. `width: 100%` overconstrains the ratio,
+  which is then ignored, and `object-fit: cover` crops as it already did on
+  every other row.
+- **`.page-head`, `.hero` and `.filters` carry `width: 100%`.** See CLAUDE.md;
+  auto inline margins shrink a flex item to its content.
+- **The reader's header is `display: block`.** Five actions at `flex: none`
+  beside a title column left the h1 about 130px wide inside the reading card.
+  This restores a rule the pre-redesign `index.css` had and the package's own
+  `index.css` did not carry over.
+
+The nav badge and the library's state line share `useInboxCount()`
+(`web/src/hooks/useInboxCount.ts`, `limit: 1` because only `total` is used),
+which also closes the roadmap's "unread count badge on the Inbox nav entry".
+
+**Reasoning.** Every one of the five is a place where the package is internally
+under-determined or where a rule written against the old measure does not
+survive the new one. Recording them here rather than as code comments only means
+the next handoff can be checked against them: three of the five would recur if a
+future package repeats the same construction.
+
+**Trigger to re-open:** a later handoff that assigns Channels back to Settings;
+a change to `--reading-w` that restores a margin wide enough for the rail.
+
+---
+
+## 2026-08-23 — the Listen player ships when cast2md serves timings and audio
+
+**Decided:** 2026-08-23
+
+**Decision.** The podcast Listen player is designed (handoff artboard 7) and
+deliberately not built. Two things are missing and neither is vimmary's to
+supply: cast2md's `GetTranscript` asks for `?format=txt`, "without timestamps",
+and `source_url` is the cast2md episode page rather than an audio enclosure, so
+nothing is stored to play.
+
+**Reasoning.** The storage shape already fits — `transcript_segments` is
+`{start, duration, text}` and `toSegmentsJSON` writes exactly that — so the
+vimmary-side change is replacing the early `return emptySegments` for podcast
+rows in `GetTranscriptSegments`. Building the UI first would leave a tab that
+cannot be filled. The tab is labelled `Listen`, not `Watch`, when it arrives.
+Note for whoever builds it: cast2md returns one text stream with no speaker
+labels, which shows on a panel show.
+
+**Trigger to re-open:** cast2md serving timed segments and an audio URL.
+
+---
+
 ## 2026-08-23 — vimmary leaves the shared Modernist language; direction "D — Shelf"
 
 **Decided:** 2026-08-23 (operator decision)
@@ -166,7 +244,7 @@ for sort options.
 **Decision.** Users follow YouTube channels; new videos land in an inbox
 (`/inbox`) for triage — summarize, watch (summarize and navigate to the
 detail page, where the transcript player lives), or dismiss. Subscriptions
-are managed under Settings → Channels. Two tables (migration `000015`):
+are managed under Channels (Settings → Channels until the 2026-08-23 redesign). Two tables (migration `000015`):
 `channel_subscriptions` and `inbox_items`, modeled on the podcast
 subscription pattern.
 
@@ -232,7 +310,7 @@ an unread badge or MCP tools.
 **Revisions.**
 
 - 2026-08-23: **Google Takeout import added** (`POST /api/v1/channels/import`,
-  Settings → Channels). The user's YouTube account cannot be read directly:
+  the Channels screen). The user's YouTube account cannot be read directly:
   Google closed the Watch Later API to third parties in 2016 (the Play app
   documents the same limitation), and reading the subscription list live would
   require an OAuth app in a Google Cloud project with verification — out of

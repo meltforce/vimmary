@@ -69,21 +69,35 @@ away from being wrong and one of them was, answering 500 where the handler
 intended 404. Only `internal/storage` imports `jackc/pgx`, and a `grep` for it
 outside that package is the check.
 
-**`web/src/homelab.css` is vimmary's own copy of the Modernist stylesheet, and it
-is edited here.** The design language is shared across the homelab apps, but no
-app polices another's copy and none is the authority over the others: the design
-is steered in Claude Design and arrives as a handoff package, which is what says
-where a rule belongs. A rule the handoff assigns to the system goes in this file
-next to the rules it belongs with — `--reading-w` and the `.feed*` block came
-that way on 2026-08-07. A rule that is only ever vimmary's goes in
-`web/src/index.css` below the import. The why: the earlier form of this rule
-("never edit; change FreeReps and re-copy") described a synchronisation nothing
-performed — FreeReps has no `homelab.css` at all, its system lives in
-`server/web/src/index.css`, and the two files had already diverged.
-Archivo is self-hosted through `@fontsource-variable/archivo` — a font CDN is
-unreachable for a client with no route to it, and the whole UI then renders in
-`system-ui`. One breakpoint, 768px, read in JS by `useIsDesktop()`, because
-desktop and phone are different component trees rather than one reflowed.
+**`web/src/vimmary.css` is vimmary's own system stylesheet — "Shelf", not the
+shared Modernist language.** vimmary left that language on 2026-08-23
+(`DECISIONS.md`, `design/handoff.md`): warm paper ground, white cards, dark
+accent surfaces, artwork-forward browsing, serif reading text. The other homelab
+apps keep their `homelab.css`; nothing synchronises between apps and none is the
+authority over another, so the divergence costs nothing mechanically. The design
+is still steered in Claude Design and arrives as a handoff package, which is
+what says where a rule belongs: a rule the handoff assigns to the system goes in
+`vimmary.css`, a rule only vimmary ever needs goes in `web/src/index.css` below
+the import. The why for editing rather than re-copying: the earlier form of the
+rule ("never edit; change FreeReps and re-copy") described a synchronisation
+nothing performed — FreeReps has no `homelab.css` at all and the two files had
+already diverged.
+
+Bricolage Grotesque (display), Public Sans (UI) and Source Serif 4 (reading) are
+self-hosted through `@fontsource-variable/*` — a font CDN is unreachable for a
+client with no route to it, and the whole UI then renders in `system-ui`. Dark
+mode is a full twin driven by `[data-theme]` from `theme.tsx`, `auto` included.
+One breakpoint, 768px, read in JS by `useIsDesktop()`, because desktop and phone
+are different component trees rather than one reflowed.
+
+**Blocks that centre themselves need `width: 100%` under `<main>`.**
+`.page-head`, `.hero` and `.filters` hold their measure with
+`max-width: var(--reading-w)` plus `margin-inline: auto`. That centres correctly
+in a block container; `Layout`'s `<main>` is a flex column, and there an auto
+inline margin shrinks the item to its content and centres *that* — the Channels,
+Stats and Settings heads rendered at 382px in a 1440px window. The three rules
+sit at the end of `index.css`; a new self-centring block placed directly under
+`<main>` needs the same.
 
 **`thumbnail_url` is filled by two different mechanisms, and for a long time by
 only one.** Podcast rows take it from the feed's `image_url`

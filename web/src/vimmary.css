@@ -1,0 +1,947 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   vimmary.css — the system stylesheet for vimmary. Replaces the app's copy of
+   homelab.css. Direction D, "Shelf": warm paper ground, white cards, dark
+   accent surfaces, artwork-forward browsing, serif reading text.
+
+   vimmary leaves the shared Modernist language here. The other homelab apps
+   keep homelab.css; nothing synchronises between apps, so this file is free to
+   diverge. Class names are unchanged from homelab.css on purpose — swapping
+   this file in is a stylesheet change, not a component rewrite.
+
+   Fonts, self-hosted (a tailnet client has no route to a font CDN):
+     npm i @fontsource-variable/bricolage-grotesque \
+           @fontsource-variable/public-sans \
+           @fontsource-variable/source-serif-4
+     @import "@fontsource-variable/bricolage-grotesque/wght.css";
+     @import "@fontsource-variable/public-sans/wght.css";
+     @import "@fontsource-variable/source-serif-4/wght.css";
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Tokens ──────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Ground and surfaces. --color-bg is the paper the cards sit on; cards are
+     the only white in the light theme. */
+  --color-bg: #f2ece4;
+  --color-card: #ffffff;
+  --color-surface: #e5dccf;          /* pill-nav ground, chips, inset wells */
+  --color-well: #ece5da;             /* bar tracks, empty artwork */
+  --color-text: #241f1a;
+  --color-text-2: #6b6157;           /* every piece of secondary copy */
+  --color-divider: color-mix(in srgb, #241f1a 10%, transparent);
+
+  /* Dark accent surface. Inbox modules, the player card, the "saved" figure. */
+  --color-ink-surface: #241f1a;
+  --color-on-ink: #f2ece4;
+  --color-on-ink-2: #b3a698;
+
+  /* Accents. Rust carries links, labels and primary actions on paper; amber
+     carries new-badges, highlights and primary actions on ink. */
+  --color-accent: #b3532c;
+  --color-accent-600: #a04a26;
+  --color-accent-700: #8f3f1f;
+  --color-accent-100: color-mix(in srgb, #b3532c 8%, #ffffff);
+  --color-amber: #d9a066;
+  --color-amber-soft: rgba(217, 160, 102, 0.24);   /* active cue, highlights */
+
+  /* Warm greys. 600 is the floor for text: 500 and lighter are decoration
+     only (mono labels on placeholder artwork), never load-bearing copy. */
+  --color-neutral-100: #f7f2ec;
+  --color-neutral-200: #ece5da;
+  --color-neutral-300: #ded3c3;
+  --color-neutral-400: #c4b8a7;
+  --color-neutral-500: #8d8175;
+  --color-neutral-600: #6b6157;
+  --color-neutral-700: #554c43;
+  --color-neutral-800: #4a423a;
+  --color-neutral-900: #332c26;
+
+  --font-heading: "Bricolage Grotesque Variable", "Bricolage Grotesque", system-ui, sans-serif;
+  --font-body: "Public Sans Variable", "Public Sans", system-ui, sans-serif;
+  --font-reading: "Source Serif 4 Variable", "Source Serif 4", Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Radii are the loudest single change from Modernist. */
+  --radius-sm: 8px;
+  --radius-md: 14px;                 /* media inside a card */
+  --radius-lg: 22px;                 /* the card itself */
+  --radius-pill: 999px;
+
+  --shadow-card: 0 2px 10px rgba(36, 31, 26, 0.07);
+  --shadow-raised: 0 1px 3px rgba(36, 31, 26, 0.10);
+
+  --page-x: 40px;
+  --reading-w: 1120px;               /* wider than Modernist: cards, not text */
+  --reader-w: 66ch;                  /* the summary's own measure */
+
+  /* Modernist's two rule weights are gone — card edges and shadows carry
+     structure now. The variables stay defined because components pass them
+     inline (borderTop: "var(--rule-strong)"); both resolve to a hairline, so
+     nothing looks broken before those call sites are cleaned up. */
+  --rule-strong: 1px solid var(--color-divider);
+  --rule-hair: 1px solid var(--color-divider);
+}
+
+@media (max-width: 767px) {
+  :root {
+    --page-x: 18px;
+    --radius-lg: 20px;
+  }
+}
+
+/* Dark twin. A full theme, not only the dark accent cards: ground drops below
+   the ink surface so cards still read as raised, rust lifts to stay legible on
+   dark, amber is unchanged. */
+[data-theme="dark"] {
+  --color-bg: #17130f;
+  --color-card: #221d18;
+  --color-surface: #2c261f;
+  --color-well: #332c26;
+  --color-text: #f5efe7;
+  --color-text-2: #9d9186;
+  --color-divider: color-mix(in srgb, #ede5da 8%, transparent);
+
+  --color-ink-surface: #2c241d;
+  --color-on-ink: #f5efe7;
+  --color-on-ink-2: #9d9186;
+
+  --color-accent: #d9814f;
+  --color-accent-600: #c9764a;
+  --color-accent-700: #e39468;
+  --color-accent-100: color-mix(in srgb, #d9814f 14%, #17130f);
+  --color-amber: #d9a066;
+  --color-amber-soft: rgba(217, 160, 102, 0.20);
+
+  --color-neutral-100: #211c17;
+  --color-neutral-200: #2c261f;
+  --color-neutral-300: #3a322b;
+  --color-neutral-400: #4b4238;
+  --color-neutral-500: #7a6f63;
+  --color-neutral-600: #9d9186;
+  --color-neutral-700: #b3a698;
+  --color-neutral-800: #cfc4b7;
+  --color-neutral-900: #ede5da;
+
+  --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.28);
+  --shadow-raised: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] {
+    --color-bg: #17130f;
+    --color-card: #221d18;
+    --color-surface: #2c261f;
+    --color-well: #332c26;
+    --color-text: #f5efe7;
+    --color-text-2: #9d9186;
+    --color-divider: color-mix(in srgb, #ede5da 8%, transparent);
+    --color-ink-surface: #2c241d;
+    --color-on-ink: #f5efe7;
+    --color-on-ink-2: #9d9186;
+    --color-accent: #d9814f;
+    --color-accent-600: #c9764a;
+    --color-accent-700: #e39468;
+    --color-accent-100: color-mix(in srgb, #d9814f 14%, #17130f);
+    --color-amber-soft: rgba(217, 160, 102, 0.20);
+    --color-neutral-100: #211c17;
+    --color-neutral-200: #2c261f;
+    --color-neutral-300: #3a322b;
+    --color-neutral-400: #4b4238;
+    --color-neutral-500: #7a6f63;
+    --color-neutral-600: #9d9186;
+    --color-neutral-700: #b3a698;
+    --color-neutral-800: #cfc4b7;
+    --color-neutral-900: #ede5da;
+    --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.28);
+    --shadow-raised: 0 1px 3px rgba(0, 0, 0, 0.35);
+  }
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { background: var(--color-bg); }
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: 400 14px/1.5 var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+  margin: 0;
+  text-wrap: pretty;
+}
+
+a { color: var(--color-accent); text-decoration: none; text-underline-offset: 3px; }
+a:hover { color: var(--color-accent-700); text-decoration: underline; }
+
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+::selection { background: var(--color-amber-soft); }
+
+.num { font-variant-numeric: tabular-nums; }
+
+/* Section and field labels. Uppercase, tracked, and at --color-text-2 rather
+   than a lighter grey: these carry counts and dates, not decoration. */
+.kick {
+  font: 600 10.5px/1 var(--font-body);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--color-text-2);
+}
+
+.mono { font-family: var(--font-mono); font-size: 12.5px; }
+.page-x { padding-inline: var(--page-x); }
+.hr { border: 0; border-top: var(--rule-hair); margin: 0; }
+
+/* The card. Every list row, panel and settings section is one of these. */
+.card {
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-4);
+}
+
+/* The dark accent surface. Inbox teaser, player card, the saved figure. */
+.card-ink {
+  background: var(--color-ink-surface);
+  color: var(--color-on-ink);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+}
+.card-ink .kick { color: var(--color-amber); }
+.card-ink p { color: var(--color-on-ink-2); }
+
+/* ── Navigation ──────────────────────────────────────────────────────────── */
+
+/* One pill nav across both breakpoint trees. The mobile shell no longer has a
+   bottom tab bar; the pill row scrolls instead. */
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: 20px var(--page-x) 0;
+  max-width: var(--reading-w);
+  margin-inline: auto;
+}
+
+.nav-brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font: 700 23px/1 var(--font-heading);
+  letter-spacing: -0.03em;
+  color: var(--color-text);
+}
+.nav-brand:hover { color: var(--color-text); text-decoration: none; }
+.nav-brand .house {
+  font: 600 10px/1 var(--font-body);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-2);
+}
+
+.pillnav {
+  display: flex;
+  gap: 3px;
+  background: var(--color-surface);
+  border-radius: var(--radius-pill);
+  padding: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.pillnav::-webkit-scrollbar { display: none; }
+
+.pillnav a {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  padding: 8px 18px;
+  border-radius: var(--radius-pill);
+  font: 500 14px/1 var(--font-body);
+  color: var(--color-text-2);
+  white-space: nowrap;
+}
+.pillnav a:hover { color: var(--color-text); text-decoration: none; }
+.pillnav a[aria-current="page"] {
+  background: var(--color-card);
+  box-shadow: var(--shadow-raised);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* The inbox count rides the nav item. */
+.pillnav .badge {
+  background: var(--color-amber);
+  color: #241f1a;
+  border-radius: var(--radius-pill);
+  padding: 3px 6px;
+  font: 700 10.5px/1 var(--font-body);
+}
+
+/* ── Page head ───────────────────────────────────────────────────────────── */
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-8);
+  padding: 30px var(--page-x) 20px;
+  max-width: var(--reading-w);
+  margin-inline: auto;
+}
+.page-head h1 { font-size: 36px; letter-spacing: -0.03em; }
+.page-head .kick + h1 { margin-top: 11px; }
+.page-head-actions { display: flex; align-items: center; gap: var(--space-2); flex: none; margin-left: auto; }
+
+@media (max-width: 767px) {
+  .page-head { flex-direction: column; align-items: flex-start; gap: var(--space-4); }
+  .page-head h1 { font-size: 27px; }
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-neutral-800);
+  font: 500 13px/1 var(--font-body);
+  cursor: pointer;
+  transition: background 80ms linear;
+}
+.btn-center { justify-content: center; }
+.btn-block { display: flex; width: 100%; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-primary { background: var(--color-accent); color: #fbf6f0; font-weight: 600; }
+.btn-primary:hover:not(:disabled) { background: var(--color-accent-600); }
+.btn-primary:active:not(:disabled) { background: var(--color-accent-700); }
+
+.btn-secondary { background: var(--color-bg); color: var(--color-neutral-800); }
+.card .btn-secondary { background: var(--color-bg); }
+.btn-secondary:hover:not(:disabled) { background: var(--color-surface); }
+
+.btn-ghost { background: transparent; color: var(--color-accent); padding-inline: var(--space-2); }
+.btn-ghost:hover:not(:disabled) { background: var(--color-accent-100); }
+
+.btn-danger { background: transparent; color: var(--color-accent-700); }
+.btn-danger:hover:not(:disabled) { background: var(--color-accent-100); }
+
+.btn-icon { padding: var(--space-2); justify-content: center; min-height: 40px; }
+
+/* On a dark surface the primary action is amber. */
+.card-ink .btn-primary { background: var(--color-amber); color: #241f1a; }
+.card-ink .btn-secondary { background: rgba(242, 236, 228, 0.10); color: var(--color-on-ink); }
+
+@media (max-width: 767px) {
+  /* 44px hit targets on the phone. */
+  .btn { min-height: 44px; padding: 13px 18px; }
+}
+
+/* ── Fields ──────────────────────────────────────────────────────────────── */
+
+.field > label { display: block; font-size: 12px; margin-bottom: 5px; color: var(--color-text-2); }
+.field-hint { font-size: 12px; color: var(--color-text-2); margin: 5px 0 0; }
+.field-error { font-size: 12px; color: var(--color-accent-700); margin: 5px 0 0; }
+
+.input, .select, .textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 18px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--color-card);
+  box-shadow: var(--shadow-raised);
+  color: var(--color-text);
+  font: 400 14px/1.4 var(--font-body);
+}
+.textarea { min-height: 96px; resize: vertical; border-radius: var(--radius-md); line-height: 1.55; }
+.select { appearance: none; padding-right: 34px; cursor: pointer; }
+.input:hover, .select:hover, .textarea:hover { border-color: var(--color-neutral-300); }
+.input:focus-visible, .select:focus-visible, .textarea:focus-visible {
+  border-color: var(--color-text);
+  outline: none;
+}
+.input[aria-invalid="true"] { border-color: var(--color-accent); }
+.input::placeholder { color: var(--color-neutral-600); }
+
+/* Paste-a-URL line: field and action are separate pills with a gap, not a
+   welded pair — the pill shape has no flat edge to butt against. */
+.cmdline { display: flex; gap: var(--space-2); }
+.cmdline .input { flex: 1; }
+.cmdline .btn { flex: none; }
+
+.search { position: relative; display: flex; }
+.search .input { padding-left: 42px; }
+.search > svg {
+  position: absolute;
+  left: 17px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-2);
+  pointer-events: none;
+}
+
+/* ── Toggles ─────────────────────────────────────────────────────────────── */
+
+/* Round now, not square: in a pill-and-card system the square control was the
+   one hard edge left. 44×26 hit size is unchanged. */
+.check {
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--color-neutral-400);
+  border-radius: 6px;
+  background: var(--color-card);
+  cursor: pointer;
+}
+.check[aria-checked="true"] { border-color: var(--color-accent); background: var(--color-accent); }
+
+.switch {
+  width: 44px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  padding: 3px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: background 100ms linear;
+}
+.switch[aria-checked="true"] { background: var(--color-accent); justify-content: flex-end; }
+.switch > span {
+  width: 20px;
+  height: 20px;
+  display: block;
+  border-radius: var(--radius-pill);
+  background: #fbf6f0;
+  box-shadow: var(--shadow-raised);
+}
+
+/* ── Segmented control, chips, tags ──────────────────────────────────────── */
+
+.seg {
+  display: inline-flex;
+  gap: 3px;
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+}
+.seg-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-pill);
+  font: 500 13px/1 var(--font-body);
+  color: var(--color-text-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.seg-opt input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+.seg-opt:has(input:checked) {
+  background: var(--color-card);
+  box-shadow: var(--shadow-raised);
+  font-weight: 600;
+  color: var(--color-text);
+}
+.seg-opt:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+
+/* Status filters. Selected is ink, so it reads as a switch rather than a tag. */
+.chip {
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-neutral-800);
+  padding: 7px 15px;
+  font: 500 12.5px/1 var(--font-body);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chip:hover { background: var(--color-neutral-300); }
+.chip[aria-pressed="true"], .chip[aria-current="true"] {
+  background: var(--color-text);
+  color: var(--color-bg);
+  font-weight: 600;
+}
+
+/* Topic chips are outlined — a second, quieter class of filter. */
+.chip-topic {
+  background: transparent;
+  border: 1px solid var(--color-divider);
+  color: var(--color-text-2);
+  padding: 6px 13px;
+}
+.chip-topic[aria-pressed="true"] { background: var(--color-text); border-color: var(--color-text); color: var(--color-bg); }
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding: 4px var(--page-x);
+  max-width: var(--reading-w);
+  margin-inline: auto;
+}
+.filters .spacer { margin-left: auto; }
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  padding: 5px 12px;
+  font: 500 12px/1 var(--font-body);
+}
+.tag-accent { background: var(--color-accent-100); color: var(--color-accent-700); }
+.tag-neutral { background: var(--color-bg); color: var(--color-text-2); }
+.card .tag-neutral { background: var(--color-bg); }
+.tag-outline { border: 1px solid var(--color-divider); color: var(--color-text-2); }
+
+/* New-from-a-channel marker. The one place amber appears on paper. */
+.badge-new {
+  background: var(--color-amber);
+  color: #241f1a;
+  border-radius: var(--radius-pill);
+  padding: 3px 9px;
+  font: 700 11px/1 var(--font-body);
+}
+
+/* ── Status ──────────────────────────────────────────────────────────────── */
+
+/* Quiet but readable: an outline and a word, no hue except on failure. A
+   completed row renders nothing at all. Never dim the row — opacity on a card
+   takes its metadata below contrast. */
+.status {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-pill);
+  padding: 4px 11px;
+  font: 500 11.5px/1 var(--font-body);
+  color: var(--color-text-2);
+  white-space: nowrap;
+}
+.status-done { border-color: var(--color-neutral-300); }
+.status-running { border-color: var(--color-neutral-400); color: var(--color-neutral-800); }
+.status-queued { border-color: var(--color-neutral-300); }
+.status-failed { border-color: color-mix(in srgb, var(--color-accent) 45%, transparent); color: var(--color-accent-700); }
+
+.dot { width: 6px; height: 6px; display: inline-block; border-radius: var(--radius-pill); background: currentColor; }
+
+/* ── Table ───────────────────────────────────────────────────────────────── */
+
+/* Tables live inside cards now, so they lose their own frame. */
+.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.table th {
+  font: 600 10.5px/1 var(--font-body);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--color-text-2);
+  text-align: left;
+  padding: 0 12px 12px 0;
+}
+.table td { padding: 12px 12px 12px 0; border-top: 1px solid var(--color-divider); }
+.table th:last-child, .table td:last-child { padding-right: 0; }
+.table tbody tr:hover { background: transparent; }
+.table td.right, .table th.right { text-align: right; }
+
+/* Progress bars in a stats table. Rounded track, ink fill, accent for failure
+   only. */
+.bar { display: block; height: 7px; border-radius: var(--radius-pill); background: var(--color-well); max-width: 320px; }
+.bar > span { display: block; height: 100%; border-radius: var(--radius-pill); background: var(--color-text); }
+.bar.is-accent > span { background: var(--color-accent); }
+
+/* ── Feed ────────────────────────────────────────────────────────────────── */
+
+.feed-page {
+  max-width: var(--reading-w);
+  margin-inline: auto;
+  width: 100%;
+}
+
+.feed { display: flex; flex-direction: column; gap: 14px; padding: 0 var(--page-x) var(--space-8); }
+
+/* Day band: a kicker and a hairline, no filled strip. */
+.feed-band {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 14px 0 2px;
+  font: 600 11px/1 var(--font-body);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-2);
+}
+.feed-band::after { content: ""; flex: 1; height: 1px; background: var(--color-divider); }
+.feed-band:first-child { padding-top: 6px; }
+
+.feed-item {
+  display: grid;
+  grid-template-columns: 208px 1fr auto;
+  gap: 18px;
+  align-items: center;
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 14px;
+  color: inherit;
+}
+.feed-item:hover { text-decoration: none; }
+.feed-item:hover .feed-title { color: var(--color-accent); }
+.feed[data-variant="podcast"] .feed-item { grid-template-columns: 118px 1fr auto; }
+
+/* The lead card promotes the newest row: bigger artwork, three excerpt lines,
+   topic chips. */
+.feed-lead { grid-template-columns: 392px 1fr; padding: 18px; gap: 22px; align-items: stretch; }
+.feed[data-variant="podcast"] .feed-lead { grid-template-columns: 248px 1fr; }
+.feed-lead .feed-body { display: flex; flex-direction: column; }
+
+.feed-body { min-width: 0; }
+
+.feed-art {
+  position: relative;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-well);
+}
+.feed-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.feed-art.is-wide { aspect-ratio: 16 / 9; }
+.feed-art.is-square { aspect-ratio: 1; }
+.feed-art.is-empty {
+  display: grid;
+  place-items: center;
+  background: repeating-linear-gradient(135deg, var(--color-neutral-200) 0 9px, var(--color-neutral-300) 9px 18px);
+}
+
+.dur {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  background: rgba(36, 31, 26, 0.82);
+  color: #f2ece4;
+  border-radius: 7px;
+  padding: 2px 6px;
+  font: 500 11px/1 var(--font-body);
+  font-variant-numeric: tabular-nums;
+}
+.feed-lead .dur { font-size: 11.5px; padding: 3px 7px; }
+
+.feed-title {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 19.5px;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin: 8px 0 0;
+}
+.feed-lead .feed-title { font-size: 27px; letter-spacing: -0.025em; line-height: 1.14; margin-top: 12px; }
+
+/* Reading text, even in a list row: the excerpt is the summary. */
+.feed-excerpt {
+  margin: 7px 0 0;
+  font-family: var(--font-reading);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-wrap: pretty;
+}
+.feed-lead .feed-excerpt { font-size: 16.5px; line-height: 1.55; color: var(--color-neutral-700); -webkit-line-clamp: 3; }
+.feed-excerpt.is-error { font-family: var(--font-body); color: var(--color-accent-700); }
+
+.feed-topics { display: flex; flex-wrap: wrap; gap: 7px; margin-top: auto; padding-top: 16px; }
+
+/* The kicker line carries a channel avatar: round for a video channel,
+   rounded-square for a podcast show, in every context. */
+.avatar {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--color-neutral-200);
+  color: var(--color-neutral-600);
+  font: 600 10px/1 var(--font-body);
+  overflow: hidden;
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.avatar.is-show { border-radius: 6px; }
+.avatar.is-lg { width: 34px; height: 34px; font-size: 13px; }
+.avatar.is-xl { width: 72px; height: 72px; font-size: 22px; }
+
+@media (max-width: 767px) {
+  /* The phone stacks artwork over text on the lead and on video rows; podcast
+     rows keep the cover beside the title. */
+  .feed-item { grid-template-columns: 1fr; gap: 12px; padding: 12px; }
+  .feed[data-variant="podcast"] .feed-item { grid-template-columns: 84px 1fr; align-items: center; }
+  .feed-lead, .feed[data-variant="podcast"] .feed-lead { grid-template-columns: 1fr; }
+  .feed-lead .feed-title { font-size: 20px; }
+  .feed-lead .feed-excerpt { font-size: 15.5px; }
+}
+
+/* ── Settings rail and rows ──────────────────────────────────────────────── */
+
+.rail {
+  width: 216px;
+  flex: none;
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rail-item {
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font: 500 13.5px/1 var(--font-body);
+  color: var(--color-neutral-800);
+  cursor: pointer;
+}
+.rail-item:hover { background: var(--color-bg); }
+.rail-item[aria-selected="true"] { background: var(--color-text); color: var(--color-bg); font-weight: 600; }
+
+.set-row {
+  display: grid;
+  grid-template-columns: 168px 1fr;
+  gap: 20px;
+  align-items: center;
+  padding: 20px 0;
+  border-top: 1px solid var(--color-divider);
+}
+.set-row > .kick { padding-top: 0; }
+.set-row > .val { min-width: 0; }
+
+@media (max-width: 767px) {
+  .rail { width: auto; }
+  .set-row { grid-template-columns: 1fr; gap: 9px; padding: 14px 0; }
+}
+
+/* ── Reader ──────────────────────────────────────────────────────────────── */
+
+/* Summary body in Source Serif 4. This is the artefact people spend their time
+   with; it gets its own face and its own measure. */
+.reader {
+  max-width: var(--reader-w);
+  font-family: var(--font-reading);
+  font-size: 18.5px;
+  line-height: 1.66;
+  color: var(--color-text);
+}
+.reader p { margin: 0 0 1.1em; text-wrap: pretty; }
+.reader h2 { font-family: var(--font-heading); font-size: 24px; margin: 34px 0 12px; }
+.reader h3 { font-family: var(--font-heading); font-size: 21px; margin: 30px 0 12px; }
+.reader ul, .reader ol { margin: 0 0 1em; padding-left: 22px; font-size: 17.5px; }
+.reader li { margin-bottom: 7px; }
+.reader blockquote {
+  margin: 22px 0;
+  padding: 4px 0 4px 22px;
+  border-left: 3px solid var(--color-amber);
+  font-style: italic;
+  font-size: 18px;
+  color: var(--color-neutral-800);
+}
+.reader mark { background: var(--color-amber-soft); color: inherit; border-radius: 3px; padding: 0 2px; }
+
+@media (max-width: 767px) {
+  /* No card around the reading text on the phone: card padding costs 32px of
+     line length that the measure needs more. */
+  .reader { font-size: 17.5px; line-height: 1.62; }
+  .reader h3 { font-size: 19px; }
+}
+
+/* Chapter and transcript rows. */
+.cue {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 16px;
+  padding: 9px 12px;
+  border-radius: 10px;
+}
+.cue > time {
+  font: 500 12.5px/1.6 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-2);
+}
+.cue:hover { background: var(--color-neutral-100); }
+
+/* ── Log, empty, banner, toast, dialog ───────────────────────────────────── */
+
+.log {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.log-line { display: flex; gap: 12px; }
+.log-line > time { flex: none; color: var(--color-text-2); }
+.log-line.err { color: var(--color-accent-700); }
+
+.empty {
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 40px 34px;
+  margin: 0 var(--page-x);
+  max-width: 62ch;
+}
+.empty h3 { font-size: 22px; margin: 10px 0 8px; }
+.empty p { font-size: 14px; color: var(--color-neutral-700); margin: 0 0 18px; text-wrap: pretty; }
+
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 var(--page-x) 14px;
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  background: var(--color-accent-100);
+  color: var(--color-accent-700);
+  font-size: 13.5px;
+}
+.banner > svg { flex: none; margin-top: 1px; }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--color-ink-surface);
+  color: var(--color-on-ink);
+  border-radius: var(--radius-pill);
+  padding: 14px 20px;
+  box-shadow: 0 8px 24px rgba(36, 31, 26, 0.22);
+  font-size: 13.5px;
+}
+.toast .btn-ghost { color: var(--color-amber); }
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: rgba(36, 31, 26, 0.45);
+}
+.dialog {
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 48px rgba(36, 31, 26, 0.24);
+  padding: 28px 30px;
+  width: min(460px, 100%);
+}
+.dialog-title { font-size: 22px; }
+.dialog-body { font-size: 14px; color: var(--color-neutral-700); margin: 10px 0 22px; text-wrap: pretty; }
+.dialog-actions { display: flex; gap: var(--space-2); }
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgba(36, 31, 26, 0.45);
+}
+.sheet {
+  background: var(--color-card);
+  border-radius: 24px 24px 0 0;
+  padding: 20px var(--page-x) calc(20px + env(safe-area-inset-bottom));
+}
+
+.skel {
+  display: inline-block;
+  border-radius: 6px;
+  background: var(--color-well);
+  vertical-align: baseline;
+}
+
+/* ── Figures ─────────────────────────────────────────────────────────────── */
+
+/* Stats and library figures are cards, not a ruled strip. */
+.hero {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+  padding: 0 var(--page-x) var(--space-4);
+  max-width: var(--reading-w);
+  margin-inline: auto;
+}
+.hero > div {
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px 22px;
+}
+.hero > div.is-ink { background: var(--color-ink-surface); color: var(--color-on-ink); box-shadow: none; }
+.hero > div.is-ink .kick { color: var(--color-amber); }
+.hero .value {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 42px;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  margin-top: 12px;
+}
+.hero .unit { font: 500 14px var(--font-body); letter-spacing: normal; color: var(--color-text-2); margin-left: 8px; }
+.hero > div.is-ink .unit { color: var(--color-on-ink-2); }
+
+@media (max-width: 767px) {
+  .hero { grid-template-columns: 1fr 1fr; }
+  .hero .value { font-size: 30px; }
+}
+
+.axis { font: 600 10.5px var(--font-body); letter-spacing: 0.13em; text-transform: uppercase; fill: var(--color-text-2); color: var(--color-text-2); }
+.legend { display: flex; gap: 18px; align-items: center; font: 400 12.5px var(--font-body); color: var(--color-text-2); }
+.legend .swatch { width: 10px; height: 10px; display: inline-block; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 16px var(--page-x) var(--space-8);
+  max-width: var(--reading-w);
+  margin-inline: auto;
+}
+.footer .spacer { margin-left: auto; }
+.footer .note { font: 400 12.5px var(--font-body); color: var(--color-text-2); }
