@@ -1,18 +1,59 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchVideoFacets, type ContentSource } from "../api.ts";
+import { fetchVideoFacets, type ChannelFacet, type ContentSource } from "../api.ts";
 
 /** How many topic chips show before the rest fold behind "More". */
 const TOPIC_LIMIT = 8;
 
+/** One entry of the channel strip: artwork (or the initial as a stand-in),
+ * name, count. Clicking toggles the filter. */
+function ChannelTile({
+  facet,
+  selected,
+  onClick,
+}: {
+  facet: ChannelFacet;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="channel-tile"
+      aria-pressed={selected}
+      title={`${facet.channel} · ${facet.count} in library`}
+      onClick={onClick}
+    >
+      {facet.thumbnail_url ? (
+        // no-referrer: yt3.googleusercontent answers a CORB-blocked non-image
+        // when the request carries a foreign referrer (observed 2026-08-23).
+        <img
+          className="channel-art"
+          src={facet.thumbnail_url}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        <span className="channel-art channel-art-initial" aria-hidden>
+          {facet.channel.slice(0, 1).toUpperCase()}
+        </span>
+      )}
+      <span className="channel-name">{facet.channel}</span>
+      <span className="channel-count num">{facet.count}</span>
+    </button>
+  );
+}
+
 /**
- * The library's navigation row: a channel select and the LLM topic chips,
- * fed by the facets endpoint. The values are the stored column values, so the
- * caller filters with `channelExact` — never the ILIKE partial match.
+ * The library's navigation rows: a YouTube-style strip of the channels that
+ * actually have videos here, and the LLM topic chips — both fed by the facets
+ * endpoint. The values are the stored column values, so the caller filters
+ * with `channelExact` — never the ILIKE partial match.
  *
- * The row renders nothing while loading, on error, or when there is only one
- * value to choose from: facets are navigation sugar, not content, and a bar
- * with one option is noise.
+ * Renders nothing while loading, on error, or when there is only one value to
+ * choose from: facets are navigation sugar, not content, and a bar with one
+ * option is noise.
  */
 export default function FacetFilters({
   source,
@@ -47,20 +88,16 @@ export default function FacetFilters({
   return (
     <div className="filters" style={{ flexWrap: "wrap", rowGap: 8 }}>
       {channels.length >= 2 ? (
-        <select
-          className="select"
-          style={{ width: "auto", maxWidth: 260 }}
-          value={channel}
-          aria-label="Filter by channel"
-          onChange={(e) => onChange({ channel: e.target.value, topic })}
-        >
-          <option value="">All channels</option>
+        <div className="channel-strip" role="group" aria-label="Filter by channel">
           {channels.map((c) => (
-            <option key={c.channel} value={c.channel}>
-              {c.channel} ({c.count})
-            </option>
+            <ChannelTile
+              key={c.channel}
+              facet={c}
+              selected={channel === c.channel}
+              onClick={() => onChange({ channel: channel === c.channel ? "" : c.channel, topic })}
+            />
           ))}
-        </select>
+        </div>
       ) : null}
 
       {shownTopics.map((t) => (

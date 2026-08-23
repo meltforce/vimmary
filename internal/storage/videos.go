@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -535,12 +536,23 @@ func (db *DB) ListRecent(ctx context.Context, userID int, filters ListFilters, l
 	return videos, total, nil
 }
 
+// ChannelFacet is one channel of the library with its count and, when the
+// channel is followed (or is a subscribed podcast feed), its artwork. The
+// artwork joins in by title: the subscription's title and the video rows'
+// channel column both carry YouTube's author name, so they match for rows
+// that arrived through any path.
+type ChannelFacet struct {
+	Channel      string `json:"channel"`
+	Count        int    `json:"count"`
+	ThumbnailURL string `json:"thumbnail_url,omitempty"`
+}
+
 // VideoFacets are the navigable dimensions of the library: the channels and
 // the LLM topics of completed rows, with counts. They feed the filter controls
 // above the list — the values come from the columns themselves, which is why
 // the list query matches them with ChannelExact rather than ILIKE.
 type VideoFacets struct {
-	Channels []ChannelCount `json:"channels"`
+	Channels []ChannelFacet `json:"channels"`
 	Topics   []TopicCount   `json:"topics"`
 }
 
@@ -554,19 +566,24 @@ func (db *DB) ListVideoFacets(ctx context.Context, userID int, source string) (*
 	}
 	const srcClause = ` AND ($2::text IS NULL OR source = $2)`
 
-	facets := &VideoFacets{Channels: []ChannelCount{}, Topics: []TopicCount{}}
+	facets := &VideoFacets{Channels: []ChannelFacet{}, Topics: []TopicCount{}}
 
 	rows, err := db.Pool.Query(ctx, `
-		SELECT channel, COUNT(*) FROM videos
-		WHERE user_id = $1 AND status = 'completed' AND channel <> ''`+srcClause+`
-		GROUP BY channel ORDER BY COUNT(*) DESC, channel`, userID, sourceArg)
+		SELECT v.channel, COUNT(*),
+			COALESCE(MAX(cs.thumbnail_url), MAX(ps.image_url), '')
+		FROM videos v
+		LEFT JOIN channel_subscriptions cs ON cs.user_id = v.user_id AND cs.title = v.channel
+		LEFT JOIN podcast_subscriptions ps ON ps.user_id = v.user_id AND ps.feed_title = v.channel
+		WHERE v.user_id = $1 AND v.status = 'completed' AND v.channel <> ''`+
+		strings.ReplaceAll(srcClause, "source", "v.source")+`
+		GROUP BY v.channel ORDER BY COUNT(*) DESC, v.channel`, userID, sourceArg)
 	if err != nil {
 		return nil, fmt.Errorf("list channel facets: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var c ChannelCount
-		if err := rows.Scan(&c.Channel, &c.Count); err != nil {
+		var c ChannelFacet
+		if err := rows.Scan(&c.Channel, &c.Count, &c.ThumbnailURL); err != nil {
 			return nil, fmt.Errorf("scan channel facet: %w", err)
 		}
 		facets.Channels = append(facets.Channels, c)

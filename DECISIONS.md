@@ -60,11 +60,14 @@ consolidation run merging tags that should have stayed apart.
 
 **Decided:** 2026-08-23
 
-**Decision.** The two library screens gain a facet row: a channel select and
-the LLM topic chips, fed by `GET /api/v1/videos/facets` (channels and topics
-of completed rows, with counts). Selecting one sets the existing list-query
-parameters, persisted in the URL. The inbox filters by followed channel the
-same way. There are no user-managed tags.
+**Decision.** The two library screens gain a facet row: a YouTube-style
+channel strip — artwork tiles for the channels that actually have videos in
+the library — and the LLM topic chips, fed by `GET /api/v1/videos/facets`
+(channels and topics of completed rows, with counts; artwork joined in from
+`channel_subscriptions`/`podcast_subscriptions` by title, an initial tile
+where none matches). Selecting one sets the existing list-query parameters,
+persisted in the URL. The inbox filters by followed channel the same way.
+There are no user-managed tags.
 
 **Reasoning.** The list API filtered by channel and topic since the podcast
 split, but no UI control existed and the sort is fixed — the library was one
@@ -85,9 +88,18 @@ row is one `<a>` to the detail page, and an interactive element inside an
 interactive element fails both HTML and keyboard navigation. The select
 covers the need.
 
-**Trigger to re-open:** facet lists growing past what a select and a chip
+**Trigger to re-open:** facet lists growing past what a strip and a chip
 row can carry (a channel page per channel would be the next shape); a want
 for sort options.
+
+**Revisions.**
+
+- 2026-08-23: the channel control shipped as a `<select>` and was replaced
+  the same day by the artwork strip — the operator judged a dropdown the
+  wrong surface for channels, and the strip is the YouTube shape scoped to
+  library content. The artwork hotlink to `yt3.googleusercontent.com` needs
+  `referrerPolicy="no-referrer"`: with a foreign referrer the host answers a
+  response Chrome's CORB blocks (observed 2026-08-23).
 
 ---
 

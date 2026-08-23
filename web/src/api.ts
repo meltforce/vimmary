@@ -267,10 +267,18 @@ export function fetchFeatures(): Promise<Features> {
   return fetchJSON("/api/v1/config/features");
 }
 
+/** One channel of the library. Artwork is present when the channel is
+ * followed (or is a subscribed podcast feed). */
+export interface ChannelFacet {
+  channel: string;
+  count: number;
+  thumbnail_url?: string;
+}
+
 /** The library's navigable dimensions: channels and LLM topics of completed
  * rows, with counts. */
 export interface VideoFacets {
-  channels: ChannelCount[];
+  channels: ChannelFacet[];
   topics: TopicCount[];
 }
 

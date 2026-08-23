@@ -44,6 +44,14 @@ func TestListVideoFacets(t *testing.T) {
 		return v.ID
 	}
 
+	// A followed channel whose title matches the video rows' channel column
+	// lends the facet its artwork.
+	sub, err := store.UpsertChannelSubscription(ctx, 1, "UCtest_facets_0000000000", "Facet Go Channel", "https://art.example/go.jpg")
+	if err != nil {
+		t.Fatalf("UpsertChannelSubscription: %v", err)
+	}
+	t.Cleanup(func() { _ = store.DeleteChannelSubscription(ctx, 1, sub.ID) })
+
 	insert("Facet Go Channel", "completed", []string{"facet-go", "facet-testing"}, storage.SourceYouTube)
 	insert("Facet Go Channel", "completed", []string{"facet-go"}, storage.SourceYouTube)
 	insert("Facet Google Talks", "completed", nil, storage.SourceYouTube)
@@ -69,6 +77,14 @@ func TestListVideoFacets(t *testing.T) {
 	}
 	if got := channelCount("Facet Google Talks"); got != 1 {
 		t.Errorf("Facet Google Talks count = %d, want 1", got)
+	}
+	for _, c := range facets.Channels {
+		if c.Channel == "Facet Go Channel" && c.ThumbnailURL != "https://art.example/go.jpg" {
+			t.Errorf("followed channel artwork = %q, want the subscription's thumbnail", c.ThumbnailURL)
+		}
+		if c.Channel == "Facet Google Talks" && c.ThumbnailURL != "" {
+			t.Errorf("unfollowed channel carries artwork %q, want none", c.ThumbnailURL)
+		}
 	}
 	if got := channelCount("Facet Podcast Show"); got != 0 {
 		t.Errorf("podcast channel leaked into youtube facets with count %d", got)

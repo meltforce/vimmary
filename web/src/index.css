@@ -255,3 +255,78 @@
     width: 96px;
   }
 }
+
+/* ── Channel strip ──────────────────────────────────────────────────────── */
+
+/* The channels that actually have videos here, as a scrollable row of
+   artwork tiles — the shape a subscription row has on YouTube, scoped to the
+   library. It replaces a <select>, so each tile is a toggle button. */
+.channel-strip {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  width: 100%;
+  padding-bottom: 4px;
+}
+
+.channel-tile {
+  flex: none;
+  width: 84px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: var(--color-neutral-700);
+}
+
+.channel-art {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  background: var(--color-neutral-100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.channel-art-initial {
+  font: 600 20px var(--font-body);
+  color: var(--color-neutral-500);
+}
+
+.channel-name {
+  max-width: 100%;
+  font-size: 11.5px;
+  line-height: 1.25;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-count {
+  font-size: 10.5px;
+  color: var(--color-neutral-500);
+}
+
+.channel-tile:hover .channel-name {
+  color: var(--color-text);
+}
+
+.channel-tile[aria-pressed="true"] {
+  color: var(--color-text);
+}
+
+.channel-tile[aria-pressed="true"] .channel-art {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.channel-tile[aria-pressed="true"] .channel-name {
+  color: var(--color-accent);
+  font-weight: 600;
+}
