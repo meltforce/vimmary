@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchFeedInfo, fetchStats, listVideos, searchVideos } from "../api.ts";
 import PageHeader from "../components/PageHeader.tsx";
 import FeedList, { type Row } from "../components/FeedList.tsx";
+import FacetFilters from "../components/FacetFilters.tsx";
 import { Skel } from "../components/LoadingSkeleton.tsx";
 import { AlertIcon, SearchIcon } from "../components/icons.tsx";
 import { useIsDesktop } from "../hooks/useMediaQuery.ts";
@@ -21,6 +22,8 @@ export default function PodcastListPage() {
   const isDesktop = useIsDesktop();
   const [params, setParams] = useSearchParams();
   const query = params.get("q") ?? "";
+  const channel = params.get("channel") ?? "";
+  const topic = params.get("topic") ?? "";
   const page = Math.max(1, parseInt(params.get("page") ?? "1", 10));
   const offset = (page - 1) * PAGE_SIZE;
   const [searchInput, setSearchInput] = useState(query);
@@ -34,8 +37,15 @@ export default function PodcastListPage() {
   });
 
   const list = useQuery({
-    queryKey: ["podcasts", offset],
-    queryFn: () => listVideos({ source: "podcast", limit: PAGE_SIZE, offset }),
+    queryKey: ["podcasts", channel, topic, offset],
+    queryFn: () =>
+      listVideos({
+        source: "podcast",
+        channelExact: channel || undefined,
+        topic: topic || undefined,
+        limit: PAGE_SIZE,
+        offset,
+      }),
     enabled: !searching,
     refetchInterval: (q) =>
       q.state.data?.videos.some((v) => isInFlight(v.status)) ? 3000 : 10000,
@@ -147,6 +157,23 @@ export default function PodcastListPage() {
         ) : null}
       </div>
 
+      {!searching ? (
+        <FacetFilters
+          source="podcast"
+          channel={channel}
+          topic={topic}
+          onChange={(next) => {
+            const p = new URLSearchParams(params);
+            if (next.channel) p.set("channel", next.channel);
+            else p.delete("channel");
+            if (next.topic) p.set("topic", next.topic);
+            else p.delete("topic");
+            p.delete("page");
+            setParams(p);
+          }}
+        />
+      ) : null}
+
       {error ? (
         <div className="banner">
           <AlertIcon />
@@ -176,7 +203,7 @@ export default function PodcastListPage() {
           loading={loading}
           searching={searching}
           variant="podcast"
-          lead={page === 1 && !searching}
+          lead={page === 1 && !searching && channel === "" && topic === ""}
         />
       )}
 

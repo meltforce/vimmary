@@ -170,6 +170,12 @@ func (s *Service) ListRecent(ctx context.Context, userID int, filters storage.Li
 	return s.db.ListRecent(ctx, userID, filters, limit, offset)
 }
 
+// ListVideoFacets returns the library's navigable dimensions — channels and
+// LLM topics with counts. An empty source covers both kinds.
+func (s *Service) ListVideoFacets(ctx context.Context, userID int, source string) (*storage.VideoFacets, error) {
+	return s.db.ListVideoFacets(ctx, userID, source)
+}
+
 // GetVideo returns a single video by ID.
 func (s *Service) GetVideo(ctx context.Context, userID int, id uuid.UUID) (*storage.Video, error) {
 	return s.db.GetVideo(ctx, userID, id)

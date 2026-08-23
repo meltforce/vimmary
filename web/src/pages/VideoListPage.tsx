@@ -15,6 +15,7 @@ import {
 import PageHeader from "../components/PageHeader.tsx";
 import Toast, { useToast } from "../components/Toast.tsx";
 import FeedList, { type Row } from "../components/FeedList.tsx";
+import FacetFilters from "../components/FacetFilters.tsx";
 import { Skel } from "../components/LoadingSkeleton.tsx";
 import { AlertIcon, SearchIcon } from "../components/icons.tsx";
 import { useIsDesktop } from "../hooks/useMediaQuery.ts";
@@ -72,6 +73,8 @@ export default function VideoListPage() {
   const [params, setParams] = useSearchParams();
   const query = params.get("q") ?? "";
   const status = params.get("status") ?? "";
+  const channel = params.get("channel") ?? "";
+  const topic = params.get("topic") ?? "";
   const page = Math.max(1, parseInt(params.get("page") ?? "1", 10));
   const offset = (page - 1) * PAGE_SIZE;
 
@@ -87,8 +90,15 @@ export default function VideoListPage() {
   });
 
   const list = useQuery({
-    queryKey: ["videos", status, offset],
-    queryFn: () => listVideos({ status: status || undefined, limit: PAGE_SIZE, offset }),
+    queryKey: ["videos", status, channel, topic, offset],
+    queryFn: () =>
+      listVideos({
+        status: status || undefined,
+        channelExact: channel || undefined,
+        topic: topic || undefined,
+        limit: PAGE_SIZE,
+        offset,
+      }),
     enabled: !searching,
     // A queue that is moving is polled three times as often as one that is not.
     refetchInterval: (q) =>
@@ -234,6 +244,10 @@ export default function VideoListPage() {
               setSearchInput("");
               const next = new URLSearchParams();
               if (f.key) next.set("status", f.key);
+              // The facet selection survives a status change; only search
+              // and paging reset.
+              if (channel) next.set("channel", channel);
+              if (topic) next.set("topic", topic);
               setParams(next);
             }}
           >
@@ -246,6 +260,23 @@ export default function VideoListPage() {
           </span>
         ) : null}
       </div>
+
+      {!searching ? (
+        <FacetFilters
+          source="youtube"
+          channel={channel}
+          topic={topic}
+          onChange={(next) => {
+            const p = new URLSearchParams(params);
+            if (next.channel) p.set("channel", next.channel);
+            else p.delete("channel");
+            if (next.topic) p.set("topic", next.topic);
+            else p.delete("topic");
+            p.delete("page");
+            setParams(p);
+          }}
+        />
+      ) : null}
 
       {error ? (
         <div className="banner">
@@ -262,14 +293,18 @@ export default function VideoListPage() {
       ))}
 
       {isEmpty ? (
-        <EmptyState searching={searching} query={query} filtered={status !== ""} />
+        <EmptyState
+          searching={searching}
+          query={query}
+          filtered={status !== "" || channel !== "" || topic !== ""}
+        />
       ) : (
         <FeedList
           rows={rows}
           loading={loading}
           searching={searching}
           variant="video"
-          lead={page === 1 && !searching && status === ""}
+          lead={page === 1 && !searching && status === "" && channel === "" && topic === ""}
         />
       )}
 
@@ -383,8 +418,8 @@ function EmptyState({
     return (
       <div className="empty">
         <div className="kick">Library</div>
-        <h3>Nothing in this state.</h3>
-        <p>No video currently carries the selected status.</p>
+        <h3>Nothing matches the selected filters.</h3>
+        <p>No video currently carries the selected status, channel or topic.</p>
         <Link to="/" className="btn btn-secondary">Show all</Link>
       </div>
     );

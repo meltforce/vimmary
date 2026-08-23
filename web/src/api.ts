@@ -103,6 +103,9 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
 // video-only. Pass "podcast" or "all" to widen it.
 export function listVideos(opts?: {
   channel?: string;
+  /** Matches the stored channel value verbatim — what the facet controls send,
+   * where `channel` is an ILIKE partial match. */
+  channelExact?: string;
   language?: string;
   topic?: string;
   status?: string;
@@ -112,6 +115,7 @@ export function listVideos(opts?: {
 }): Promise<ListResponse> {
   const params = new URLSearchParams();
   if (opts?.channel) params.set("channel", opts.channel);
+  if (opts?.channelExact) params.set("channel_exact", opts.channelExact);
   if (opts?.language) params.set("language", opts.language);
   if (opts?.topic) params.set("topic", opts.topic);
   if (opts?.status) params.set("status", opts.status);
@@ -247,6 +251,20 @@ export interface Features {
 
 export function fetchFeatures(): Promise<Features> {
   return fetchJSON("/api/v1/config/features");
+}
+
+/** The library's navigable dimensions: channels and LLM topics of completed
+ * rows, with counts. */
+export interface VideoFacets {
+  channels: ChannelCount[];
+  topics: TopicCount[];
+}
+
+export function fetchVideoFacets(source?: ContentSource | "all"): Promise<VideoFacets> {
+  const params = new URLSearchParams();
+  if (source) params.set("source", source);
+  const qs = params.toString();
+  return fetchJSON(`/api/v1/videos/facets${qs ? `?${qs}` : ""}`);
 }
 
 export function fetchStats(source?: ContentSource | "all"): Promise<VideoStats> {

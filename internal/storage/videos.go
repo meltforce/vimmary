@@ -470,11 +470,15 @@ func (db *DB) TextSearchVideos(ctx context.Context, userID int, query string, li
 }
 
 type ListFilters struct {
-	Channel  string
-	Language string
-	Topic    string
-	Status   string
-	Source   string
+	Channel string
+	// ChannelExact matches the stored channel value verbatim. The facet UI
+	// sends it, because its values come from the column itself and an ILIKE
+	// partial match would conflate "Go" with "Google".
+	ChannelExact string
+	Language     string
+	Topic        string
+	Status       string
+	Source       string
 }
 
 func (db *DB) ListRecent(ctx context.Context, userID int, filters ListFilters, limit, offset int) ([]Video, int, error) {
@@ -502,6 +506,9 @@ func (db *DB) ListRecent(ctx context.Context, userID int, filters ListFilters, l
 	if filters.Channel != "" {
 		addFilter(` AND channel ILIKE '%%' || $%d || '%%'`, filters.Channel)
 	}
+	if filters.ChannelExact != "" {
+		addFilter(` AND channel = $%d`, filters.ChannelExact)
+	}
 	if filters.Language != "" {
 		addFilter(` AND language = $%d`, filters.Language)
 	}
@@ -526,6 +533,65 @@ func (db *DB) ListRecent(ctx context.Context, userID int, filters ListFilters, l
 		return nil, 0, err
 	}
 	return videos, total, nil
+}
+
+// VideoFacets are the navigable dimensions of the library: the channels and
+// the LLM topics of completed rows, with counts. They feed the filter controls
+// above the list — the values come from the columns themselves, which is why
+// the list query matches them with ChannelExact rather than ILIKE.
+type VideoFacets struct {
+	Channels []ChannelCount `json:"channels"`
+	Topics   []TopicCount   `json:"topics"`
+}
+
+// ListVideoFacets aggregates over one source, or over both when it is empty.
+// Only completed rows count: a facet is a way into readable summaries, and a
+// pending row has none.
+func (db *DB) ListVideoFacets(ctx context.Context, userID int, source string) (*VideoFacets, error) {
+	var sourceArg any
+	if source != "" {
+		sourceArg = source
+	}
+	const srcClause = ` AND ($2::text IS NULL OR source = $2)`
+
+	facets := &VideoFacets{Channels: []ChannelCount{}, Topics: []TopicCount{}}
+
+	rows, err := db.Pool.Query(ctx, `
+		SELECT channel, COUNT(*) FROM videos
+		WHERE user_id = $1 AND status = 'completed' AND channel <> ''`+srcClause+`
+		GROUP BY channel ORDER BY COUNT(*) DESC, channel`, userID, sourceArg)
+	if err != nil {
+		return nil, fmt.Errorf("list channel facets: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var c ChannelCount
+		if err := rows.Scan(&c.Channel, &c.Count); err != nil {
+			return nil, fmt.Errorf("scan channel facet: %w", err)
+		}
+		facets.Channels = append(facets.Channels, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	topicRows, err := db.Pool.Query(ctx, `
+		SELECT topic, COUNT(*) FROM videos,
+			jsonb_array_elements_text(metadata->'topics') AS topic
+		WHERE user_id = $1 AND status = 'completed'`+srcClause+`
+		GROUP BY topic ORDER BY COUNT(*) DESC, topic`, userID, sourceArg)
+	if err != nil {
+		return nil, fmt.Errorf("list topic facets: %w", err)
+	}
+	defer topicRows.Close()
+	for topicRows.Next() {
+		var t TopicCount
+		if err := topicRows.Scan(&t.Topic, &t.Count); err != nil {
+			return nil, fmt.Errorf("scan topic facet: %w", err)
+		}
+		facets.Topics = append(facets.Topics, t)
+	}
+	return facets, topicRows.Err()
 }
 
 // GetStats aggregates over one source, or over both when source is empty.

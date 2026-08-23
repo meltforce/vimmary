@@ -21,6 +21,41 @@ identifier rather than estimated.
 
 ---
 
+## 2026-08-23 — library navigation runs on channels and LLM topics, not manual tags
+
+**Decided:** 2026-08-23
+
+**Decision.** The two library screens gain a facet row: a channel select and
+the LLM topic chips, fed by `GET /api/v1/videos/facets` (channels and topics
+of completed rows, with counts). Selecting one sets the existing list-query
+parameters, persisted in the URL. The inbox filters by followed channel the
+same way. There are no user-managed tags.
+
+**Reasoning.** The list API filtered by channel and topic since the podcast
+split, but no UI control existed and the sort is fixed — the library was one
+long newest-first feed. With channel subscriptions there is finally a
+structure worth navigating. The two dimensions that need no upkeep already
+exist: the channel column and the LLM-derived topics. Manual tags are the
+part of Play the operator explicitly rejected (see the channels-inbox entry
+above), so navigation must not reintroduce them through the back door.
+
+**`channel_exact` next to the ILIKE `channel` parameter.** The existing
+`channel` filter is a partial match, which is right for a typed search and
+wrong for a facet: its values come from the column itself, and ILIKE would
+conflate "Go" with "Google". The facet UI sends `channel_exact`; the old
+parameter keeps its meaning for existing clients and MCP.
+
+**Not done, deliberately:** a clickable channel name inside a feed row — the
+row is one `<a>` to the detail page, and an interactive element inside an
+interactive element fails both HTML and keyboard navigation. The select
+covers the need.
+
+**Trigger to re-open:** facet lists growing past what a select and a chip
+row can carry (a channel page per channel would be the next shape); a want
+for sort options.
+
+---
+
 ## 2026-08-23 — the channels inbox: RSS polling, video-ID dedup, and no watch status
 
 **Decided:** 2026-08-23

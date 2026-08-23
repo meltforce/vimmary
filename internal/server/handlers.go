@@ -47,10 +47,11 @@ func (s *Server) handleListVideos(w http.ResponseWriter, r *http.Request) {
 
 	q := r.URL.Query()
 	filters := storage.ListFilters{
-		Channel:  q.Get("channel"),
-		Language: q.Get("language"),
-		Topic:    q.Get("topic"),
-		Status:   q.Get("status"),
+		Channel:      q.Get("channel"),
+		ChannelExact: q.Get("channel_exact"),
+		Language:     q.Get("language"),
+		Topic:        q.Get("topic"),
+		Status:       q.Get("status"),
 		// The source default is youtube, not "everything". That is what keeps
 		// the videos page, MCP list_recent and every older client video-only
 		// once podcast rows exist. "all" opts out.
@@ -74,6 +75,24 @@ func (s *Server) handleListVideos(w http.ResponseWriter, r *http.Request) {
 		"count":  len(videos),
 		"videos": videos,
 	})
+}
+
+// handleVideoFacets serves the filter controls above the library list: the
+// channels and LLM topics of completed rows, with counts.
+func (s *Server) handleVideoFacets(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	source := sourceParam(r.URL.Query().Get("source"), storage.SourceYouTube)
+	facets, err := s.svc.ListVideoFacets(r.Context(), uid, source)
+	if err != nil {
+		s.log.Error("list facets failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list facets failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, facets)
 }
 
 func (s *Server) handleSubmitVideo(w http.ResponseWriter, r *http.Request) {

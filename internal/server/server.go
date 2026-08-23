@@ -56,6 +56,7 @@ func (s *Server) routes() {
 		r.Use(s.IdentityMiddleware())
 
 		r.Get("/api/v1/videos", s.handleListVideos)
+		r.Get("/api/v1/videos/facets", s.handleVideoFacets)
 		r.Post("/api/v1/videos", s.handleSubmitVideo)
 		r.Post("/api/v1/videos/backfill-metadata", s.handleBackfillMetadata)
 		r.Post("/api/v1/videos/retry-all", s.handleRetryAllFailed)
