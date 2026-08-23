@@ -54,6 +54,20 @@ func TestParseChannelPage(t *testing.T) {
 	}
 }
 
+// The canonical link names the page's own channel; the body's first
+// "channelId" can be a localized sibling (observed on @veritasium, whose data
+// island carried "Veritasium en Français" while the canonical link held the
+// real channel).
+func TestParseChannelPage_CanonicalWins(t *testing.T) {
+	body := []byte(`<html><head>
+		<link rel="canonical" href="https://www.youtube.com/channel/UCcanonical0000000000000">
+		</head><body>{"channelId":"UClocalized0000000000000"}</body></html>`)
+	info := parseChannelPage(body)
+	if info.ID != "UCcanonical0000000000000" {
+		t.Errorf("ID = %q, want the canonical link's channel", info.ID)
+	}
+}
+
 // A captured (abbreviated) real feed shape: Atom with the yt namespace.
 const feedFixture = `<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns="http://www.w3.org/2005/Atom">

@@ -18,10 +18,16 @@ type ChannelInfo struct {
 
 var (
 	// A channel ID inside a URL or a page body: UC plus 22 ID characters.
-	channelURLIDRe  = regexp.MustCompile(`/channel/(UC[\w-]{22})`)
-	channelPageIDRe = regexp.MustCompile(`"channelId":"(UC[\w-]{22})"`)
-	ogTitleRe       = regexp.MustCompile(`<meta property="og:title" content="([^"]*)"`)
-	ogImageRe       = regexp.MustCompile(`<meta property="og:image" content="([^"]*)"`)
+	channelURLIDRe = regexp.MustCompile(`/channel/(UC[\w-]{22})`)
+	// The canonical link names the channel the page is actually about. The
+	// first "channelId" in the body does not: on a handle page YouTube may
+	// localize the data island to a regional sibling channel — @veritasium
+	// carried "Veritasium en Français" there while the canonical link held
+	// the real channel (observed 2026-08-23).
+	canonicalChannelRe = regexp.MustCompile(`rel="canonical" href="https://www\.youtube\.com/channel/(UC[\w-]{22})"`)
+	channelPageIDRe    = regexp.MustCompile(`"channelId":"(UC[\w-]{22})"`)
+	ogTitleRe          = regexp.MustCompile(`<meta property="og:title" content="([^"]*)"`)
+	ogImageRe          = regexp.MustCompile(`<meta property="og:image" content="([^"]*)"`)
 )
 
 // ResolveChannel turns whatever a user pastes — a /channel/UC… URL, an
@@ -105,9 +111,13 @@ func (c *Client) fetchChannelPage(ctx context.Context, url string) (*ChannelInfo
 }
 
 // parseChannelPage extracts the channel identity from a channel page body.
+// The canonical link wins over the body's first "channelId" — see the regex
+// comment above.
 func parseChannelPage(body []byte) *ChannelInfo {
 	info := &ChannelInfo{}
-	if m := channelPageIDRe.FindSubmatch(body); m != nil {
+	if m := canonicalChannelRe.FindSubmatch(body); m != nil {
+		info.ID = string(m[1])
+	} else if m := channelPageIDRe.FindSubmatch(body); m != nil {
 		info.ID = string(m[1])
 	}
 	if m := ogTitleRe.FindSubmatch(body); m != nil {
