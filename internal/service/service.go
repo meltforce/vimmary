@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -78,6 +79,11 @@ type Service struct {
 	log             *slog.Logger
 	queue           chan processJob
 	episodeQueue    chan episodeJob
+
+	// segMu/segLast space the on-demand segment fetches (GetTranscriptSegments)
+	// apart from each other. The batch queue has its own pacing.
+	segMu   sync.Mutex
+	segLast time.Time
 }
 
 // New creates a new Service.

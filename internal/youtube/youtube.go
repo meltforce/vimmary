@@ -9,6 +9,14 @@ type Transcript struct {
 	Text     string `json:"text"`
 	Language string `json:"language"`
 	Source   string `json:"source"` // "manual", "auto"
+	Lines    []Line `json:"lines"`
+}
+
+// Line is one timed caption segment. Start and Duration are seconds.
+type Line struct {
+	Start    float64 `json:"start"`
+	Duration float64 `json:"duration"`
+	Text     string  `json:"text"`
 }
 
 // Metadata holds video metadata from YouTube.

@@ -43,10 +43,12 @@ func (c *Client) FetchTranscript(_ context.Context, youtubeID string) (*Transcri
 	t := transcripts[0]
 
 	var lines []string
+	var timed []Line
 	for _, line := range t.Lines {
 		text := strings.TrimSpace(line.Text)
 		if text != "" {
 			lines = append(lines, text)
+			timed = append(timed, Line{Start: line.Start, Duration: line.Duration, Text: text})
 		}
 	}
 
@@ -63,5 +65,6 @@ func (c *Client) FetchTranscript(_ context.Context, youtubeID string) (*Transcri
 		Text:     strings.Join(lines, " "),
 		Language: t.LanguageCode,
 		Source:   source,
+		Lines:    timed,
 	}, nil
 }

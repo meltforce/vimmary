@@ -7,11 +7,13 @@ import {
   fetchKarakeepStatus,
   fetchProviders,
   getVideo,
+  getVideoSegments,
   resummarizeVideo,
   retryVideo,
   transcribeVideo,
   type Video,
 } from "../api.ts";
+import TranscriptPlayer from "../components/TranscriptPlayer.tsx";
 import { formatDuration, formatTokens, videoToMarkdown } from "../utils.ts";
 import PageHeader from "../components/PageHeader.tsx";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
@@ -57,6 +59,8 @@ export default function VideoDetailPage() {
   const [tab, setTab] = useState<Tab>("summary");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [resumOpen, setResumOpen] = useState(false);
+  // Seconds a chapter click wants the player to jump to once it is mounted.
+  const [seekTarget, setSeekTarget] = useState<number | null>(null);
 
   const { data: providers } = useQuery({ queryKey: ["providers"], queryFn: fetchProviders });
   const { data: karakeep } = useQuery({
@@ -69,6 +73,22 @@ export default function VideoDetailPage() {
     queryFn: () => getVideo(id!),
     enabled: !!id,
     refetchInterval: (q) => (q.state.data && isInFlight(q.state.data.status) ? 2000 : false),
+  });
+
+  // The timed transcript loads only when the player can use it: opening the
+  // tab on a pre-000014 video triggers the server's one-time InnerTube fetch,
+  // so this is not free the first time and is never polled.
+  const segmentsQuery = useQuery({
+    queryKey: ["video-segments", id],
+    queryFn: () => getVideoSegments(id!),
+    enabled:
+      !!id &&
+      tab === "transcript" &&
+      video?.source === "youtube" &&
+      video?.status === "completed" &&
+      !!video?.transcript,
+    staleTime: Infinity,
+    retry: false,
   });
 
   useEffect(() => {
@@ -339,11 +359,19 @@ export default function VideoDetailPage() {
                     <div key={i} className="cue">
                       {seconds !== undefined && !isPodcast ? (
                         <time>
+                          {/* A plain click jumps to the in-page player; a
+                              modified click keeps the link's YouTube target. */}
                           <a
                             href={`https://youtube.com/watch?v=${video.youtube_id}&t=${seconds}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{ color: "inherit" }}
+                            onClick={(e) => {
+                              if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+                              e.preventDefault();
+                              setSeekTarget(seconds);
+                              setTab("transcript");
+                            }}
                           >
                             {ts}
                           </a>
@@ -361,24 +389,47 @@ export default function VideoDetailPage() {
             ) : null}
 
             {activeTab === "transcript" ? (
-              <>
-                <p className="kick" style={{ marginBottom: 10 }}>
-                  {wordCount(video.transcript!).toLocaleString()} words
-                </p>
-                <div
-                  className="transcript"
-                  style={{
-                    padding: "16px 0",
-                    fontSize: 13.5,
-                    lineHeight: 1.65,
-                    color: "var(--color-neutral-800)",
-                    whiteSpace: "pre-wrap",
-                    maxWidth: "76ch",
-                  }}
-                >
-                  {video.transcript}
-                </div>
-              </>
+              segmentsQuery.data?.available ? (
+                <TranscriptPlayer
+                  youtubeId={video.youtube_id}
+                  segments={segmentsQuery.data.segments}
+                  seekTarget={seekTarget}
+                  onSeekHandled={() => setSeekTarget(null)}
+                />
+              ) : (
+                <>
+                  <p className="kick" style={{ marginBottom: 10 }}>
+                    {wordCount(video.transcript!).toLocaleString()} words
+                    {segmentsQuery.isLoading ? " · loading timed transcript…" : ""}
+                  </p>
+                  {segmentsQuery.isError ? (
+                    <p style={{ fontSize: 13, color: "var(--color-neutral-600)", marginBottom: 10 }}>
+                      The timed transcript could not be fetched.{" "}
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        style={{ fontSize: 12 }}
+                        onClick={() => segmentsQuery.refetch()}
+                      >
+                        Try again
+                      </button>
+                    </p>
+                  ) : null}
+                  <div
+                    className="transcript"
+                    style={{
+                      padding: "16px 0",
+                      fontSize: 13.5,
+                      lineHeight: 1.65,
+                      color: "var(--color-neutral-800)",
+                      whiteSpace: "pre-wrap",
+                      maxWidth: "76ch",
+                    }}
+                  >
+                    {video.transcript}
+                  </div>
+                </>
+              )
             ) : null}
 
             {activeTab === "topics" ? (

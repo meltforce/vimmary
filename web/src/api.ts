@@ -126,6 +126,27 @@ export function getVideo(id: string): Promise<Video> {
   return fetchJSON(`/api/v1/videos/${id}`);
 }
 
+/** One timed caption line. Compact keys because a long video carries
+ * thousands: s = start seconds, d = duration seconds, t = text. */
+export interface TranscriptSegment {
+  s: number;
+  d: number;
+  t: string;
+}
+
+export interface SegmentsResponse {
+  /** False for podcast rows, Voxtral-transcribed rows and videos InnerTube
+   * has no captions for — the plain transcript is all there is. */
+  available: boolean;
+  segments: TranscriptSegment[];
+}
+
+/** The server fetches and stores segments on first use, so this call can take
+ * an InnerTube round-trip for videos summarized before segments existed. */
+export function getVideoSegments(id: string): Promise<SegmentsResponse> {
+  return fetchJSON(`/api/v1/videos/${id}/segments`);
+}
+
 export function searchVideos(
   query: string,
   limit?: number,

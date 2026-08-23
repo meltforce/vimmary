@@ -49,6 +49,13 @@ that report is closed; these are the items its numbers left behind.
 | `[open]` | Move the integration config from YAML into the GUI, server names into the database | `internal/config`, `internal/storage`, Settings page | next release round for vimmary and cast2md | Today `cast2md.enabled` and `cast2md.base_url` live in `config.yaml`, which means editing an Ansible template and redeploying to point vimmary at a different cast2md. The Karakeep API key already sits in the database and is set through the Settings page; the cast2md address should work the same way. Same on the other side for `vimmary_url` — cast2md has a Settings page, but the key is not in `_get_configurable_settings()`, so it is env-only. Keep the YAML as the initial value so an unattended deployment still works. |
 | `[open]` | Write the user documentation and the project homepages for the integration | `README.md` here and in `../cast2md`, both homepages | next release round for vimmary and cast2md | The README covers setup; what is missing is the view from outside — what the pairing buys someone who finds either project on its own, and that both run standalone. Neither homepage mentions the other project. Worth doing before the next release, on the assumption that someone downloads it. |
 
+## Transcript player
+
+| Status | Item | Where | Trigger | Notes |
+|---|---|---|---|---|
+| `[open]` | Bulk segment backfill for pre-000014 rows | `internal/service/segments.go` | per-open fetching proves annoying in practice | The player fetches and stores segments the first time it opens a legacy video — one InnerTube call per video, ever. A bulk action would burst calls for videos that may never be opened again; see DECISIONS.md, 2026-08-23. |
+| `[open]` | Keep the player mounted across tab switches | `web/src/pages/VideoDetailPage.tsx` | losing the playback position on a tab switch proves annoying | Switching from Transcript to Summary unmounts the iframe, so playback stops and the position is lost. Keeping it mounted-but-hidden trades that for a playing video behind another tab. |
+
 ## Web UI
 
 Left behind by the Modernist migration; the decision itself is closed

@@ -129,7 +129,7 @@ func TestUpdateVideoMetadata_ThenTranscript(t *testing.T) {
 	}
 
 	// Step 2: Save transcript + metadata (as the existing flow does)
-	if err := store.UpdateVideoTranscript(ctx, video.ID, "Hello world transcript", "Early Title", "Early Channel", "en", 120); err != nil {
+	if err := store.UpdateVideoTranscript(ctx, video.ID, "Hello world transcript", "Early Title", "Early Channel", "en", 120, nil); err != nil {
 		t.Fatalf("UpdateVideoTranscript: %v", err)
 	}
 

@@ -61,6 +61,7 @@ func (s *Server) routes() {
 		r.Post("/api/v1/videos/retry-all", s.handleRetryAllFailed)
 		r.Post("/api/v1/videos/transcribe-all", s.handleTranscribeAll)
 		r.Get("/api/v1/videos/{id}", s.handleGetVideo)
+		r.Get("/api/v1/videos/{id}/segments", s.handleGetVideoSegments)
 		r.Delete("/api/v1/videos/{id}", s.handleDeleteVideo)
 		r.Post("/api/v1/videos/{id}/resummarize", s.handleResummarize)
 		r.Post("/api/v1/videos/{id}/retry", s.handleRetryVideo)

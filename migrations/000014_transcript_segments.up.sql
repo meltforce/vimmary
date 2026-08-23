@@ -1,0 +1,14 @@
+-- Timed transcript segments for the in-page player.
+--
+-- The column is tri-state: NULL means segments were never fetched (rows created
+-- before this migration, or rows whose ingest predates segment capture); '[]'
+-- means a fetch ran and InnerTube has no captions for the video (a negative
+-- cache, so Voxtral-transcribed rows are not re-fetched on every player open);
+-- a non-empty array is usable timing data in the shape [{"s":12.4,"d":3.1,"t":"..."}].
+--
+-- It is a column rather than part of metadata because metadata travels with
+-- every list query (videoColumnsNoTranscript includes it), and rather than a
+-- table because segments are never queried individually — their lifecycle is
+-- the transcript's. It is excluded from videoColumns entirely; only
+-- GetVideoSegments reads it.
+ALTER TABLE videos ADD COLUMN transcript_segments JSONB;

@@ -126,6 +126,43 @@ func (s *Server) handleGetVideo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, video)
 }
 
+// handleGetVideoSegments serves the timed transcript for the player. The
+// service fetches and stores segments on first use, so a miss here is a live
+// InnerTube call — 502 signals the transient failure and the client keeps the
+// plain transcript.
+func (s *Server) handleGetVideoSegments(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid video ID"})
+		return
+	}
+
+	segments, err := s.svc.GetTranscriptSegments(r.Context(), uid, id)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "video not found"})
+			return
+		}
+		s.log.Error("get segments failed", "video_id", id, "error", err)
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "segments fetch failed"})
+		return
+	}
+
+	if segments == nil {
+		segments = json.RawMessage("[]")
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		// "[]" is 2 bytes; anything longer is at least one segment.
+		"available": len(segments) > 2,
+		"segments":  segments,
+	})
+}
+
 func (s *Server) handleResummarize(w http.ResponseWriter, r *http.Request) {
 	uid, ok := mustUserID(w, r)
 	if !ok {

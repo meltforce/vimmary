@@ -21,6 +21,69 @@ identifier rather than estimated.
 
 ---
 
+## 2026-08-23 — the transcript player: timed segments in a JSONB column, a lazy endpoint, and YouTube's IFrame API
+
+**Decided:** 2026-08-23
+
+**Decision.** The Transcript tab on `/video/:id` becomes a player for YouTube
+rows: the video embeds via YouTube's IFrame API next to a timed transcript
+whose current line highlights and follows playback, an in-pane search jumps
+between hits, and clicking a line seeks the video. Timed segments live in a
+new nullable `videos.transcript_segments JSONB` column (migration `000014`),
+written at ingest by the InnerTube path and fetched on demand by
+`Service.GetTranscriptSegments` for rows that predate the column. Podcast rows
+and Voxtral-transcribed rows keep the plain transcript.
+
+**Reasoning, per part:**
+
+- **A column, not part of `metadata` and not a table.** `metadata` travels
+  with every list query (`videoColumnsNoTranscript` includes it), and a
+  three-hour video's segments are hundreds of KB. A separate table buys
+  nothing: segments are never queried individually and share the transcript's
+  lifecycle. The column is read by exactly one query (`GetVideoSegments`) and
+  is absent from `videoColumns`, the same isolation the transcript gets from
+  list queries.
+- **Tri-state column.** `NULL` = never fetched; `'[]'` = fetched, InnerTube
+  has no captions (a negative cache, so a Voxtral-transcribed row does not
+  re-hit YouTube on every player open); an array = usable. The stored shape is
+  the wire shape, `[{"s":12.4,"d":3.1,"t":"…"}]`, so the service passes the
+  raw payload through without re-marshalling.
+- **Fetch-on-open instead of a bulk backfill.** Opening the player on a
+  pre-000014 row makes one InnerTube call ever and stores the result. A bulk
+  backfill would burst hundreds of calls for videos that may never be opened
+  again, competing with the ingest queue. The interactive path has its own
+  10 s spacing (`waitSegmentFetchSlot`) rather than sitting behind the batch
+  queue, whose spacing grows to 45 s under load.
+- **A separate `GET /api/v1/videos/{id}/segments` endpoint.** The detail page
+  polls `GET /videos/{id}` every 2 s while a row is in flight; attaching the
+  segment array there would resend it on every poll. The GET materializes the
+  cache on a miss — no POST/GET pair, because the fetch is idempotent.
+- **MCP `get_video` does not carry segments.** The logic sits in the service
+  layer, so both transports *can* reach it — the omission is payload policy,
+  not behavioural divergence: an LLM client needs the transcript text, which
+  it already gets, and thousands of timing tuples are context spent on an
+  action (seeking a player) an MCP client cannot take.
+- **The IFrame API script is a reintroduced external runtime dependency.**
+  The 2026-08 Modernist migration removed the last one (the font CDN),
+  because a tailnet client without a route to the CDN lost the typeface. This
+  one is different in kind: a client that cannot reach youtube.com cannot
+  play the video regardless — the `i.ytimg.com` thumbnails already assume
+  that route — the script loads only when the player mounts, and a load
+  failure degrades to the plain transcript with external timestamp links.
+- **Inline YouTube Premium sign-in (as the Play app offers) is not
+  buildable here and mostly unnecessary.** Play needs it because its native
+  webview has no YouTube session. A browser embed uses the browser's own
+  youtube.com cookies: a Premium login in the same browser carries into the
+  embed where third-party cookies are allowed (Chrome), and where they are
+  blocked (Safari ITP) no page-side mechanism exists to restore it.
+
+**Trigger to re-open:** per-open fetching proving annoying in practice (that
+is the bulk-backfill row in `ROADMAP.md`); an MCP client with a real use for
+timed segments; the IFrame API script failing in a way the degradation does
+not cover.
+
+---
+
 ## 2026-08-07 — the two library screens are a media feed, not a table
 
 **Decided:** 2026-08-07

@@ -176,7 +176,7 @@ func (s *Service) ProcessEpisode(ctx context.Context, userID, episodeID int, lev
 	}
 
 	if err := s.db.UpdateVideoTranscript(ctx, video.ID, transcript,
-		video.Title, video.Channel, video.Language, video.DurationSeconds); err != nil {
+		video.Title, video.Channel, video.Language, video.DurationSeconds, nil); err != nil {
 		return fmt.Errorf("update transcript: %w", err)
 	}
 

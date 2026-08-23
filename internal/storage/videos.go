@@ -47,6 +47,16 @@ type Video struct {
 	UpdatedAt           time.Time       `json:"updated_at"`
 }
 
+// TranscriptSegment is one timed caption line as stored in
+// videos.transcript_segments and served to the player. The keys are compact
+// because a three-hour video carries thousands of these on every player load:
+// s = start seconds, d = duration seconds, t = text.
+type TranscriptSegment struct {
+	Start    float64 `json:"s"`
+	Duration float64 `json:"d"`
+	Text     string  `json:"t"`
+}
+
 type VideoMatch struct {
 	ID         uuid.UUID       `json:"id"`
 	YouTubeID  string          `json:"youtube_id"`
@@ -264,14 +274,54 @@ func (db *DB) UpdateVideoMetadata(ctx context.Context, id uuid.UUID, title, chan
 	return nil
 }
 
-func (db *DB) UpdateVideoTranscript(ctx context.Context, id uuid.UUID, transcript, title, channel, language string, durationSeconds int) error {
+func (db *DB) UpdateVideoTranscript(ctx context.Context, id uuid.UUID, transcript, title, channel, language string, durationSeconds int, segments json.RawMessage) error {
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE videos SET transcript = $1, title = $2, channel = $3, language = $4,
-			duration_seconds = $5, updated_at = NOW()
-		WHERE id = $6
-	`, transcript, title, channel, language, durationSeconds, id)
+			duration_seconds = $5, transcript_segments = $6, updated_at = NOW()
+		WHERE id = $7
+	`, transcript, title, channel, language, durationSeconds, segmentsArg(segments), id)
 	if err != nil {
 		return fmt.Errorf("update video transcript: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// segmentsArg maps a nil segment payload to SQL NULL, keeping the column's
+// tri-state: NULL = never fetched, '[]' = fetched and empty (negative cache).
+func segmentsArg(segments json.RawMessage) any {
+	if segments == nil {
+		return nil
+	}
+	return segments
+}
+
+// GetVideoSegments returns the raw transcript_segments payload, nil when the
+// column is NULL. The column travels with no other read — videoColumns
+// deliberately excludes it, the way videoColumnsNoTranscript blanks the
+// transcript for list queries.
+func (db *DB) GetVideoSegments(ctx context.Context, userID int, id uuid.UUID) (json.RawMessage, error) {
+	var segments []byte
+	err := db.Pool.QueryRow(ctx,
+		`SELECT transcript_segments FROM videos WHERE id = $1 AND user_id = $2`,
+		id, userID).Scan(&segments)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get video segments: %w", err)
+	}
+	return segments, nil
+}
+
+func (db *DB) UpdateVideoSegments(ctx context.Context, id uuid.UUID, segments json.RawMessage) error {
+	tag, err := db.Pool.Exec(ctx,
+		`UPDATE videos SET transcript_segments = $1, updated_at = NOW() WHERE id = $2`,
+		segmentsArg(segments), id)
+	if err != nil {
+		return fmt.Errorf("update video segments: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound

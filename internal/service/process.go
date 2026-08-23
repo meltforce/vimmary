@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -130,6 +131,7 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 	// Fetch transcript
 	useVoxtral := len(forceVoxtral) > 0 && forceVoxtral[0]
 	var transcriptText, transcriptSource, transcriptLang string
+	var transcriptSegments json.RawMessage
 
 	if useVoxtral {
 		// Skip InnerTube, go straight to Voxtral
@@ -164,6 +166,7 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 			transcriptText = transcript.Text
 			transcriptSource = transcript.Source
 			transcriptLang = transcript.Language
+			transcriptSegments = toSegmentsJSON(transcript.Lines)
 		}
 	}
 
@@ -182,7 +185,10 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 	}
 	_ = transcriptSource // available for future use
 
-	if err := s.db.UpdateVideoTranscript(ctx, video.ID, transcriptText, title, channel, language, duration); err != nil {
+	// transcriptSegments stays nil on the Voxtral paths — the API returns plain
+	// text only — which leaves the column NULL so a later player open may still
+	// try InnerTube once.
+	if err := s.db.UpdateVideoTranscript(ctx, video.ID, transcriptText, title, channel, language, duration, transcriptSegments); err != nil {
 		return fmt.Errorf("update transcript: %w", err)
 	}
 
