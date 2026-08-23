@@ -568,9 +568,18 @@ func (db *DB) ListVideoFacets(ctx context.Context, userID int, source string) (*
 
 	facets := &VideoFacets{Channels: []ChannelFacet{}, Topics: []TopicCount{}}
 
+	// Artwork preference: the followed channel's avatar, the podcast feed's
+	// cover, then the newest video's thumbnail — a video frame is not an
+	// avatar, but it beats an initial for the channels that only exist here
+	// through Karakeep, where nothing but the channel name is known.
 	rows, err := db.Pool.Query(ctx, `
 		SELECT v.channel, COUNT(*),
-			COALESCE(MAX(cs.thumbnail_url), MAX(ps.image_url), '')
+			COALESCE(
+				MAX(cs.thumbnail_url),
+				MAX(ps.image_url),
+				(array_agg(v.thumbnail_url ORDER BY v.created_at DESC)
+					FILTER (WHERE v.thumbnail_url IS NOT NULL AND v.thumbnail_url <> ''))[1],
+				'')
 		FROM videos v
 		LEFT JOIN channel_subscriptions cs ON cs.user_id = v.user_id AND cs.title = v.channel
 		LEFT JOIN podcast_subscriptions ps ON ps.user_id = v.user_id AND ps.feed_title = v.channel

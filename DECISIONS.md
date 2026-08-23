@@ -107,6 +107,13 @@ for sort options.
   margin, so the centered column and the nav stay exactly where they are;
   below 1280px the margin cannot hold it and the horizontal strip remains
   the control. Same component, same data, CSS decides which form shows.
+- 2026-08-23: **one-shot channels fold behind "Others (n)"** — with most of
+  the library arriving one video per channel via Karakeep, listing every
+  singleton made the rail longer than the feed. A selected singleton stays
+  visible while folded. And channels without a subscription avatar fall back
+  to their **newest video's thumbnail** instead of an initial: a real avatar
+  would need per-channel scraping and a cache, and for Karakeep-only
+  channels nothing but the channel name is known to scrape by.
 
 ---
 

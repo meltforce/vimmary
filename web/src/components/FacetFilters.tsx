@@ -67,6 +67,7 @@ export default function FacetFilters({
   onChange: (next: { channel: string; topic: string }) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [othersOpen, setOthersOpen] = useState(false);
   const facets = useQuery({
     queryKey: ["facets", source],
     queryFn: () => fetchVideoFacets(source),
@@ -77,6 +78,16 @@ export default function FacetFilters({
   const channels = facets.data?.channels ?? [];
   const topics = facets.data?.topics ?? [];
   if (channels.length < 2 && topics.length < 2) return null;
+
+  // One-shot channels fold behind "Others" so the list carries the channels
+  // worth navigating to. A selected one-shot stays visible while folded.
+  const mainChannels = channels.filter((c) => c.count > 1);
+  const singleChannels = channels.filter((c) => c.count <= 1);
+  const shownChannels =
+    othersOpen || mainChannels.length === 0
+      ? [...mainChannels, ...singleChannels]
+      : [...mainChannels, ...singleChannels.filter((c) => c.channel === channel)];
+  const othersFoldable = mainChannels.length > 0 && singleChannels.length > 0;
 
   // The selected topic stays visible even when it sits below the fold.
   const visibleTopics = expanded ? topics : topics.slice(0, TOPIC_LIMIT);
@@ -110,7 +121,7 @@ export default function FacetFilters({
               </span>
               <span className="channel-row-name">All channels</span>
             </button>
-            {channels.map((c) => (
+            {shownChannels.map((c) => (
               <button
                 key={c.channel}
                 type="button"
@@ -136,10 +147,25 @@ export default function FacetFilters({
                 <span className="channel-row-count num">{c.count}</span>
               </button>
             ))}
+            {othersFoldable ? (
+              <button
+                type="button"
+                className="channel-row channel-row-others"
+                aria-expanded={othersOpen}
+                onClick={() => setOthersOpen((o) => !o)}
+              >
+                <span className="channel-row-art" aria-hidden>
+                  {othersOpen ? "−" : "+"}
+                </span>
+                <span className="channel-row-name">
+                  {othersOpen ? "Fewer" : `Others (${singleChannels.length})`}
+                </span>
+              </button>
+            ) : null}
           </aside>
 
           <div className="channel-strip" role="group" aria-label="Filter by channel">
-            {channels.map((c) => (
+            {shownChannels.map((c) => (
               <ChannelTile
                 key={c.channel}
                 facet={c}
@@ -147,6 +173,19 @@ export default function FacetFilters({
                 onClick={() => toggleChannel(c.channel)}
               />
             ))}
+            {othersFoldable ? (
+              <button
+                type="button"
+                className="channel-tile"
+                aria-expanded={othersOpen}
+                onClick={() => setOthersOpen((o) => !o)}
+              >
+                <span className="channel-art channel-art-initial" aria-hidden>
+                  {othersOpen ? "−" : `+${singleChannels.length}`}
+                </span>
+                <span className="channel-name">{othersOpen ? "Fewer" : "Others"}</span>
+              </button>
+            ) : null}
           </div>
         </>
       ) : null}

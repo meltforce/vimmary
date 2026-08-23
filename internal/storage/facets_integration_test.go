@@ -24,14 +24,15 @@ func TestListVideoFacets(t *testing.T) {
 			meta = payload
 		}
 		v := &storage.Video{
-			ID:          uuid.New(),
-			UserID:      1,
-			YouTubeID:   "facet_" + uuid.NewString()[:8],
-			Source:      source,
-			Channel:     channel,
-			DetailLevel: "medium",
-			Metadata:    meta,
-			Status:      status,
+			ID:           uuid.New(),
+			UserID:       1,
+			YouTubeID:    "facet_" + uuid.NewString()[:8],
+			Source:       source,
+			Channel:      channel,
+			ThumbnailURL: "https://i.ytimg.com/vi/facet_" + channel + "/hqdefault.jpg",
+			DetailLevel:  "medium",
+			Metadata:     meta,
+			Status:       status,
 		}
 		if source == storage.SourcePodcast {
 			v.YouTubeID = ""
@@ -79,11 +80,14 @@ func TestListVideoFacets(t *testing.T) {
 		t.Errorf("Facet Google Talks count = %d, want 1", got)
 	}
 	for _, c := range facets.Channels {
+		// The subscription's avatar outranks the video-thumbnail fallback.
 		if c.Channel == "Facet Go Channel" && c.ThumbnailURL != "https://art.example/go.jpg" {
 			t.Errorf("followed channel artwork = %q, want the subscription's thumbnail", c.ThumbnailURL)
 		}
-		if c.Channel == "Facet Google Talks" && c.ThumbnailURL != "" {
-			t.Errorf("unfollowed channel carries artwork %q, want none", c.ThumbnailURL)
+		// An unfollowed channel falls back to its newest video's thumbnail.
+		if c.Channel == "Facet Google Talks" &&
+			c.ThumbnailURL != "https://i.ytimg.com/vi/facet_Facet Google Talks/hqdefault.jpg" {
+			t.Errorf("unfollowed channel artwork = %q, want the video-thumbnail fallback", c.ThumbnailURL)
 		}
 	}
 	if got := channelCount("Facet Podcast Show"); got != 0 {
