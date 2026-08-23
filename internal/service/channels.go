@@ -49,6 +49,43 @@ func (s *Service) SubscribeChannel(ctx context.Context, userID int, input string
 	return s.db.GetChannelSubscription(ctx, userID, sub.ID)
 }
 
+// ChannelImportResult reports what a Takeout import did.
+type ChannelImportResult struct {
+	Imported int `json:"imported"`
+	Skipped  int `json:"skipped"`
+}
+
+// ImportChannels follows every channel in a Google Takeout subscriptions.csv.
+// The CSV already carries ID and title, so no channel pages are fetched; the
+// inboxes fill through one poll pass started in the background — running it
+// inside the request would hold the response for two seconds per channel.
+func (s *Service) ImportChannels(ctx context.Context, userID int, csvData string) (*ChannelImportResult, error) {
+	channels, skipped, err := youtube.ParseTakeoutSubscriptions(csvData)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &ChannelImportResult{Skipped: skipped}
+	for _, ch := range channels {
+		title := ch.Title
+		if title == "" {
+			title = ch.ID
+		}
+		if _, err := s.db.UpsertChannelSubscription(ctx, userID, ch.ID, title, ""); err != nil {
+			s.log.Warn("channel import row failed", "channel_id", ch.ID, "error", err)
+			result.Skipped++
+			continue
+		}
+		result.Imported++
+	}
+
+	go s.pollChannelsOnce(context.Background())
+
+	s.log.Info("channels imported from Takeout",
+		"user_id", userID, "imported", result.Imported, "skipped", result.Skipped)
+	return result, nil
+}
+
 // ListChannels returns the user's followed channels with their new-item counts.
 func (s *Service) ListChannels(ctx context.Context, userID int) ([]storage.ChannelSubscription, error) {
 	return s.db.ListChannelSubscriptions(ctx, userID)

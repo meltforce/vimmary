@@ -216,6 +216,20 @@ export function transcribeAllNoCaptions(): Promise<{ transcribing: number }> {
   return fetchJSON("/api/v1/videos/transcribe-all", { method: "POST" });
 }
 
+export interface TopicConsolidation {
+  before: number;
+  after: number;
+  merged: number;
+  updated_videos: number;
+  mapping: Record<string, string>;
+}
+
+/** Asks the configured LLM to merge near-duplicate topic tags across the
+ * whole library and applies the mapping. One model call; synchronous. */
+export function consolidateTopics(): Promise<TopicConsolidation> {
+  return fetchJSON("/api/v1/videos/consolidate-topics", { method: "POST" });
+}
+
 export interface ProvidersInfo {
   providers: string[];
   default: string;
@@ -537,6 +551,16 @@ export function addChannel(url: string): Promise<ChannelSubscription> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url }),
+  });
+}
+
+/** Follows every channel in a pasted Google Takeout subscriptions.csv. The
+ * inboxes fill through a background poll pass, not inside this request. */
+export function importChannels(csv: string): Promise<{ imported: number; skipped: number }> {
+  return fetchJSON("/api/v1/channels/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ csv }),
   });
 }
 

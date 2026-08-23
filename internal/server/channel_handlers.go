@@ -71,6 +71,29 @@ func (s *Server) handleSubscribeChannel(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusCreated, sub)
 }
 
+func (s *Server) handleImportChannels(w http.ResponseWriter, r *http.Request) {
+	uid, ok := mustUserID(w, r)
+	if !ok {
+		return
+	}
+
+	var body struct {
+		CSV string `json:"csv"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.CSV) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "csv is required"})
+		return
+	}
+
+	result, err := s.svc.ImportChannels(r.Context(), uid, body.CSV)
+	if err != nil {
+		// A parse failure is the pasted content, not a server fault.
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (s *Server) handleSetChannelEnabled(w http.ResponseWriter, r *http.Request) {
 	uid, ok := mustUserID(w, r)
 	if !ok {

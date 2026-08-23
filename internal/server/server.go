@@ -87,6 +87,7 @@ func (s *Server) routes() {
 		// Channels inbox
 		r.Get("/api/v1/channels", s.handleListChannels)
 		r.Post("/api/v1/channels", s.handleSubscribeChannel)
+		r.Post("/api/v1/channels/import", s.handleImportChannels)
 		r.Put("/api/v1/channels/{id}", s.handleSetChannelEnabled)
 		r.Delete("/api/v1/channels/{id}", s.handleDeleteChannel)
 		r.Get("/api/v1/inbox", s.handleListInbox)

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   addChannel,
   deleteChannel,
+  importChannels,
   listChannels,
   setChannelEnabled,
   type ChannelSubscription,
@@ -96,15 +97,29 @@ function ChannelRow({ channel }: { channel: ChannelSubscription }) {
 export default function ChannelsSection() {
   const queryClient = useQueryClient();
   const [input, setInput] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [importCSV, setImportCSV] = useState("");
 
   const { data, isLoading, error } = useQuery({ queryKey: ["channels"], queryFn: listChannels });
+
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ["channels"] });
+    queryClient.invalidateQueries({ queryKey: ["inbox"] });
+  };
 
   const follow = useMutation({
     mutationFn: () => addChannel(input.trim()),
     onSuccess: () => {
       setInput("");
-      queryClient.invalidateQueries({ queryKey: ["channels"] });
-      queryClient.invalidateQueries({ queryKey: ["inbox"] });
+      invalidateAll();
+    },
+  });
+
+  const bulkImport = useMutation({
+    mutationFn: () => importChannels(importCSV),
+    onSuccess: () => {
+      setImportCSV("");
+      invalidateAll();
     },
   });
 
@@ -143,6 +158,59 @@ export default function ChannelsSection() {
             </button>
           </div>
           {follow.error ? <p className="field-error">{(follow.error as Error).message}</p> : null}
+          <p className="field-hint" style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ fontSize: 12 }}
+              onClick={() => setImportOpen((o) => !o)}
+            >
+              {importOpen ? "Hide Takeout import" : "Import subscriptions from Google Takeout…"}
+            </button>
+          </p>
+          {importOpen ? (
+            <div style={{ marginTop: 8 }}>
+              <p
+                style={{
+                  font: "400 12px/1.5 var(--font-body)",
+                  color: "var(--color-neutral-700)",
+                  maxWidth: "62ch",
+                  margin: "0 0 8px",
+                }}
+              >
+                Export your YouTube data at takeout.google.com (YouTube → subscriptions), open
+                subscriptions.csv and paste its content here. Direct account access is not
+                possible — Google closed the subscription and Watch Later APIs to third parties.
+              </p>
+              <textarea
+                className="input"
+                style={{ width: "100%", minHeight: 120, fontFamily: "var(--font-mono)", fontSize: 12 }}
+                placeholder={"Channel Id,Channel Url,Channel Title\nUC…,https://…,Some Channel"}
+                value={importCSV}
+                disabled={bulkImport.isPending}
+                onChange={(e) => setImportCSV(e.target.value)}
+              />
+              <div style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={bulkImport.isPending || !importCSV.trim()}
+                  onClick={() => bulkImport.mutate()}
+                >
+                  {bulkImport.isPending ? "Importing…" : "Import"}
+                </button>
+              </div>
+              {bulkImport.isSuccess ? (
+                <p className="field-hint">
+                  {bulkImport.data.imported} followed · {bulkImport.data.skipped} skipped. The
+                  inboxes fill within a few minutes as the channels are polled.
+                </p>
+              ) : null}
+              {bulkImport.error ? (
+                <p className="field-error">{(bulkImport.error as Error).message}</p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </form>
 
