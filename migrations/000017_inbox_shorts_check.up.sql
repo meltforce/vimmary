@@ -1,0 +1,14 @@
+-- Records whether an inbox item has been through the Shorts probe.
+--
+-- The probe runs once per newly seen video inside pollChannel, and it is
+-- deliberately fail-open: a transient failure lets the video into the inbox
+-- rather than losing a real video to a flaky probe. Without a marker that
+-- decision is permanent — nothing ever looks at the row again, so a Short that
+-- slipped through stays in the inbox forever. Rows that predate the probe
+-- (2026-08-23 14:45, commit 09e10ed) are in the same position: six Shorts from
+-- a 12:02 poll were still listed as new.
+--
+-- NULL means "not probed yet", which is what the backfill pass looks for. It
+-- is set on a conclusive answer only, so a failed probe is retried on the next
+-- pass instead of being recorded as "not a Short".
+ALTER TABLE inbox_items ADD COLUMN shorts_checked_at TIMESTAMPTZ;

@@ -36,6 +36,7 @@ func (s *Service) StartChannelPoller(ctx context.Context) {
 
 		for {
 			s.pollChannelsOnce(ctx)
+			s.probeUnprobedInboxItems(ctx)
 			s.backfillLibraryChannelArt(ctx)
 			select {
 			case <-ctx.Done():
@@ -44,6 +45,56 @@ func (s *Service) StartChannelPoller(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// shortsProbePerCycle caps how many already-stored inbox items are probed per
+// cycle — one request each, so a large untouched inbox is worked off over
+// several cycles instead of in one burst.
+const shortsProbePerCycle = 25
+
+// probeUnprobedInboxItems dismisses Shorts among items that reached the inbox
+// without a conclusive probe: rows inserted before the probe existed, and rows
+// whose probe failed and were let through on purpose.
+//
+// Running it here rather than inside pollChannel is what makes the fail-open
+// decision temporary. pollChannel probes a video once, on first sight, and
+// never looks at the row again; this pass is the second look, and it keeps
+// looking until the probe answers conclusively.
+func (s *Service) probeUnprobedInboxItems(ctx context.Context) {
+	items, err := s.db.ListUnprobedInboxItems(ctx, shortsProbePerCycle)
+	if err != nil {
+		s.log.Error("failed to list unprobed inbox items", "error", err)
+		return
+	}
+
+	dismissed := 0
+	for _, item := range items {
+		if ctx.Err() != nil {
+			return
+		}
+		short, err := s.channels.IsShort(ctx, item.YouTubeID)
+		if err != nil {
+			// Leave shorts_checked_at NULL so the next cycle retries.
+			s.log.Warn("shorts probe failed, will retry",
+				"video_id", item.YouTubeID, "error", err)
+			continue
+		}
+		if err := s.db.MarkInboxItemProbed(ctx, item.ID); err != nil {
+			s.log.Warn("failed to mark inbox item probed", "id", item.ID, "error", err)
+		}
+		if !short {
+			continue
+		}
+		if err := s.db.SetInboxItemState(ctx, item.UserID, item.ID, storage.InboxStateDismissed); err != nil {
+			s.log.Warn("failed to dismiss short", "video_id", item.YouTubeID, "error", err)
+			continue
+		}
+		dismissed++
+	}
+
+	if dismissed > 0 {
+		s.log.Info("shorts dismissed from the inbox", "count", dismissed, "probed", len(items))
+	}
 }
 
 // artBackfillPerCycle caps how many unfollowed channels get their avatar
@@ -148,16 +199,19 @@ func (s *Service) backfillChannelIdentity(ctx context.Context, sub storage.Chann
 	s.log.Info("channel identity backfilled", "channel_id", sub.ChannelID, "title", info.Title)
 }
 
-// isShort wraps the probe so a transient failure lets the video into the
+// probeShort wraps the probe so a transient failure lets the video into the
 // inbox instead of losing it — a Short that slips through costs one dismiss,
-// a real video filtered by a flaky probe would just be gone.
-func (s *Service) isShort(ctx context.Context, videoID string) bool {
+// a real video filtered by a flaky probe would just be gone. The second return
+// says whether the answer was conclusive; an inconclusive one leaves
+// shorts_checked_at NULL, and probeUnprobedInboxItems retries the row on a
+// later cycle rather than letting the fail-open answer stand forever.
+func (s *Service) probeShort(ctx context.Context, videoID string) (short, probed bool) {
 	short, err := s.channels.IsShort(ctx, videoID)
 	if err != nil {
 		s.log.Warn("shorts probe failed, keeping video", "video_id", videoID, "error", err)
-		return false
+		return false, false
 	}
-	return short
+	return short, true
 }
 
 // pollChannel reads one channel's feed and inserts what is new. There is no
@@ -207,7 +261,15 @@ func (s *Service) pollChannel(ctx context.Context, sub storage.ChannelSubscripti
 		// first sight — the row already exists, which is what limits the
 		// probe to one request per video ever. A Short is dismissed rather
 		// than deleted: the row is the dedup memory that keeps it out.
-		if s.isShort(ctx, entry.VideoID) {
+		short, probed := s.probeShort(ctx, entry.VideoID)
+		if probed {
+			// A conclusive answer either way, so probeUnprobedInboxItems does
+			// not look at this row again.
+			if err := s.db.MarkInboxItemProbed(ctx, item.ID); err != nil {
+				s.log.Warn("failed to mark inbox item probed", "id", item.ID, "error", err)
+			}
+		}
+		if short {
 			if err := s.db.SetInboxItemState(ctx, sub.UserID, item.ID, storage.InboxStateDismissed); err != nil {
 				s.log.Warn("failed to dismiss short", "video_id", entry.VideoID, "error", err)
 			}

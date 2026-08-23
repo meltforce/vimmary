@@ -21,6 +21,53 @@ identifier rather than estimated.
 
 ---
 
+## 2026-08-23 — the Shorts probe gets a second pass, and the player its own layout
+
+**Decided:** 2026-08-23
+
+**Decision.** Two corrections to the redesign as shipped, both from operator
+feedback on the running instance.
+
+**The Shorts filter revisits rows it has already let through.** The probe in
+`pollChannel` runs once per newly seen video and is fail-open by design. That
+made every miss permanent: a flaky probe, or a row inserted before the filter
+existed (09e10ed, 14:45), stayed in the inbox forever. Six Shorts from a 12:02
+poll were still listed as new — the filter had never run over them, because
+`pollChannel` only probes rows it inserts itself. Migration `000017` adds
+`inbox_items.shorts_checked_at`, and `probeUnprobedInboxItems` works through
+`new` rows where it is NULL, 25 per poll cycle. Only a conclusive answer sets
+the column, so a failed probe is retried rather than recorded as "not a Short".
+
+The alternative was a one-off `UPDATE` over the six rows. Rejected: it fixes
+the six and leaves the mechanism that produced them, and the same rows come
+back the next time a probe times out.
+
+**The Watch tab is its own layout.** The handoff's artboards stack the video
+over its transcript inside the reading column. At `--reading-w` minus the rail
+that left the video about 700px wide with the window's outer thirds empty, and
+at the wider measure the video alone was 730px tall with the first cue below
+the fold. Above 1100px the two now sit side by side: the video pins, the cue
+pane scrolls inside itself. Below that the stacked form stays, with the frame
+capped at `46vh` worth of width.
+
+The third symptom had the same root: nothing on the page was pinned, so reading
+a 700-line transcript scrolled away the nav, the tabs and the chapter rail, and
+the only way out of the player was the browser's back button. The nav is now
+`position: sticky` — on every screen, not just this one — and the rail pins
+while the player is open.
+
+**Reasoning.** The pinned nav is worth having on its own: any long page had the
+same defect, the player just made it unmissable. Publishing `--nav-h` from
+`useNavHeight()` rather than writing a constant follows the same reasoning as
+`useIsDesktop()` — the breakpoint and now the nav height are read where they
+are true, not assumed in CSS.
+
+**Trigger to re-open:** a handoff that specifies the Watch tab's layout
+explicitly; the nav growing a second row, which the measured `--nav-h` already
+accommodates but the side-by-side split may not.
+
+---
+
 ## 2026-08-23 — the "Shelf" handoff, as implemented
 
 **Decided:** 2026-08-23

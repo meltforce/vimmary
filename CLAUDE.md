@@ -90,6 +90,17 @@ mode is a full twin driven by `[data-theme]` from `theme.tsx`, `auto` included.
 One breakpoint, 768px, read in JS by `useIsDesktop()`, because desktop and phone
 are different component trees rather than one reflowed.
 
+**The Shorts filter probes once on first sight and once again later.**
+`pollChannel` probes every newly inserted inbox item (`internal/youtube/shorts.go`
+— `/shorts/{id}` answers 200 for a Short and redirects for a regular video) and
+is deliberately fail-open: a flaky probe lets the video in rather than losing a
+real one. `probeUnprobedInboxItems` in `internal/service/channel_poll.go` is what
+makes that decision temporary — it revisits `new` rows whose
+`shorts_checked_at` is NULL, 25 per cycle, and only a conclusive answer sets the
+column. Without the second pass a Short that slipped through stayed forever, and
+so did every row inserted before the filter existed: six of them were still
+listed when this was written, from a poll 2h43min before the filter landed.
+
 **Blocks that centre themselves need `width: 100%` under `<main>`.**
 `.page-head`, `.hero` and `.filters` hold their measure with
 `max-width: var(--reading-w)` plus `margin-inline: auto`. That centres correctly
@@ -98,6 +109,20 @@ inline margin shrinks the item to its content and centres *that* — the Channel
 Stats and Settings heads rendered at 382px in a 1440px window. The three rules
 sit at the end of `index.css`; a new self-centring block placed directly under
 `<main>` needs the same.
+
+**The Watch tab is a different layout, not a wider reading column.**
+`.detail-page.is-player` (set from `VideoDetailPage` when the transcript tab is
+open) takes a 1600px measure, and above 1100px `.player-grid` puts the video and
+the transcript side by side: the video pins, the cue pane scrolls inside itself.
+Three things follow from that and none of them is optional. The nav is
+`position: sticky` — a 700-line transcript scrolled it out of the window and left
+no way back except the browser's back button. `--nav-h` is published by
+`useNavHeight()` in `Layout.tsx` and is what the pinned player head and rail
+offset against; a hard-coded number would hide a strip of video or leave a gap.
+And `.player-head` takes `--color-card`, not the system's `--color-bg`, because
+on the reading card that painted a beige frame around the video. Stacked below
+1100px the frame is capped at `46vh` worth of width, or the pinned video covers
+the window and nothing of the transcript can scroll into view.
 
 **`thumbnail_url` is filled by two different mechanisms, and for a long time by
 only one.** Podcast rows take it from the feed's `image_url`

@@ -351,6 +351,30 @@ func TestPollChannel_ProbeFiltersShorts(t *testing.T) {
 	if total != 2 {
 		t.Errorf("inbox holds %d after flaky probe, want 2 — the video must not be lost", total)
 	}
+
+	// The fail-open answer is not final. Once the probe works again the
+	// backfill pass revisits the row and dismisses it if it is a Short. This
+	// is what pollChannel alone cannot do: it probes a video on first sight
+	// and never looks at the row again.
+	src.shortErr = nil
+	src.shorts["chtest_flaky"] = true
+	svc.probeUnprobedInboxItems(ctx)
+
+	items, total, err = svc.ListInbox(ctx, 1, "", sub.ID, 0, 0)
+	if err != nil {
+		t.Fatalf("ListInbox after re-probe: %v", err)
+	}
+	if total != 1 || items[0].YouTubeID != "chtest_long" {
+		t.Errorf("inbox = %+v after re-probe, want only the real video", items)
+	}
+
+	// A conclusively probed row is not probed a second time.
+	before := src.probes
+	svc.probeUnprobedInboxItems(ctx)
+	if src.probes != before {
+		t.Errorf("re-probe pass probed %d more times, want 0 — a conclusive answer is recorded",
+			src.probes-before)
+	}
 }
 
 // A subscription without artwork — the Takeout import creates exactly those —

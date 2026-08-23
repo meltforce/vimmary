@@ -297,6 +297,54 @@ func (db *DB) GetInboxItem(ctx context.Context, userID, id int) (*InboxItem, err
 		WHERE i.id = $1 AND i.user_id = $2`, id, userID))
 }
 
+// ListUnprobedInboxItems returns items still listed as new that have not been
+// through the Shorts probe, oldest first, capped at limit.
+//
+// Two kinds of row land here. Rows inserted before the probe existed (commit
+// 09e10ed, 2026-08-23 14:45) were never probed at all — six Shorts from a 12:02
+// poll were still listed as new when this was written. Rows whose probe failed
+// were let through on purpose, because losing a real video to a flaky probe is
+// worse than one dismissal, and without this query that decision would never be
+// revisited.
+func (db *DB) ListUnprobedInboxItems(ctx context.Context, limit int) ([]InboxItem, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := db.Pool.Query(ctx, `
+		SELECT `+inboxItemColumns+`
+		FROM inbox_items i
+		JOIN channel_subscriptions s ON s.id = i.subscription_id
+		WHERE i.state = $1 AND i.shorts_checked_at IS NULL
+		ORDER BY i.id
+		LIMIT $2`, InboxStateNew, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list unprobed inbox items: %w", err)
+	}
+	defer rows.Close()
+
+	var items []InboxItem
+	for rows.Next() {
+		item, err := scanInboxItem(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan inbox item: %w", err)
+		}
+		items = append(items, *item)
+	}
+	return items, rows.Err()
+}
+
+// MarkInboxItemProbed records a conclusive Shorts probe. A failed probe leaves
+// the column NULL, so the next pass retries it rather than recording the
+// fail-open answer as fact.
+func (db *DB) MarkInboxItemProbed(ctx context.Context, id int) error {
+	_, err := db.Pool.Exec(ctx,
+		`UPDATE inbox_items SET shorts_checked_at = NOW() WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("mark inbox item probed: %w", err)
+	}
+	return nil
+}
+
 func (db *DB) SetInboxItemState(ctx context.Context, userID, id int, state string) error {
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE inbox_items SET state = $3, updated_at = NOW()
