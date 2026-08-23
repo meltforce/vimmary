@@ -101,10 +101,16 @@ export default function TranscriptPlayer({
           </div>
         )}
 
+      </div>
+
+      {/* The transcript column: its own label, its own search field, then the
+          cues. Side by side with the video above 1100px, stacked under it
+          below — either way the search field stays with the transcript it
+          searches and never scrolls out of reach. */}
+      <div className="player-side">
         {/* The search field belongs to the transcript, not to the video, so it
             sits on the paper ground under the transcript's own label rather
-            than inside the dark player block. It still pins with the video:
-            a search field that scrolls away is unusable mid-playback. */}
+            than inside the dark player block. */}
         <div className="player-searchhead">
           <span className="kick">Transcript</span>
           <span className="count">{segments.length.toLocaleString()} lines</span>
@@ -139,7 +145,6 @@ export default function TranscriptPlayer({
             </span>
           ) : null}
         </form>
-      </div>
 
       <div className="transcript player-pane" ref={paneRef} onWheel={markScrolled} onTouchMove={markScrolled}>
           {segments.map((seg, i) => (
@@ -171,6 +176,7 @@ export default function TranscriptPlayer({
               <div className="player-cue-text">{highlight(seg.t, query)}</div>
             </div>
           ))}
+      </div>
       </div>
     </div>
   );

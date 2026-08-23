@@ -1,8 +1,32 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { usePodcastsEnabled } from "../features.ts";
 import { useIsDesktop } from "../hooks/useMediaQuery.ts";
 import { useInboxCount } from "../hooks/useInboxCount.ts";
+
+/**
+ * Publishes the nav's height as `--nav-h` so anything that pins below it — the
+ * player's video-and-search head, the reader's rail — can offset itself
+ * without a hard-coded number. Measured rather than assumed: the nav's height
+ * follows its font size and padding, and a stale constant would either hide a
+ * strip of video under the nav or leave a gap the transcript scrolls through.
+ */
+function useNavHeight() {
+  const ref = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const publish = () =>
+      document.documentElement.style.setProperty("--nav-h", `${el.offsetHeight}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return ref;
+}
 
 /**
  * One pill nav across both breakpoint trees. The phone's bottom tab bar is
@@ -14,6 +38,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const podcasts = usePodcastsEnabled();
   const isDesktop = useIsDesktop();
   const inbox = useInboxCount();
+  const navRef = useNavHeight();
 
   // Without cast2md there is no second content type, so the entry is absent
   // rather than disabled.
@@ -32,7 +57,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <nav className="nav">
+      <nav className="nav" ref={navRef}>
         {/* A plain Link: the brand points at the video list but must not carry
             the active mark, which belongs to the Videos item. */}
         <Link to="/" className="nav-brand">

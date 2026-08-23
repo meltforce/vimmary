@@ -578,3 +578,129 @@
 @media (min-width: 768px) {
   .feed[data-variant="podcast"] .feed-lead .feed-topics { grid-column: 2; }
 }
+
+/* ── The nav pins ─────────────────────────────────────────────────────────── */
+
+/* The transcript is hundreds of lines long, and reading it scrolled the nav out
+   of the window: past the first screenful there was no way back out of the
+   player except the browser's back button. The nav stays put instead.
+
+   `--nav-h` is published by `useNavHeight()` in Layout.tsx; the fallback covers
+   the first paint, before the measurement lands. */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--color-bg);
+  padding-bottom: 12px;
+}
+
+/* ── The player's own layout ──────────────────────────────────────────────── */
+
+/* The reader's measure is set for prose. The player is not prose: it is a video
+   the width of the column, and at `--reading-w` minus the rail that left the
+   video at about 700px with the window's outer thirds empty. On the Watch tab
+   the page takes a wider measure and gives it to the video.
+
+   The class is on the page rather than the tab body because the width belongs
+   to the grid, and it goes away when the reader switches back to Summary. */
+.detail-page.is-player {
+  max-width: min(1600px, 100vw);
+  grid-template-columns: 1fr 300px;
+}
+
+.detail-page.is-player .detail-content {
+  padding: 24px 28px 32px;
+}
+
+/* A compact head while watching. The reader's 40px title over a wrapped action
+   row pushed the video 550px down the window, and the point of this tab is the
+   video and the transcript, not the title — which is on the tab beside it in
+   full. */
+.detail-page.is-player .page-head h1 {
+  font-size: 25px;
+  max-width: none;
+  margin-top: 10px;
+}
+.detail-page.is-player .page-head-actions { margin-top: 12px; }
+
+/* The head pins under the nav, not under the window's edge. Its ground is the
+   reading card it sits on, not the paper: the system stylesheet gives it
+   `--color-bg` so cues cannot show through while it is pinned, and on the card
+   that painted a beige frame around the video. */
+.player-head {
+  top: calc(var(--nav-h, 73px) + 8px);
+  background: var(--color-card);
+}
+
+/* Stacked, the pinned head is the whole video, and a 16:9 frame the width of
+   the column covers the window on a laptop screen — nothing of the transcript
+   is left to scroll into view. Capping the frame's width caps its height. */
+@media (max-width: 1099px) {
+  .player-frame { max-width: calc(46vh * 16 / 9); }
+}
+
+@media (max-width: 767px) {
+  /* No card on the phone; the reading text runs on the paper ground and so
+     does the player. */
+  .player-head { background: var(--color-bg); }
+}
+
+/* Stacked below 1100px, which is what the handoff's artboards show: video,
+   then the transcript's label, search field and cues under it. */
+.player-side { display: flex; flex-direction: column; min-height: 0; }
+
+/* Side by side above it. A 16:9 video stacked over its transcript spends the
+   window's height on one of the two: at 1600px the video alone was 730px tall
+   and the first cue sat below the fold. Beside each other the video gets the
+   width the wider measure bought and the transcript gets the height.
+
+   The video column pins; the cue pane scrolls inside itself rather than
+   scrolling the page, which is what keeps the nav, the tabs and the chapter
+   rail in place through a 700-line transcript. */
+@media (min-width: 1100px) {
+  .detail-page.is-player .player-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(320px, 1fr);
+    gap: var(--space-6);
+    align-items: start;
+  }
+
+  .detail-page.is-player .player-head {
+    position: sticky;
+    top: 0;
+    padding-bottom: 0;
+    background: transparent;
+  }
+
+  .detail-page.is-player .player-searchhead { margin-top: 0; }
+
+  /* The pane's own scroll region: the window minus the nav, the reading card's
+     padding and the search head above it. */
+  .detail-page.is-player .player-pane {
+    max-height: calc(100vh - var(--nav-h, 73px) - 210px);
+    min-height: 320px;
+    overflow-y: auto;
+  }
+}
+
+/* The rail follows the transcript down, so chapters stay reachable from
+   anywhere in a 700-line cue list. It only pins while the player is open —
+   on the Summary tab the rail is shorter than the text beside it and pinning
+   it would just park it against the nav. */
+.detail-page.is-player .detail-rail {
+  position: sticky;
+  top: calc(var(--nav-h, 73px) + 8px);
+  max-height: calc(100vh - var(--nav-h, 73px) - 24px);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.detail-page.is-player .detail-rail::-webkit-scrollbar { display: none; }
+
+@media (max-width: 767px) {
+  /* One column on the phone, so the rail has nothing to pin beside and the
+     wider measure has no room to spend. */
+  .detail-page.is-player { grid-template-columns: 1fr; max-width: none; }
+  .detail-page.is-player .detail-content { padding: 0; }
+  .detail-page.is-player .detail-rail { position: static; max-height: none; overflow: visible; }
+}

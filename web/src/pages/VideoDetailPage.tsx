@@ -229,8 +229,12 @@ export default function VideoDetailPage() {
   const topics = video.metadata?.topics ?? [];
   const hasRail = showPlayerCard || chapters.length > 0 || topics.length > 0;
 
+  /* The Watch tab takes a wider measure than the reading column — see
+     `.detail-page.is-player` in index.css. */
+  const playerOpen = activeTab === "transcript" && !failed;
+
   return (
-    <div className="detail-page">
+    <div className={`detail-page${playerOpen ? " is-player" : ""}`}>
       <div className="detail-content">
       <PageHeader
         kicker={kicker}
