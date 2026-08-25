@@ -122,6 +122,16 @@ Stats and Settings heads rendered at 382px in a 1440px window. The three rules
 sit at the end of `index.css`; a new self-centring block placed directly under
 `<main>` needs the same.
 
+`.nav` is the same mechanism one element further up, and there it cost the
+sticky bar its ground: fit-content made it 811px wide in a 1512px window, so the
+1120px card scrolled past it left and right while sliding under it. The bar has
+to paint across the whole window, which is why the pinning block overrides
+`max-width` and `margin-inline` instead of adding `width: 100%` — the row keeps
+its centred position through `justify-content`. Its lower edge is
+`var(--shadow-card)`: a gradient fading the content into the bar read as the two
+grounds bleeding into each other, and a hairline reads as a rule across the page
+even where nothing is scrolled under it.
+
 **The Watch tab is a different layout, not a wider reading column.**
 `.detail-page.is-player` (set from `VideoDetailPage` when the transcript tab is
 open) takes a 1600px measure, and above 1100px `.player-grid` puts the video and

@@ -593,6 +593,23 @@
   z-index: 20;
   background: var(--color-bg);
   padding-bottom: 12px;
+  /* The bar has to paint across the whole window, and the system rule alone
+     does not: `margin-inline: auto` on a flex item cancels the stretch, so the
+     nav took its content's width — 811px measured in a 1512px window — and the
+     1120px card below scrolled past it on both sides while sliding under it.
+     Same mechanism as the `width: 100%` the self-centring blocks need, one
+     element further up. The row keeps its centred position through
+     `justify-content`, so only the painted ground changes. */
+  max-width: none;
+  margin-inline: 0;
+  justify-content: center;
+  /* The bar's lower edge: the same card shadow the shelf cards carry, which is
+     what separates it from the white card passing underneath. A gradient that
+     faded the content into the bar was tried first and read as the two grounds
+     bleeding into each other; a hairline reads as a rule across the page even
+     where nothing is scrolled under it. The shadow is visible only against
+     what moves below it. */
+  box-shadow: var(--shadow-card);
 }
 
 /* ── The player's own layout ──────────────────────────────────────────────── */
