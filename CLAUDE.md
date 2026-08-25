@@ -101,6 +101,18 @@ column. Without the second pass a Short that slipped through stayed forever, and
 so did every row inserted before the filter existed: six of them were still
 listed when this was written, from a poll 2h43min before the filter landed.
 
+**A 404 from the channel feed usually means nothing.**
+`https://www.youtube.com/feeds/videos.xml?channel_id=…` answers 404 for a live
+channel with a correct ID in roughly half of all requests — measured 2026-08-25
+over 12 consecutive requests each for two channels, unchanged across User-Agent,
+Accept header, consent cookie, HTTP/1.1 and the www-less host, with Google's
+generic error page as the body rather than YouTube's. `FetchChannelFeed`
+therefore retries three times (`channelFeedRetryDelays`), which is what takes the
+per-cycle failure probability to ~12%; a retry on 403 or 429 would only spend
+requests, so `retryableFeedStatus` covers 404, 5xx and requests without a
+response. A channel ID that answers 404 on every attempt across several cycles
+is the deleted-or-mistyped case the message reads like.
+
 **Blocks that centre themselves need `width: 100%` under `<main>`.**
 `.page-head`, `.hero` and `.filters` hold their measure with
 `max-width: var(--reading-w)` plus `margin-inline: auto`. That centres correctly
