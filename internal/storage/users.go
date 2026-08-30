@@ -22,6 +22,26 @@ func (db *DB) GetOrCreateUser(ctx context.Context, login, displayName string) (i
 	return id, err
 }
 
+// GetUserIdentity returns the login and display name the identity middleware
+// resolved this user to. The UI names it in Settings — on a shared Tailscale
+// device the library on screen is otherwise unattributable, and every row in
+// `videos` hangs off this ID.
+func (db *DB) GetUserIdentity(ctx context.Context, userID int) (login, displayName string, err error) {
+	var dn *string
+	err = db.Pool.QueryRow(ctx,
+		`SELECT login, display_name FROM users WHERE id = $1`, userID).Scan(&login, &dn)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "", ErrNotFound
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("get user identity: %w", err)
+	}
+	if dn != nil {
+		displayName = *dn
+	}
+	return login, displayName, nil
+}
+
 func (db *DB) GetPrimaryUser(ctx context.Context) (id int, login string, err error) {
 	err = db.Pool.QueryRow(ctx, `
 		SELECT id, login FROM users
@@ -140,12 +160,22 @@ func (db *DB) GetSummaryPrompts(ctx context.Context, userID int) (medium, deep *
 	return
 }
 
-// GetModelPreference returns the user's preferred summary model (provider + model ID). Empty means use default.
+// GetModelPreference returns the preferred summary model (provider + model ID).
+// Empty means use default.
+//
+// The preference is shared across users for the same reason the prompts are —
+// one summary per piece of content, so the model that produced it cannot be a
+// private choice. A row that has none falls back to another user's, which is
+// what a user created after the setting was made reads. See prompts.go for the
+// full reasoning.
 func (db *DB) GetModelPreference(ctx context.Context, userID int) (provider, model string, err error) {
 	var pp, pm *string
-	err = db.Pool.QueryRow(ctx,
-		`SELECT preferred_model_provider, preferred_model_id FROM users WHERE id = $1`, userID,
-	).Scan(&pp, &pm)
+	err = db.Pool.QueryRow(ctx, `
+		SELECT preferred_model_provider, preferred_model_id
+		FROM users
+		ORDER BY (id = $1) DESC, (preferred_model_id IS NOT NULL) DESC, id
+		LIMIT 1
+	`, userID).Scan(&pp, &pm)
 	if err != nil {
 		return "", "", err
 	}
@@ -158,7 +188,9 @@ func (db *DB) GetModelPreference(ctx context.Context, userID int) (provider, mod
 	return
 }
 
-// SetModelPreference sets the user's preferred summary model. Empty values reset to default (NULL).
+// SetModelPreference sets the preferred summary model for every user. Empty
+// values reset to default (NULL). The userID argument names who asked; it does
+// not narrow what is written.
 func (db *DB) SetModelPreference(ctx context.Context, userID int, provider, model string) error {
 	var pp, pm *string
 	if provider != "" {
@@ -168,8 +200,8 @@ func (db *DB) SetModelPreference(ctx context.Context, userID int, provider, mode
 		pm = &model
 	}
 	_, err := db.Pool.Exec(ctx,
-		`UPDATE users SET preferred_model_provider = $1, preferred_model_id = $2 WHERE id = $3`,
-		pp, pm, userID,
+		`UPDATE users SET preferred_model_provider = $1, preferred_model_id = $2`,
+		pp, pm,
 	)
 	return err
 }

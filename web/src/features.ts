@@ -26,7 +26,16 @@ export function useFeatures(): Features {
   const { data } = useFeaturesQuery();
   // Default to off while loading. Showing the podcast UI and then removing it
   // would be worse than showing it a moment late on a deployment that has it.
-  return data ?? { podcasts: false, cast2md_url: "", is_admin: false };
+  return (
+    data ?? {
+      podcasts: false,
+      cast2md_url: "",
+      is_admin: false,
+      user_id: 0,
+      login: "",
+      display_name: "",
+    }
+  );
 }
 
 /**
@@ -56,4 +65,17 @@ export function usePodcastsEnabled(): boolean {
  */
 export function useIsAdmin(): boolean {
   return useFeatures().is_admin;
+}
+
+/**
+ * useIdentity reports which account the server resolved this request to.
+ *
+ * It is shown rather than merely used because vimmary is multi-user and the
+ * identity arrives from Tailscale without any visible sign-in: on a shared
+ * device nothing on screen said whose library was being displayed, and every
+ * row hangs off this user ID.
+ */
+export function useIdentity(): { userId: number; login: string; displayName: string } {
+  const f = useFeatures();
+  return { userId: f.user_id, login: f.login, displayName: f.display_name };
 }

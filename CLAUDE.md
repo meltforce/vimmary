@@ -247,6 +247,37 @@ chain. `go list -deps ./cmd/vimmary` therefore still names
 same as absent, and only the second would be worth the divergence from the
 resolver every other service here uses.
 
+**Transcripts and summaries are shared between users; only the row is private.**
+`videos` is keyed `UNIQUE(user_id, source, external_id)`, so every user has an
+own row — but everything derived from the source is held identical across the
+rows for one `(source, external_id)`. Two mechanisms do that, and both are
+needed: `storage.AdoptSharedContent` copies a finished sibling onto a row at
+ingest time, which `ProcessVideo` and `ProcessEpisode` call through
+`service.adoptShared` before fetching anything, and the five `Update*` methods
+for derived fields address every row with that `(source, external_id)` instead
+of the id they are given. The first covers rows created later, the second rows
+that already exist when someone regenerates. Last write wins, deliberately.
+`UpdateVideoStatus` is *not* among them: `processing` and `failed` belong to one
+attempt by one user, and a fanned-out failure would mark everyone's row failed.
+The why is that a second user re-paid for an InnerTube transcript call, a
+Voxtral run where captions were missing, an LLM summary and an embedding, for
+content another user had already finished — see `DECISIONS.md`, 2026-08-30.
+
+The adoption copy is SQL, not a read into `storage.Video` and a write back,
+because `embedding` has no field on that struct. A Go-level copy compiles,
+passes a summary comparison, and silently leaves the row out of the search
+index; `TestAdoptSharedContent` asserts through `SearchVideos` for that reason.
+
+**The summary prompt and the model preference are service-wide, stored per
+user.** `SetUserPrompt` writes a row for every user and `SetModelPreference`
+updates every row in `users`; both reads prefer the caller's own row and fall
+back to any other, which is what a user created after the change reads. The why:
+the summary is stored once and shared, so a prompt that differed per user would
+decide the shared text by whoever regenerated last without saying so. The
+per-user key is kept rather than folded into `app_settings` so the sharing can
+be withdrawn without a migration. `users.karakeep_api_key`, `webhook_token` and
+`feed_token` stay private — those are credentials, not settings.
+
 **`videos` holds both kinds of row, and source-blind queries are bugs.** A
 `source` column discriminates `youtube` from `podcast`; podcast rows carry NULL
 in `youtube_id` (that is why `InsertVideo` passes `nil`, not `""` — the

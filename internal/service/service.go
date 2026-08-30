@@ -361,6 +361,11 @@ func (s *Service) SetSummaryProvider(ctx context.Context, provider string) error
 // device with "no registered user yet" until a personal device has logged in,
 // and that login creates the primary user. The rule therefore tightens by
 // itself the moment there is someone to tighten it for.
+// Identity returns the login and display name of the signed-in user.
+func (s *Service) Identity(ctx context.Context, userID int) (login, displayName string, err error) {
+	return s.db.GetUserIdentity(ctx, userID)
+}
+
 func (s *Service) IsAdmin(ctx context.Context, userID int) (bool, error) {
 	primaryID, _, err := s.db.GetPrimaryUser(ctx)
 	if err != nil {

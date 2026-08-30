@@ -21,6 +21,86 @@ identifier rather than estimated.
 
 ---
 
+## 2026-08-30 — transcripts and summaries are shared between users, last write wins
+
+**Decided:** 2026-08-30
+
+**Decision.** The derived content of a video or episode — transcript, timed
+segments, metadata, summary, embedding, topics — is stored once and shared by
+every user who has that video or episode. The row in `videos` stays per user;
+only what is derived from the source is common. The settings that produce a
+summary, the prompt and the model preference, are written for every user as
+well, so the shared summary is not decided by an invisible per-user setting.
+Whoever regenerates last determines what everyone sees.
+
+**Reasoning.** `videos` is keyed `UNIQUE(user_id, source, external_id)` since
+`000009`, and both ingest paths looked their work up user-scoped —
+`GetByYouTubeID(ctx, userID, …)` in `internal/service/process.go` and
+`GetBySourceID(ctx, userID, …)` in `internal/service/podcast.go`. A second user
+bookmarking a video another user already had was therefore invisible to the
+first user's finished row, and paid again for all of it: an InnerTube metadata
+call and a transcript call, both under `adaptiveDelay`'s 10–45 s spacing; where
+captions were missing, a full Voxtral run that downloads the audio and is billed
+per minute; an LLM summary; and a Mistral embedding. On the podcast side
+cast2md does not re-transcribe, so the transcript cost one HTTP request, but the
+summary and the embedding were paid twice.
+
+A transcript is a property of the video, not of the person who bookmarked it. A
+summary is not, in principle — it depends on the prompt and the model. Sharing
+it anyway is a deliberate simplification for the deployment this serves, a
+family instance where nobody edits prompts: the alternative is a cache key over
+prompt, level, provider and model, which only saves an LLM call when all four
+agree and costs a mechanism that has to be understood before either setting can
+be changed. Making the settings service-wide removes the case where the key
+would have differed, which is what makes the simplification honest rather than
+merely cheap.
+
+**How.** Two mechanisms, because one alone is not enough. `AdoptSharedContent`
+in `internal/storage/videos.go` copies a finished sibling row onto a row at
+ingest time, which covers rows created after the content was summarized; the
+five `Update*` methods for derived fields address every row with the same
+`(source, external_id)` rather than the row named by the id, which covers rows
+that already exist when a regeneration runs. `UpdateVideoStatus` is deliberately
+excluded — `processing`, `failed` and the error message belong to one attempt by
+one user, and fanning a failure out would mark every user's row failed. The
+success path lifts the siblings anyway, because `UpdateVideoSummary` sets
+`status = 'completed'`.
+
+The adoption copy is SQL rather than a read into Go and a write back, because
+the `embedding` column has no field on `storage.Video`. A Go-level copy would
+compile, pass a summary comparison, and leave the row out of the search index.
+
+The short-circuit is not a lock. Two users submitting the same video within the
+same processing window both find no finished row and both fetch — the work is
+done twice that once, and the fan-out then makes the two rows agree. Serializing
+it would mean holding a lock across an LLM call, which is the worse trade.
+
+**Not chosen: a normalized content table.** Moving the shared columns into a
+table keyed `(source, external_id)` with `videos` referencing it is the model
+this describes. It was not done because all 27 read methods in
+`internal/storage/videos.go` plus `match_videos` would need a join, against a
+storage duplication that is a transcript and a 1024-float vector per user per
+video — irrelevant at family scale. The denormalized form is also reversible:
+removing the fan-out predicates restores private copies without a migration.
+
+**Per-user settings that stay per user.** `users.karakeep_api_key` is a personal
+credential; `users.webhook_token` and `users.feed_token` are personal access
+tokens. Podcast and channel subscriptions stay per user because they are the
+library, not a setting.
+
+**Migration `000018`** adds the `(source, external_id)` index the adoption
+lookup needs and reconciles what the per-user era produced: for every group with
+more than one row, the most recently updated completed row's derived fields are
+copied onto its siblings. Groups without a completed row are left alone.
+
+**Trigger to re-open.** A user who wants their own summary of a video someone
+else already summarized — at which point the cache key over prompt, level,
+provider and model is the thing to build, and the settings go back to per-user.
+Also: a deployment large enough that the duplicated transcripts and vectors
+matter, which is when the normalized content table is worth its refactor.
+
+---
+
 ## 2026-08-23 — the Shorts probe gets a second pass, and the player its own layout
 
 **Decided:** 2026-08-23

@@ -1,5 +1,5 @@
 import { useTheme, type ThemePreference } from "../../theme.tsx";
-import { useIsAdmin, usePodcastsEnabled } from "../../features.ts";
+import { useIdentity, useIsAdmin, usePodcastsEnabled } from "../../features.ts";
 import { Row, Section } from "./primitives.tsx";
 
 const THEMES: { value: ThemePreference; label: string }[] = [
@@ -17,12 +17,20 @@ export default function IdentitySection() {
   const { theme, setTheme } = useTheme();
   const isAdmin = useIsAdmin();
   const podcasts = usePodcastsEnabled();
+  const { userId, login, displayName } = useIdentity();
 
   return (
     <Section
       title="Identity"
       subtitle="Who you are to vimmary, and how it looks in this browser. Access is decided by Tailscale; there is no password to set here."
     >
+      {/* The account comes first: it is the answer to "whose library is this",
+          and the role below only qualifies it. Falls back to the numeric ID,
+          which still tells two accounts apart, when the lookup failed. */}
+      <Row label="Account" value={login || (userId ? `User ${userId}` : "—")} />
+      {displayName && displayName !== login && (
+        <Row label="Name" value={displayName} />
+      )}
       <Row label="Role" value={isAdmin ? "Primary user" : "Member"} />
       <Row
         label="Podcasts"

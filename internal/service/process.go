@@ -65,6 +65,31 @@ func (s *Service) transcribeWithVoxtral(ctx context.Context, youtubeID string) (
 	return text, nil
 }
 
+// adoptShared copies a finished row for the same content onto this user's row
+// and reports whether one existed. The Karakeep writeback still runs: the note
+// and the tag belong to this user's bookmark, which the other user's ingest
+// never touched.
+func (s *Service) adoptShared(ctx context.Context, userID int, id uuid.UUID, bookmarkID string) (bool, error) {
+	adopted, err := s.db.AdoptSharedContent(ctx, id)
+	if err != nil || !adopted {
+		return false, err
+	}
+	if bookmarkID == "" {
+		return true, nil
+	}
+	video, err := s.db.GetVideo(ctx, userID, id)
+	if err != nil {
+		// The copy landed; only the writeback's inputs are missing.
+		s.log.Warn("adopted row unreadable, skipping Karakeep writeback", "video_id", id, "error", err)
+		return true, nil
+	}
+	go func() {
+		time.Sleep(30 * time.Second)
+		s.writeBackToKarakeep(context.Background(), userID, bookmarkID, id, video.Title, video.Summary)
+	}()
+	return true, nil
+}
+
 // ProcessVideo fetches transcript, generates summary, creates embedding, stores in DB,
 // and writes back to Karakeep. If forceVoxtral is true, it skips InnerTube captions and
 // goes straight to audio extraction + Voxtral transcription.
@@ -108,6 +133,17 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 		if err := s.db.InsertVideo(ctx, video); err != nil {
 			return fmt.Errorf("insert video: %w", err)
 		}
+	}
+
+	// Another user may already have this video finished. Its transcript,
+	// summary and embedding belong to the video rather than to them, so adopt
+	// the row instead of fetching and summarizing a second time.
+	if adopted, err := s.adoptShared(ctx, userID, video.ID, bookmarkID); err != nil {
+		s.log.Warn("shared content adoption failed, processing normally",
+			"youtube_id", youtubeID, "error", err)
+	} else if adopted {
+		s.log.Info("video adopted from an existing summary", "youtube_id", youtubeID)
+		return nil
 	}
 
 	// Update status to processing

@@ -230,6 +230,72 @@ func (db *DB) GetBySourceID(ctx context.Context, userID int, source, externalID 
 		userID, source, externalID))
 }
 
+// AdoptSharedContent fills the row named by id from another user's finished row
+// for the same content, and reports whether one was found.
+//
+// It is the ingest short-circuit. The transcript, the summary and the embedding
+// are properties of the video or episode, not of the person who bookmarked it,
+// so a second user's ingest copies them instead of paying for a second
+// InnerTube fetch, a second Voxtral run, a second LLM call and a second
+// embedding.
+//
+// The copy is done in SQL rather than by reading a Video and writing it back:
+// the embedding column has no field on Video, and a round trip through Go would
+// silently drop the vector, leaving the row out of the search index.
+//
+// COALESCE guards the three columns a sibling may legitimately lack — a row
+// ingested before migration 000013 carries no thumbnail — so adopting cannot
+// clear a value this row already has.
+func (db *DB) AdoptSharedContent(ctx context.Context, id uuid.UUID) (bool, error) {
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE videos AS target SET
+			transcript            = src.transcript,
+			transcript_segments   = src.transcript_segments,
+			summary               = src.summary,
+			detail_level          = src.detail_level,
+			summary_provider      = src.summary_provider,
+			summary_model         = src.summary_model,
+			summary_input_tokens  = src.summary_input_tokens,
+			summary_output_tokens = src.summary_output_tokens,
+			embedding             = src.embedding,
+			metadata              = src.metadata,
+			title                 = src.title,
+			channel               = src.channel,
+			language              = src.language,
+			duration_seconds      = src.duration_seconds,
+			thumbnail_url         = COALESCE(src.thumbnail_url, target.thumbnail_url),
+			published_at          = COALESCE(src.published_at, target.published_at),
+			source_url            = COALESCE(src.source_url, target.source_url),
+			status                = 'completed',
+			error_message         = NULL,
+			updated_at            = NOW()
+		FROM (
+			SELECT * FROM videos
+			WHERE (source, external_id) = (SELECT source, external_id FROM videos WHERE id = $1)
+			  AND status = 'completed' AND id <> $1
+			ORDER BY updated_at DESC
+			LIMIT 1
+		) AS src
+		WHERE target.id = $1
+	`, id)
+	if err != nil {
+		return false, fmt.Errorf("adopt shared content: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// The five Update* methods below address every row carrying the same
+// (source, external_id), not the row named by the id. That is what keeps the
+// shared content shared: a regeneration started by any user becomes the version
+// all users see, last write wins. The id argument names the row whose content
+// identity is meant, and the subquery resolves it — an id that matches nothing
+// yields a NULL tuple, no rows, and the existing ErrNotFound.
+//
+// UpdateVideoStatus is deliberately not among them: `processing`, `failed` and
+// the error message belong to one attempt by one user, and fanning a failure
+// out would mark every user's row failed. The success path lifts the siblings
+// anyway, because UpdateVideoSummary sets status = 'completed'.
+
 func (db *DB) UpdateBookmarkID(ctx context.Context, id uuid.UUID, bookmarkID string) error {
 	_, err := db.Pool.Exec(ctx,
 		`UPDATE videos SET karakeep_bookmark_id = $1, updated_at = NOW() WHERE id = $2`,
@@ -252,7 +318,7 @@ func (db *DB) UpdateVideoSummary(ctx context.Context, id uuid.UUID, summary stri
 		UPDATE videos SET summary = $1, detail_level = $2, summary_provider = $3,
 			summary_model = $4, summary_input_tokens = $5, summary_output_tokens = $6,
 			embedding = $7, metadata = $8, status = 'completed', error_message = NULL, updated_at = NOW()
-		WHERE id = $9
+		WHERE (source, external_id) = (SELECT source, external_id FROM videos WHERE id = $9)
 	`, summary, detailLevel, provider, model, inputTokens, outputTokens, embeddingArg, metadata, id)
 	if err != nil {
 		return fmt.Errorf("update video summary: %w", err)
@@ -267,7 +333,7 @@ func (db *DB) UpdateVideoMetadata(ctx context.Context, id uuid.UUID, title, chan
 	_, err := db.Pool.Exec(ctx, `
 		UPDATE videos SET title = $1, channel = $2, language = $3,
 			duration_seconds = $4, updated_at = NOW()
-		WHERE id = $5
+		WHERE (source, external_id) = (SELECT source, external_id FROM videos WHERE id = $5)
 	`, title, channel, language, durationSeconds, id)
 	if err != nil {
 		return fmt.Errorf("update video metadata: %w", err)
@@ -279,7 +345,7 @@ func (db *DB) UpdateVideoTranscript(ctx context.Context, id uuid.UUID, transcrip
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE videos SET transcript = $1, title = $2, channel = $3, language = $4,
 			duration_seconds = $5, transcript_segments = $6, updated_at = NOW()
-		WHERE id = $7
+		WHERE (source, external_id) = (SELECT source, external_id FROM videos WHERE id = $7)
 	`, transcript, title, channel, language, durationSeconds, segmentsArg(segments), id)
 	if err != nil {
 		return fmt.Errorf("update video transcript: %w", err)
@@ -319,7 +385,8 @@ func (db *DB) GetVideoSegments(ctx context.Context, userID int, id uuid.UUID) (j
 
 func (db *DB) UpdateVideoSegments(ctx context.Context, id uuid.UUID, segments json.RawMessage) error {
 	tag, err := db.Pool.Exec(ctx,
-		`UPDATE videos SET transcript_segments = $1, updated_at = NOW() WHERE id = $2`,
+		`UPDATE videos SET transcript_segments = $1, updated_at = NOW()
+		 WHERE (source, external_id) = (SELECT source, external_id FROM videos WHERE id = $2)`,
 		segmentsArg(segments), id)
 	if err != nil {
 		return fmt.Errorf("update video segments: %w", err)
@@ -690,7 +757,8 @@ func (db *DB) UpdateVideoTopics(ctx context.Context, id uuid.UUID, topics []stri
 		UPDATE videos
 		SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{topics}', $1::jsonb),
 			updated_at = NOW()
-		WHERE id = $2`, payload, id)
+		WHERE (source, external_id) = (SELECT source, external_id FROM videos WHERE id = $2)`,
+		payload, id)
 	if err != nil {
 		return fmt.Errorf("update video topics: %w", err)
 	}

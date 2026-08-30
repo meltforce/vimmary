@@ -261,6 +261,11 @@ export interface Features {
   // also treats as the owner that tagged devices resolve to. Gates the
   // service-wide LLM settings.
   is_admin: boolean;
+  /** Who the request was resolved to. The identity comes from Tailscale, so
+   * these are read-only and there is nothing to set. */
+  user_id: number;
+  login: string;
+  display_name: string;
 }
 
 export function fetchFeatures(): Promise<Features> {

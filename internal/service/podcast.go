@@ -160,6 +160,19 @@ func (s *Service) ProcessEpisode(ctx context.Context, userID, episodeID int, lev
 			return err
 		}
 	}
+
+	// Another user may already have summarized this episode. cast2md would only
+	// hand back the same transcript, and the summary would cost a second LLM
+	// call for the same text — so adopt their row. There is no bookmark ID
+	// because podcasts do not come from Karakeep.
+	if adopted, err := s.adoptShared(ctx, userID, video.ID, ""); err != nil {
+		s.log.Warn("shared content adoption failed, processing normally",
+			"episode_id", episodeID, "error", err)
+	} else if adopted {
+		s.log.Info("episode adopted from an existing summary", "episode_id", episodeID)
+		return nil
+	}
+
 	if level == "" {
 		level = video.DetailLevel
 	}

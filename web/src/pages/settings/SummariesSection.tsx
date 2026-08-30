@@ -247,8 +247,11 @@ export default function SummariesSection() {
   });
   const { data: providers } = useQuery({ queryKey: ["providers"], queryFn: fetchProviders });
 
+  // The sharing is stated rather than left to be discovered: a summary is
+  // stored once per video and reused by every user, so these two settings are
+  // service-wide and the last change wins for everybody.
   const subtitle =
-    "Which model writes the summary, and what it is asked for. A changed prompt applies to the next summary, not to the ones already stored.";
+    "Which model writes the summary, and what it is asked for. Both apply to everyone — a summary is stored once per video and shared. A change applies to the next summary, not to the ones already stored.";
 
   return (
     <Section title="Summaries" subtitle={subtitle}>

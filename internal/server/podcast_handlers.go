@@ -39,10 +39,20 @@ func (s *Server) handleGetFeatures(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.log.Warn("admin check failed, hiding admin surfaces", "error", err)
 	}
+	// The identity rides along for the same reason is_admin does. A failed
+	// lookup leaves the fields empty and the Settings page falls back to the
+	// numeric ID, which is still enough to tell two accounts apart.
+	login, displayName, err := s.svc.Identity(r.Context(), uid)
+	if err != nil {
+		s.log.Warn("identity lookup failed", "user_id", uid, "error", err)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"podcasts":    s.svc.PodcastEnabled(),
-		"cast2md_url": s.svc.Cast2MDBaseURL(),
-		"is_admin":    admin,
+		"podcasts":     s.svc.PodcastEnabled(),
+		"cast2md_url":  s.svc.Cast2MDBaseURL(),
+		"is_admin":     admin,
+		"user_id":      uid,
+		"login":        login,
+		"display_name": displayName,
 	})
 }
 
