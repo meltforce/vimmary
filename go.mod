@@ -10,7 +10,7 @@ require (
 	github.com/mark3labs/mcp-go v0.58.0
 	github.com/meltforce/meltkit v0.2.0
 	github.com/pgvector/pgvector-go v0.4.1
-	github.com/yuin/goldmark v1.8.5
+	github.com/yuin/goldmark v1.8.6
 	tailscale.com v1.102.3
 )
 
