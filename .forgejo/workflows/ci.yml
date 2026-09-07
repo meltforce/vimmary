@@ -29,7 +29,7 @@ jobs:
   go-build-test:
     runs-on: docker
     steps:
-      - uses: actions/checkout@v4.4.0
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v5.6.0
         with:
           go-version-file: go.mod
@@ -50,7 +50,7 @@ jobs:
   check-docs:
     runs-on: docker
     steps:
-      - uses: actions/checkout@v4.4.0
+      - uses: actions/checkout@v7.0.1
       # Exits 0 when it found nothing, 1 when it found something, 2 when it
       # could not run at all — a missing python3 or an unreadable
       # .claude/project-standards.json fail here rather than passing quietly.
@@ -65,7 +65,7 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4.4.0
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v4.4.0
         with:
           node-version: "22.23.2"
@@ -198,7 +198,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: docker-buildx
     steps:
-      - uses: actions/checkout@v4.4.0
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0   # need history for changelog generation
 
