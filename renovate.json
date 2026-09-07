@@ -1,15 +1,39 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": "Headless Renovate (no PR workflow): minors and patches land directly on main; a broken bump fails the build in build-push-deploy@v3 and no image is pushed. Preset: homelab/default.json.",
-  "extends": ["local>meltforce.net/homelab"],
+  "extends": [
+    "local>meltforce.net/homelab"
+  ],
   "rangeStrategy": "pin",
-  "postUpdateOptions": ["gomodTidy"],
+  "postUpdateOptions": [
+    "gomodTidy"
+  ],
   "packageRules": [
     {
       "description": "All npm deps share one package-lock.json — bumped individually they produce mutual merge conflicts and stall as open PRs (this happened with 3 of them on 2026-08-01). One branch for all non-major JS updates means one lockfile change and no conflict. Majors stay individual and dashboard-gated.",
-      "matchManagers": ["npm"],
-      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "matchManagers": [
+        "npm"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
       "groupName": "npm non-major"
+    },
+    {
+      "description": "goldmark stays on v1. The v2 module exists (github.com/yuin/goldmark/v2, latest v2.0.1) and a plain bump cannot reach it twice over: the module path gains a /v2 suffix, which needs `gomodUpdateImportPaths` rather than the `gomodTidy` this config sets, and the API moved as well — after rewriting the single import in internal/feed/atom.go, the build fails with `undefined: goldmark.New` and `undefined: goldmark.Markdown` at three call sites (lines 83, 149 and 219). Measured 2026-09-07 with go 1.27.1. This is a code migration for that file, not a dependency update; re-enable the rule as part of it.",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchPackageNames": [
+        "github.com/yuin/goldmark"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
     }
   ]
 }
