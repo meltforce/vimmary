@@ -218,7 +218,7 @@ jobs:
           password: ${{ secrets.GH_PAT }}
 
       - name: Build & push release image to ghcr.io
-        uses: docker/build-push-action@v5.4.0
+        uses: docker/build-push-action@v7.3.0
         with:
           context: .
           platforms: linux/amd64
