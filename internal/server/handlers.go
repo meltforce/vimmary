@@ -729,3 +729,36 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
+
+// handleShareSubmit is the share-sheet entry point: a plain GET whose only
+// parameter is the video URL, so an iOS Shortcut, a bookmarklet or a link can
+// hand a video to vimmary without composing a JSON body. It sits inside the
+// identity group, which means the Tailscale login of the calling device is the
+// whole authentication — the webhook token exists to name a specific user on a
+// route that has no identity, and this route has one.
+//
+// A GET with a side effect is a deliberate trade: any page a tailnet user
+// visits could queue a summary for them. The cost of that is one queued job,
+// against a share target that no other method can provide.
+//
+// Both outcomes redirect to the list rather than answering JSON, because the
+// caller here is a browser tab the user is looking at. The list polls every
+// three seconds while the queue moves, so the row appears without a reload.
+func (s *Server) handleShareSubmit(w http.ResponseWriter, r *http.Request) {
+	uid, ok := middleware.UserIDFromContext(r)
+	if !ok {
+		http.Redirect(w, r, "/?submit_error=identity", http.StatusSeeOther)
+		return
+	}
+
+	youtubeID := karakeep.ExtractYouTubeID(r.URL.Query().Get("url"))
+	if youtubeID == "" {
+		http.Redirect(w, r, "/?submit_error=invalid_url", http.StatusSeeOther)
+		return
+	}
+
+	// No bookmark ID: nothing is written back to Karakeep for a video that was
+	// never bookmarked there (internal/service/process.go:250).
+	s.svc.ProcessVideoAsync(uid, youtubeID, "")
+	http.Redirect(w, r, "/?submitted="+youtubeID, http.StatusSeeOther)
+}

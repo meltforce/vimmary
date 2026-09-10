@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -113,6 +113,30 @@ export default function VideoListPage() {
     queryClient.invalidateQueries({ queryKey: ["videos"] });
     queryClient.invalidateQueries({ queryKey: ["stats"] });
   };
+
+  /* The share target (GET /submit) has no way to report back except through the
+     URL it redirects to, so the confirmation lives here. The parameter is
+     stripped again with `replace`, or a reload would repeat the toast for a job
+     that was queued once. */
+  const submitted = params.get("submitted");
+  const submitError = params.get("submit_error");
+  useEffect(() => {
+    if (!submitted && !submitError) return;
+    if (submitted) {
+      invalidate();
+      toast.show("Queued. It appears in the list once the transcript is in.");
+    } else if (submitError === "invalid_url") {
+      toast.show("That link carries no YouTube video ID.");
+    } else {
+      toast.show("Submission failed.");
+    }
+    const next = new URLSearchParams(params);
+    next.delete("submitted");
+    next.delete("submit_error");
+    setParams(next, { replace: true });
+    // Runs on the parameter, not on the identity of the callbacks above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted, submitError]);
 
   const submit = useMutation({
     mutationFn: (u: string) => submitVideo(u),

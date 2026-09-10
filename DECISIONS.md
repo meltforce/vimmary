@@ -21,6 +21,44 @@ identifier rather than estimated.
 
 ---
 
+## 2026-09-10 — the share target is a GET behind Tailscale identity, not a token route
+
+**Decided:** 2026-09-10
+
+**Decision.** `GET /submit?url=…` (`internal/server/handlers.go`) queues a video
+from a URL and redirects to the list. It is registered inside the identity group
+in `internal/server/server.go`, so the caller's Tailscale login is the only
+authentication. It carries no token, and it is not placed next to
+`/webhook/karakeep`.
+
+**Reasoning.** Three routes could have carried this and two were rejected.
+`POST /api/v1/videos` already accepts a URL, but a JSON body and a
+`Content-Type` header exclude a share sheet, a bookmarklet and a plain link —
+the callers this route exists for. `/webhook/karakeep` already accepts an
+arbitrary URL with a Bearer token and needs no change to work, and that is what
+makes the token the wrong mechanism here: the token exists because that route
+sits outside the identity middleware and `GetUserByWebhookToken` has to name a
+user without one. A request from a personal device carries that user in
+`whois.UserProfile.LoginName` already (`middleware.TailscaleIdentity`,
+meltkit v0.2.0), so a token on an identified route would be a second credential
+for an answer the request already contains — and a credential the user would
+have to paste into every shortcut.
+
+A GET that changes state is the cost. Any page a tailnet user visits can queue a
+summary for them; the damage is one job in the queue against a share target that
+no other method provides. The redirect target is the list rather than the detail
+page, because at redirect time no row exists — the worker inserts it — and the
+list polls every three seconds while the queue moves.
+
+`bookmarkID` is passed empty, so `internal/service/process.go` writes nothing
+back to Karakeep. A video submitted here was never bookmarked there.
+
+**Trigger to re-open.** vimmary becoming reachable outside the tailnet, through
+Funnel or a reverse proxy. The identity middleware then no longer covers the
+route, and `/submit` would need the token mechanism after all.
+
+---
+
 ## 2026-08-30 — transcripts and summaries are shared between users, last write wins
 
 **Decided:** 2026-08-30

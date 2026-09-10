@@ -163,6 +163,24 @@ cd web && npm install && npm run dev
 4. In Karakeep Settings → Webhooks, create webhooks for `created` and `deleted` events
 5. If Karakeep runs in Docker and vimmary is on Tailscale, add `CRAWLER_ALLOWED_INTERNAL_HOSTNAMES=.your-tailnet.ts.net` to Karakeep's env to allow webhook delivery
 
+## Submit a video without Karakeep
+
+`GET /submit?url=<video URL>` queues a video directly. The route sits behind the
+Tailscale identity middleware, so the calling device's Tailscale login is the
+whole authentication — no token, and the summary lands on that user's row. It
+answers a redirect to the list, which makes it usable as a share-sheet target,
+an iOS Shortcut, or a bookmarklet:
+
+```
+https://vimmary.<tailnet>.ts.net/submit?url=https://youtu.be/dQw4w9WgXcQ
+```
+
+Nothing is written back to Karakeep for a video submitted this way, because
+there is no bookmark to write to.
+
+The web UI's own form posts `{"url": "..."}` to `POST /api/v1/videos`, which is
+the same path for a JSON client.
+
 ## Setup podcast summaries
 
 Podcast transcripts come from [cast2md](https://github.com/meltforce/cast2md).

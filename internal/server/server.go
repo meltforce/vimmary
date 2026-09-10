@@ -55,6 +55,10 @@ func (s *Server) routes() {
 	r.Group(func(r chi.Router) {
 		r.Use(s.IdentityMiddleware())
 
+		// Share-sheet target. Not under /api/v1 because it answers a redirect
+		// for a browser tab rather than JSON for a client.
+		r.Get("/submit", s.handleShareSubmit)
+
 		r.Get("/api/v1/videos", s.handleListVideos)
 		r.Get("/api/v1/videos/facets", s.handleVideoFacets)
 		r.Post("/api/v1/videos", s.handleSubmitVideo)
