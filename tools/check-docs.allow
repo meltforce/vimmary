@@ -23,3 +23,9 @@ CLAUDE.md%%("Rolle" in the text
 # words, so it cannot tell the two apart; these two lines are English.
 internal/summary/prompts.go%%falls back to the video prompts
 internal/summary/prompts_test.go%%unknown source falls back to video
+
+# Same collision, three more English lines. They arrived with 92f85df
+# (2026-08-30, shared summaries) and have failed check-docs on every run since.
+internal/server/podcast_handlers.go%%falls back to the
+internal/storage/prompts.go%%falls back to another user's row
+internal/storage/users.go%%falls back to another user's, which is
