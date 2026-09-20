@@ -87,7 +87,7 @@ jobs:
     # See INCIDENTS.md, 2026-08-01.
     # github.ref stays correct and is refs/pull/N/merge on pull requests.
     if: github.ref == 'refs/heads/main'
-    uses: meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v4
+    uses: meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v5
     with:
       app_name: vimmary
       target_host: vimmary-lxc.coydog-fence.ts.net
