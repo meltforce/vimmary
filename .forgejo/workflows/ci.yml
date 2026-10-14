@@ -7,6 +7,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  # A rebuild without a push picks up the current Go patch release of the
+  # floating builder image (golang:1.27-alpine) and re-runs govulncheck against
+  # newly published advisories. Mondays 05:07 UTC, staggered against freereps
+  # and nutrak because the runner executes two jobs at a time.
+  schedule:
+    - cron: '7 5 * * 1'
 
 # Queue runs per ref instead of letting the next push abort the one in flight.
 # Forgejo did that unconditionally up to v12 (forgejo#5914, "can lead to partial
@@ -41,8 +47,9 @@ jobs:
       - uses: golangci/golangci-lint-action@v9.3.0
         with:
           version: latest
+      # Blocking: a reachable vulnerability fails the job, and with it
+      # build-deploy, so neither a push nor the weekly schedule ships it.
       - name: Vulnerability check
-        continue-on-error: true
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
@@ -126,10 +133,12 @@ jobs:
     #     separates "deployed" from "still the previous commit".
     #
     # The github.event_name comparison is correct here: this is an ordinary
-    # `runs-on:` job, so the event really is `push`. On a pull request
-    # build-deploy is skipped by design and this job must not run.
+    # `runs-on:` job, so the event really is `push` or `schedule`. On a pull
+    # request build-deploy is skipped by design and this job must not run.
+    # On a scheduled run it is what turns a build-deploy skipped by a failed
+    # test or govulncheck into a failure that notify-deploy-failure reports.
     needs: [build-deploy]
-    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: always() && (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
     runs-on: docker
     steps:
       - name: Require build-deploy to have run
@@ -178,13 +187,13 @@ jobs:
 
   notify-deploy-failure:
     needs: [build-deploy, deploy-gate]
-    if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: failure() && (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
     runs-on: host
     steps:
       - name: ntfy alert
         run: |
           curl -fsS --max-time 10 \
-            -H "Title: vimmary CI deploy FAILED (${GITHUB_SHA:0:7})" \
+            -H "Title: vimmary CI deploy FAILED (${GITHUB_SHA:0:7}, ${{ github.event_name }})" \
             -H "Priority: high" \
             -H "Tags: warning,docker,vimmary" \
             -d "Build/deploy failed for commit ${GITHUB_SHA}. :edge may be in a broken state — pin previous digest in homelab catalog or push fix. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \

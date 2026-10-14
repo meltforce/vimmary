@@ -21,6 +21,27 @@ identifier rather than estimated.
 
 ---
 
+## 2026-10-14 — CI rebuilds weekly and govulncheck blocks
+
+**Decided:** 2026-10-14
+
+**Decision.** `.forgejo/workflows/ci.yml` runs on a `schedule` (Mondays 05:07
+UTC) besides push, the govulncheck step no longer carries
+`continue-on-error`, and `go.mod` requires `go 1.27.2`.
+
+**Reasoning.** The builder image floats on `golang:1.27-alpine`, but a rebuild
+only happened on push, so a deployed image kept the toolchain of the last push —
+on 2026-10-14 that was before Go 1.27.2 fixed GO-2026-6611 and GO-2026-6603
+(HTTP/2 server exhaustion). The weekly run rebuilds with the current patch
+release and checks against advisories published since the last push; a
+reachable vulnerability now fails the test job and therefore build-deploy, and
+`deploy-gate` turns that skipped deploy into a notified failure.
+
+**Trigger to re-open.** A scheduled run that fails on an advisory without an
+available fix, which blocks every deploy until one exists.
+
+---
+
 ## 2026-09-10 — the share target is a GET behind Tailscale identity, not a token route
 
 **Decided:** 2026-09-10
