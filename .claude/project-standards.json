@@ -17,6 +17,6 @@
   },
   "notes": {
     "skills": ".claude/skills/verify/ is committed, which needs the .claude/* plus !.claude/skills/ negation in .gitignore. The skill was briefly at skills/verify/ with a hand-made symlink — a location Claude Code does not read. See the standard's DECISIONS.md, 2026-08-06.",
-    "check-docs": "tools/check-docs.sh is copied unchanged from the standards repo and reads this file for the module selection. Project exceptions live in tools/check-docs.allow. It runs as its own CI job, which does not gate build-deploy."
+    "check-docs": "tools/check-docs.sh is copied unchanged from the standards repo and reads this file for the module selection. It runs as its own CI job, which does not gate build-deploy."
   }
 }

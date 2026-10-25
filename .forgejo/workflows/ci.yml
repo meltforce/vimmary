@@ -62,9 +62,9 @@ jobs:
       # could not run at all — a missing python3 or an unreadable
       # .claude/project-standards.json fail here rather than passing quietly.
       #
-      # Detects; does not prevent. Run tools/check-docs.sh --all locally before
+      # Detects; does not prevent. Run tools/check-docs.sh locally before
       # committing, or wire it into .githooks/pre-commit for prevention.
-      - run: ./tools/check-docs.sh --all
+      - run: ./tools/check-docs.sh
 
   web-build:
     runs-on: docker
