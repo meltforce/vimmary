@@ -97,7 +97,9 @@ jobs:
     uses: meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v7
     with:
       app_name: vimmary
-      target_host: vimmary-lxc.coydog-fence.ts.net
+      # smokey, the homelab VM shared by the in-house tsnet apps, since
+      # 2026-11-04 (vimmary-lxc before; the tsnet node moved with its state).
+      target_host: smokey.coydog-fence.ts.net
       # Without this the reusable workflow's own health step is skipped
       # (`if: inputs.health_url != ''`) and `deploy` reports success on the
       # strength of `docker compose up -d` returning. That is how a service
