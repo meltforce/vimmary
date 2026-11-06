@@ -356,6 +356,10 @@ export function setKarakeepAPIKey(
 export interface LLMSettings {
   mistral_configured: boolean;
   anthropic_configured: boolean;
+  /** Set when Claude goes through the tailnet AI gateway; no key is used then. */
+  anthropic_gateway?: string;
+  /** The model the library's search vectors come from. */
+  embedding_model: string;
   provider: string;
 }
 

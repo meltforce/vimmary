@@ -131,10 +131,22 @@ export default function LLMSection() {
   return (
     <Section
       title="LLM providers"
-      subtitle="Service-wide and visible to the primary user only. The Mistral key also serves embeddings and podcast transcription, so replacing it changes all three; the Anthropic key may be left empty."
+      subtitle="Service-wide and visible to the primary user only. The Mistral key also serves podcast transcription, and embeddings when the embedding model is mistral-embed; the Anthropic key may be left empty."
     >
       {keyRow("mistral", "Mistral key", llm.mistral_configured, false)}
-      {keyRow("anthropic", "Anthropic key", llm.anthropic_configured, true)}
+      {llm.anthropic_gateway ? (
+        <Row
+          label="Anthropic"
+          value={
+            <span>
+              via AI gateway <span className="mono">{llm.anthropic_gateway}</span>
+            </span>
+          }
+        />
+      ) : (
+        keyRow("anthropic", "Anthropic key", llm.anthropic_configured, true)
+      )}
+      <Row label="Embedding model" value={<span className="mono">{llm.embedding_model}</span>} />
       <Row label="Summary provider">
         <select
           className="select"

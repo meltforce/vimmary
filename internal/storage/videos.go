@@ -258,6 +258,7 @@ func (db *DB) AdoptSharedContent(ctx context.Context, id uuid.UUID) (bool, error
 			summary_input_tokens  = src.summary_input_tokens,
 			summary_output_tokens = src.summary_output_tokens,
 			embedding             = src.embedding,
+			embedding_model       = src.embedding_model,
 			metadata              = src.metadata,
 			title                 = src.title,
 			channel               = src.channel,
@@ -309,19 +310,78 @@ func (db *DB) GetVideo(ctx context.Context, userID int, id uuid.UUID) (*Video, e
 		id, userID))
 }
 
-func (db *DB) UpdateVideoSummary(ctx context.Context, id uuid.UUID, summary string, detailLevel string, provider string, model string, inputTokens, outputTokens int, embedding []float32, metadata json.RawMessage) error {
-	var embeddingArg any
+func (db *DB) UpdateVideoSummary(ctx context.Context, id uuid.UUID, summary string, detailLevel string, provider string, model string, inputTokens, outputTokens int, embedding []float32, embeddingModel string, metadata json.RawMessage) error {
+	var embeddingArg, embeddingModelArg any
 	if embedding != nil {
 		embeddingArg = pgvector.NewVector(embedding)
+		embeddingModelArg = embeddingModel
 	}
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE videos SET summary = $1, detail_level = $2, summary_provider = $3,
 			summary_model = $4, summary_input_tokens = $5, summary_output_tokens = $6,
-			embedding = $7, metadata = $8, status = 'completed', error_message = NULL, updated_at = NOW()
-		WHERE (source, external_id) = (SELECT source, external_id FROM videos WHERE id = $9)
-	`, summary, detailLevel, provider, model, inputTokens, outputTokens, embeddingArg, metadata, id)
+			embedding = $7, embedding_model = $8, metadata = $9,
+			status = 'completed', error_message = NULL, updated_at = NOW()
+		WHERE (source, external_id) = (SELECT source, external_id FROM videos WHERE id = $10)
+	`, summary, detailLevel, provider, model, inputTokens, outputTokens, embeddingArg, embeddingModelArg, metadata, id)
 	if err != nil {
 		return fmt.Errorf("update video summary: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// EmbeddingCandidate is a finished row whose embedding is missing or was
+// produced by a model other than the configured one.
+type EmbeddingCandidate struct {
+	ID      uuid.UUID
+	Title   string
+	Summary string
+}
+
+// ListStaleEmbeddings returns up to limit completed rows whose embedding was
+// not produced by model — rows from before a model change, and rows whose
+// embedding call failed at summary time. One row per (source, external_id):
+// UpdateVideoEmbedding writes every sibling, so a second one would be embedded
+// twice.
+func (db *DB) ListStaleEmbeddings(ctx context.Context, model string, limit int) ([]EmbeddingCandidate, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT id, title, summary FROM (
+			SELECT DISTINCT ON (source, external_id) id, title, summary, updated_at
+			FROM videos
+			WHERE status = 'completed'
+			  AND COALESCE(summary, '') <> ''
+			  AND embedding_model IS DISTINCT FROM $1
+			ORDER BY source, external_id, updated_at DESC
+		) AS stale
+		ORDER BY updated_at DESC
+		LIMIT $2
+	`, model, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list stale embeddings: %w", err)
+	}
+	defer rows.Close()
+	var out []EmbeddingCandidate
+	for rows.Next() {
+		var c EmbeddingCandidate
+		if err := rows.Scan(&c.ID, &c.Title, &c.Summary); err != nil {
+			return nil, fmt.Errorf("scan stale embedding: %w", err)
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// UpdateVideoEmbedding replaces the embedding of every row sharing the content
+// of id, like the other derived-field writers above.
+func (db *DB) UpdateVideoEmbedding(ctx context.Context, id uuid.UUID, embedding []float32, model string) error {
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE videos SET embedding = $1, embedding_model = $2
+		WHERE (source, external_id) = (SELECT source, external_id FROM videos WHERE id = $3)
+	`, pgvector.NewVector(embedding), model, id)
+	if err != nil {
+		return fmt.Errorf("update video embedding: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
@@ -492,16 +552,17 @@ func scanMatches(rows pgx.Rows, what string) ([]VideoMatch, error) {
 	return matches, rows.Err()
 }
 
-// SearchVideos runs the semantic match. An empty source searches both kinds.
-func (db *DB) SearchVideos(ctx context.Context, userID int, embedding []float32, threshold float64, limit int, source string) ([]VideoMatch, error) {
+// SearchVideos runs the semantic match against rows embedded with model, the
+// model the query embedding came from. An empty source searches both kinds.
+func (db *DB) SearchVideos(ctx context.Context, userID int, embedding []float32, model string, threshold float64, limit int, source string) ([]VideoMatch, error) {
 	var sourceArg any
 	if source != "" {
 		sourceArg = source
 	}
 	rows, err := db.Pool.Query(ctx, `
 		SELECT id, youtube_id, source, source_url, title, channel, summary, metadata, similarity, created_at
-		FROM match_videos($1, $2, $3, $4, $5)
-	`, pgvector.NewVector(embedding), userID, threshold, limit, sourceArg)
+		FROM match_videos($1, $2, $3, $4, $5, $6)
+	`, pgvector.NewVector(embedding), model, userID, threshold, limit, sourceArg)
 	if err != nil {
 		return nil, fmt.Errorf("search videos: %w", err)
 	}

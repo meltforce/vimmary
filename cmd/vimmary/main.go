@@ -24,6 +24,7 @@ import (
 	vimmarymcp "github.com/meltforce/vimmary/internal/mcp"
 	"github.com/meltforce/vimmary/internal/mistral"
 	"github.com/meltforce/vimmary/internal/models"
+	"github.com/meltforce/vimmary/internal/openai"
 	"github.com/meltforce/vimmary/internal/server"
 	"github.com/meltforce/vimmary/internal/service"
 	"github.com/meltforce/vimmary/internal/storage"
@@ -109,6 +110,8 @@ func run(configPath string, migrateOnly, mcpMode bool, log *slog.Logger) error {
 	svc.StartPodcastPoller(pollCtx)
 	// Poll the RSS feeds of followed YouTube channels for the inbox.
 	svc.StartChannelPoller(pollCtx)
+	// Embed rows whose embedding is missing or from another model.
+	svc.StartEmbeddingBackfill(pollCtx)
 
 	srv, err := buildHTTPServer(svc, store, log)
 	if err != nil {
@@ -239,10 +242,10 @@ func openDatabase(cfg *config.Config, migrateOnly, mcpMode bool, log *slog.Logge
 // serve the page on which the key would be entered. A missing key is now a
 // failed summary with a message that says so, not a dead process.
 func buildService(cfg *config.Config, store *storage.DB, tsnetHTTPClient *http.Client, log *slog.Logger) *service.Service {
-	// This client is the embedder and the transcriber. It reads the same Mistral
-	// setting the Mistral summarizer uses, so changing that key in the UI changes
-	// all three — which is intended, and worth knowing before treating it as a
-	// summary-only setting.
+	// This client is the transcriber, and the embedder unless embedding.provider
+	// says otherwise. It reads the same Mistral setting the Mistral summarizer
+	// uses, so changing that key in the UI changes all of them — which is
+	// intended, and worth knowing before treating it as a summary-only setting.
 	mc := mistral.NewClient(func(ctx context.Context) (string, error) {
 		return store.GetLLMKey(ctx, "mistral")
 	})
@@ -261,9 +264,31 @@ func buildService(cfg *config.Config, store *storage.DB, tsnetHTTPClient *http.C
 
 	registry := models.NewRegistry(store.GetLLMKey, log)
 
+	// Aperture is reached over the tsnet node like cast2md, but the tsnet
+	// client's 15 s timeout is for short API calls: a deep summary of a
+	// multi-hour episode took 67 s on 2026-11-06. The gateway clients share
+	// the transport and set their own timeouts.
+	var gateway *service.LLMGateway
+	if cfg.Aperture.BaseURL != "" {
+		gateway = &service.LLMGateway{
+			BaseURL: cfg.Aperture.BaseURL,
+			HTTP:    &http.Client{Transport: tsnetHTTPClient.Transport, Timeout: 10 * time.Minute},
+		}
+		registry.UseClaudeGateway(cfg.Aperture.BaseURL,
+			&http.Client{Transport: tsnetHTTPClient.Transport, Timeout: 15 * time.Second})
+		log.Info("Claude goes through the AI gateway", "base_url", cfg.Aperture.BaseURL)
+	}
+
+	var embedder service.Embedder = mc
+	if cfg.Embedding.Provider == "openai" {
+		embedder = openai.NewEmbedder(cfg.Aperture.BaseURL,
+			&http.Client{Transport: tsnetHTTPClient.Transport, Timeout: 30 * time.Second})
+	}
+	log.Info("embedder configured", "model", embedder.Model())
+
 	return service.New(store, registry, ytClient,
-		podcastSrc, cfg.Cast2MD, cfg.Karakeep.BaseURL, cfg.ExternalURL, mc, mc,
-		cfg.Search, cfg.Summary, log)
+		podcastSrc, cfg.Cast2MD, cfg.Karakeep.BaseURL, cfg.ExternalURL, embedder, mc,
+		cfg.Search, cfg.Summary, gateway, log)
 }
 
 // runMCPStdio serves the MCP protocol over stdin and stdout and returns when

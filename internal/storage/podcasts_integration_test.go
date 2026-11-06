@@ -333,11 +333,11 @@ func TestMatchVideosWithSourceFilter(t *testing.T) {
 	t.Cleanup(func() { _ = store.DeleteVideo(ctx, podcast.UserID, podcast.ID) })
 
 	if err := store.UpdateVideoSummary(ctx, podcast.ID, "Podcast summary", "medium",
-		"claude", "test-model", 10, 20, embedding, []byte(`{}`)); err != nil {
+		"claude", "test-model", 10, 20, embedding, "test-embed", []byte(`{}`)); err != nil {
 		t.Fatalf("UpdateVideoSummary: %v", err)
 	}
 
-	matches, err := store.SearchVideos(ctx, 1, embedding, 0.5, 50, storage.SourcePodcast)
+	matches, err := store.SearchVideos(ctx, 1, embedding, "test-embed", 0.5, 50, storage.SourcePodcast)
 	if err != nil {
 		t.Fatalf("SearchVideos(podcast): %v", err)
 	}
@@ -357,7 +357,7 @@ func TestMatchVideosWithSourceFilter(t *testing.T) {
 	}
 
 	// The same query restricted to videos must not return it.
-	ytMatches, err := store.SearchVideos(ctx, 1, embedding, 0.5, 50, storage.SourceYouTube)
+	ytMatches, err := store.SearchVideos(ctx, 1, embedding, "test-embed", 0.5, 50, storage.SourceYouTube)
 	if err != nil {
 		t.Fatalf("SearchVideos(youtube): %v", err)
 	}

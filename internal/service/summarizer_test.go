@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 
@@ -202,5 +203,37 @@ func TestGetLLMSettings_ReportsPresenceNotTheKeys(t *testing.T) {
 	}
 	if got.Provider != "mistral" {
 		t.Errorf("Provider = %q, want %q", got.Provider, "mistral")
+	}
+}
+
+// Behind the gateway Claude needs no stored key: it counts as available, and
+// the summarizer is built with the placeholder the gateway replaces.
+func TestGateway_ClaudeWithoutStoredKey(t *testing.T) {
+	svc := newTestService(&fakeSettings{keys: map[string]string{"mistral": "mistral-key"}}, "claude")
+	svc.gateway = &LLMGateway{BaseURL: "http://ai.example.ts.net"}
+
+	if got := svc.AvailableProviders(context.Background()); !slices.Contains(got, "claude") {
+		t.Errorf("AvailableProviders = %v, want claude included", got)
+	}
+	sum, provider, err := svc.getSummarizer(context.Background(), "")
+	if err != nil {
+		t.Fatalf("getSummarizer: %v", err)
+	}
+	if provider != "claude" || sum.(*stubSummarizer).apiKey != gatewayKey {
+		t.Errorf("got provider %q key %q, want claude with the gateway placeholder",
+			provider, sum.(*stubSummarizer).apiKey)
+	}
+}
+
+func TestGateway_FactoryRoutesClaudeOnly(t *testing.T) {
+	factory := summarizerFactoryFor(&LLMGateway{BaseURL: "http://ai.example.ts.net"})
+	if s, err := factory("claude", gatewayKey); err != nil || s == nil {
+		t.Fatalf("claude: %v", err)
+	}
+	if _, err := factory("mistral", "k"); err != nil {
+		t.Fatalf("mistral: %v", err)
+	}
+	if _, err := factory("gpt", "k"); err == nil {
+		t.Error("gpt: want an error for an unknown provider")
 	}
 }

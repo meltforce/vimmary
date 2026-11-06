@@ -32,7 +32,7 @@ func completedRow(t *testing.T, store *storage.DB, userID int, ytID string, embe
 		t.Fatalf("update transcript: %v", err)
 	}
 	if err := store.UpdateVideoSummary(ctx, v.ID, "the summary", "medium", "claude",
-		"claude-opus-5", 100, 200, embedding, json.RawMessage(`{"topics":["go"]}`)); err != nil {
+		"claude-opus-5", 100, 200, embedding, "test-embed", json.RawMessage(`{"topics":["go"]}`)); err != nil {
 		t.Fatalf("update summary: %v", err)
 	}
 	return v
@@ -102,7 +102,7 @@ func TestAdoptSharedContent(t *testing.T) {
 	// The embedding has no field on Video, so the search index is what proves
 	// the vector came across — this is the regression the SQL-level copy exists
 	// to prevent.
-	matches, err := store.SearchVideos(ctx, other, embedding, 0.9, 10, storage.SourceYouTube)
+	matches, err := store.SearchVideos(ctx, other, embedding, "test-embed", 0.9, 10, storage.SourceYouTube)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestSharedContentWritesFanOut(t *testing.T) {
 
 	// The second user regenerates at a different level.
 	if err := store.UpdateVideoSummary(ctx, second.ID, "regenerated", "deep", "mistral",
-		"mistral-large", 10, 20, embedding, json.RawMessage(`{"topics":["rust"]}`)); err != nil {
+		"mistral-large", 10, 20, embedding, "test-embed", json.RawMessage(`{"topics":["rust"]}`)); err != nil {
 		t.Fatalf("regenerate: %v", err)
 	}
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -28,10 +29,26 @@ type SummaryPromptsInfo struct {
 	DefaultDeep   string `json:"default_deep"`
 }
 
-// Embedder generates vector embeddings from text.
+// Embedder generates vector embeddings from text. Model names the vector
+// space; it is stored with every embedding, and search compares only vectors
+// of the same model.
 type Embedder interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
+	Model() string
 }
+
+// LLMGateway is the tailnet AI gateway (Aperture). When it is set, Claude
+// requests go to BaseURL through HTTP instead of to api.anthropic.com, and
+// Claude needs no key in app_settings: the gateway authorizes by tailnet
+// identity and substitutes the key it holds.
+type LLMGateway struct {
+	BaseURL string
+	HTTP    *http.Client
+}
+
+// gatewayKey is what the gateway path sends as x-api-key. Aperture replaces
+// it with the provider key it holds, so any non-empty value works.
+const gatewayKey = "aperture"
 
 // Transcriber transcribes audio files to text.
 type Transcriber interface {
@@ -78,6 +95,7 @@ type Service struct {
 	transcriber     Transcriber
 	searchCfg       config.SearchConfig
 	summaryCfg      config.SummaryConfig
+	gateway         *LLMGateway
 	log             *slog.Logger
 	queue           chan processJob
 	episodeQueue    chan episodeJob
@@ -101,12 +119,13 @@ func New(
 	transcriber Transcriber,
 	searchCfg config.SearchConfig,
 	summaryCfg config.SummaryConfig,
+	gateway *LLMGateway,
 	log *slog.Logger,
 ) *Service {
 	s := &Service{
 		db:              db,
 		settings:        db,
-		newSummarizer:   newSummarizer,
+		newSummarizer:   summarizerFactoryFor(gateway),
 		search:          db,
 		channels:        yt,
 		registry:        registry,
@@ -119,6 +138,7 @@ func New(
 		transcriber:     transcriber,
 		searchCfg:       searchCfg,
 		summaryCfg:      summaryCfg,
+		gateway:         gateway,
 		log:             log,
 		queue:           make(chan processJob, 100),
 		episodeQueue:    make(chan episodeJob, 200),
@@ -272,7 +292,7 @@ type summarizerFactory func(provider, apiKey string) (summary.Summarizer, error)
 // storage.DB satisfies it.
 type searchSource interface {
 	TextSearchVideos(ctx context.Context, userID int, query string, limit int, source string) ([]storage.VideoMatch, error)
-	SearchVideos(ctx context.Context, userID int, embedding []float32, threshold float64, limit int, source string) ([]storage.VideoMatch, error)
+	SearchVideos(ctx context.Context, userID int, embedding []float32, model string, threshold float64, limit int, source string) ([]storage.VideoMatch, error)
 }
 
 // newSummarizer is the production factory. Provider names are matched here and
@@ -287,18 +307,47 @@ func newSummarizer(provider, apiKey string) (summary.Summarizer, error) {
 	return nil, fmt.Errorf("unknown provider: %q", provider)
 }
 
+// summarizerFactoryFor returns the production factory. With a gateway, Claude
+// goes through it; everything else is newSummarizer.
+func summarizerFactoryFor(gw *LLMGateway) summarizerFactory {
+	return func(provider, apiKey string) (summary.Summarizer, error) {
+		if provider == "claude" && gw != nil {
+			return summary.NewClaudeSummarizer(apiKey, gw.BaseURL, gw.HTTP), nil
+		}
+		return newSummarizer(provider, apiKey)
+	}
+}
+
 // LLMKey returns a provider's API key, empty when it is not configured.
 func (s *Service) LLMKey(ctx context.Context, provider string) (string, error) {
 	return s.settings.GetLLMKey(ctx, provider)
+}
+
+// providerKey is the key a provider's requests are sent with: the stored one,
+// or for Claude behind the gateway the placeholder the gateway replaces. It is
+// what decides whether a provider is usable; LLMKey answers only what is
+// stored.
+func (s *Service) providerKey(ctx context.Context, provider string) (string, error) {
+	if provider == "claude" && s.gateway != nil {
+		return gatewayKey, nil
+	}
+	return s.LLMKey(ctx, provider)
 }
 
 // LLMSettings is what the Settings page shows. It reports whether each key is
 // set, never the key itself — the same contract as the Karakeep status
 // endpoint, so a key that goes in never comes back out.
 type LLMSettings struct {
-	MistralConfigured   bool   `json:"mistral_configured"`
-	AnthropicConfigured bool   `json:"anthropic_configured"`
-	Provider            string `json:"provider"`
+	MistralConfigured   bool `json:"mistral_configured"`
+	AnthropicConfigured bool `json:"anthropic_configured"`
+	// AnthropicGateway is the gateway's URL when Claude goes through it. The
+	// Settings page then shows the gateway in place of a key field, because a
+	// key entered there would not be used.
+	AnthropicGateway string `json:"anthropic_gateway,omitempty"`
+	// EmbeddingModel is read-only here: it is set in config.yaml, because a
+	// change re-embeds the whole library.
+	EmbeddingModel string `json:"embedding_model"`
+	Provider       string `json:"provider"`
 }
 
 // GetLLMSettings reports the service-wide LLM configuration.
@@ -315,11 +364,19 @@ func (s *Service) GetLLMSettings(ctx context.Context) (LLMSettings, error) {
 	if err != nil {
 		return LLMSettings{}, err
 	}
-	return LLMSettings{
+	settings := LLMSettings{
 		MistralConfigured:   mistral != "",
 		AnthropicConfigured: anthropic != "",
 		Provider:            provider,
-	}, nil
+	}
+	if s.embedder != nil {
+		settings.EmbeddingModel = s.embedder.Model()
+	}
+	if s.gateway != nil {
+		settings.AnthropicConfigured = true
+		settings.AnthropicGateway = s.gateway.BaseURL
+	}
+	return settings, nil
 }
 
 // SetLLMKey stores a provider's API key. An empty key clears it, which is how
@@ -394,7 +451,7 @@ func (s *Service) getSummarizer(ctx context.Context, provider string) (summary.S
 		}
 	}
 
-	apiKey, err := s.LLMKey(ctx, provider)
+	apiKey, err := s.providerKey(ctx, provider)
 	if err != nil {
 		return nil, "", fmt.Errorf("api key for %q: %w", provider, err)
 	}
@@ -428,7 +485,7 @@ func (s *Service) SummaryProvider(ctx context.Context) (string, error) {
 func (s *Service) AvailableProviders(ctx context.Context) []string {
 	providers := make([]string, 0, len(models.Providers))
 	for _, provider := range models.Providers {
-		key, err := s.LLMKey(ctx, provider)
+		key, err := s.providerKey(ctx, provider)
 		if err != nil {
 			s.log.Warn("failed to read provider key", "provider", provider, "error", err)
 			continue

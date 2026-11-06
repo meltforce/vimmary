@@ -48,7 +48,12 @@ database, the way `writeBackToKarakeep` builds its client — so a key entered i
 Settings → LLM providers works without a restart. There is deliberately no
 startup check that the configured provider has a key: a service that refuses to
 start cannot serve the page on which the key would be entered. A missing key is
-a failed summary with a message saying so.
+a failed summary with a message saying so. With `aperture.base_url` set, Claude
+needs no key at all: requests go to the tailnet AI gateway over the tsnet node,
+which authorizes by tailnet identity and substitutes its own key — the
+deployment runs that way since 2026-11-06 (`DECISIONS.md`). The gateway clients
+reuse the tsnet transport with their own timeouts, because the tsnet client's
+15 s would cut off every deep summary.
 
 **A storage dependency that needs testing gets a narrow seam, not one interface
 over `storage.DB`.** `internal/service/service.go` declares three:
@@ -183,9 +188,17 @@ backend blanked the whole page — `LLMSection` already had to opt out because t
 server answers 404 to a non-admin.
 
 **The Mistral key is not only the summarizer's.** The same `app_settings` value
-feeds `internal/mistral.Client`, which is both the embedder and the podcast
-transcriber. Changing it in the UI changes all three, which is intended —
-`DECISIONS.md` records that embeddings are deliberately not swappable.
+feeds `internal/mistral.Client`, which is the podcast transcriber and, with
+`embedding.provider: mistral`, the embedder. Changing it in the UI changes all
+of them, which is intended.
+
+**Every embedding carries the model that produced it** (`videos.embedding_model`,
+migration `000019`), and `match_videos` compares only rows of the query's model.
+Changing `embedding.provider` therefore takes those rows out of semantic search
+until `service.reembedStale` has redone them, 50 every two minutes; keyword
+search is unaffected. The why: vectors of two models compare as noise, and
+without the column a model change needed a migration and a full re-embed in one
+step — `DECISIONS.md`, 2026-03, revised 2026-11-06.
 
 **Admin is the primary user, and that rule predates the Settings page.**
 `storage.GetPrimaryUser` — first login containing `@`, by `created_at` — is part
@@ -331,9 +344,16 @@ interface is not nil and would turn "podcasts disabled" into a nil dereference.
 type for exactly that reason.
 
 **`max_tokens` is level-dependent** (`internal/summary/claude.go`): 4096 for
-`medium`, 16000 for `deep`. A truncated response ends inside its JSON object, and
-`parseSummaryJSON` returns an error for that instead of falling back to raw text
-— the old fallback stored cut-off summaries as if they were complete.
+`medium`, 16000 for `deep`, and Claude gets 12,000 on top because its thinking
+tokens count against the limit. A truncated response ends inside its JSON
+object, and `parseSummaryJSON` returns an error for that instead of falling back
+to raw text — the old fallback stored cut-off summaries as if they were
+complete.
+
+**A Claude answer is its text blocks, not `content[0]`.** Every Claude 5.5 model
+thinks by default and returns a `thinking` block first, with empty text. Reading
+`content[0]` stored that empty string as a completed summary; the first test run
+against Sonnet 5.5 on 2026-11-06 did exactly that.
 
 **`meltkit` is a separate repo, not a vendored directory.**
 `github.com/meltforce/meltkit` supplies db, config, secrets, middleware, server

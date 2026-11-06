@@ -26,6 +26,8 @@ func (m *mockEmbedder) Embed(_ context.Context, _ string) ([]float32, error) {
 	return m.embedding, m.err
 }
 
+func (m *mockEmbedder) Model() string { return "mock-embed" }
+
 // There is no mockSummarizer any more. getSummarizer builds the summarizer from
 // the API key in app_settings on every call, so a fake can no longer be injected
 // through the constructor — summarizer_test.go replaces the settingsSource and
@@ -45,6 +47,7 @@ type fakeSearch struct {
 	gotThreshold  float64
 	gotSource     string
 	gotEmbedding  []float32
+	gotModel      string
 	textCalls     int
 	semanticCalls int
 }
@@ -56,8 +59,9 @@ func (f *fakeSearch) TextSearchVideos(_ context.Context, _ int, _ string, limit 
 	return f.text, f.textErr
 }
 
-func (f *fakeSearch) SearchVideos(_ context.Context, _ int, embedding []float32, threshold float64, limit int, _ string) ([]storage.VideoMatch, error) {
+func (f *fakeSearch) SearchVideos(_ context.Context, _ int, embedding []float32, model string, threshold float64, limit int, _ string) ([]storage.VideoMatch, error) {
 	f.semanticCalls++
+	f.gotModel = model
 	f.gotSemLimit = limit
 	f.gotThreshold = threshold
 	f.gotEmbedding = embedding
@@ -372,6 +376,7 @@ func TestNewService(t *testing.T) {
 		nil, // transcriber
 		config.SearchConfig{DefaultThreshold: 0.3, DefaultLimit: 10, ScoreCutoffRatio: 0.5},
 		config.SummaryConfig{DefaultLevel: "medium"},
+		nil, // gateway
 		slog.Default(),
 	)
 

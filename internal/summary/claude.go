@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -44,7 +45,7 @@ func (c *ClaudeSummarizer) Summarize(ctx context.Context, req Request) (*Summary
 		BuildPrompt(template, req.Title, req.Language, truncateTranscript(req.Transcript)),
 		req.ExistingTopics)
 
-	text, usage, err := c.complete(ctx, req.Model, prompt, maxOutputTokens(req.Level))
+	text, usage, err := c.complete(ctx, req.Model, prompt, claudeMaxTokens(req.Level))
 	if err != nil {
 		return nil, err
 	}
@@ -57,15 +58,34 @@ func (c *ClaudeSummarizer) Summarize(ctx context.Context, req Request) (*Summary
 	return sum, nil
 }
 
-// Complete sends one free-form prompt and returns the raw text answer.
+// Complete sends one free-form prompt and returns the raw text answer. The
+// budget is raised by the thinking headroom, because the caller sized it for
+// the answer alone.
 func (c *ClaudeSummarizer) Complete(ctx context.Context, prompt string, maxTokens int) (string, error) {
-	text, _, err := c.complete(ctx, "", prompt, maxTokens)
+	text, _, err := c.complete(ctx, "", prompt, maxTokens+claudeThinkingHeadroom)
 	return text, err
 }
 
+// DefaultClaudeModel is used when neither the request nor the settings name a
+// model.
+const DefaultClaudeModel = "claude-sonnet-5-5"
+
+// fallbackModels are the models that accept the server-side refusal fallback.
+// Sending `fallbacks` to any other model is a 400, so the field is added only
+// for these.
+var fallbackModels = map[string]bool{
+	"claude-sonnet-5-5": true,
+	"claude-opus-5-5":   true,
+	"claude-opus-5":     true,
+	"claude-fable-5-1":  true,
+}
+
+// ErrRefused reports a response the API's safety classifiers declined.
+var ErrRefused = errors.New("claude declined the request")
+
 func (c *ClaudeSummarizer) complete(ctx context.Context, model, prompt string, maxTokens int) (string, *Usage, error) {
 	if model == "" {
-		model = "claude-sonnet-4-20250514"
+		model = DefaultClaudeModel
 	}
 
 	body := map[string]any{
@@ -74,6 +94,13 @@ func (c *ClaudeSummarizer) complete(ctx context.Context, model, prompt string, m
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
+	}
+	// Security talks are part of the library, and the cyber classifier can
+	// decline one. With the fallback the API re-serves a declined request on
+	// a model that accepts it, inside the same call, instead of the summary
+	// failing.
+	if fallbackModels[model] {
+		body["fallbacks"] = "default"
 	}
 
 	jsonBody, err := json.Marshal(body)
@@ -88,6 +115,9 @@ func (c *ClaudeSummarizer) complete(ctx context.Context, model, prompt string, m
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-api-key", c.apiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
+	if fallbackModels[model] {
+		httpReq.Header.Set("anthropic-beta", "server-side-fallback-2026-07-01")
+	}
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
@@ -105,7 +135,13 @@ func (c *ClaudeSummarizer) complete(ctx context.Context, model, prompt string, m
 	}
 
 	var result struct {
+		StopReason  string `json:"stop_reason"`
+		StopDetails *struct {
+			Category    string `json:"category"`
+			Explanation string `json:"explanation"`
+		} `json:"stop_details"`
 		Content []struct {
+			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"content"`
 		Usage struct {
@@ -116,11 +152,33 @@ func (c *ClaudeSummarizer) complete(ctx context.Context, model, prompt string, m
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return "", nil, fmt.Errorf("parse response: %w", err)
 	}
-	if len(result.Content) == 0 {
-		return "", nil, fmt.Errorf("empty response from Claude")
+
+	switch result.StopReason {
+	case "refusal":
+		if result.StopDetails != nil {
+			return "", nil, fmt.Errorf("%w (category %q): %s", ErrRefused,
+				result.StopDetails.Category, result.StopDetails.Explanation)
+		}
+		return "", nil, ErrRefused
+	case "max_tokens":
+		return "", nil, fmt.Errorf("%w: %d tokens", errTruncatedJSON, maxTokens)
 	}
 
-	return result.Content[0].Text, &Usage{
+	// The answer is the text blocks only. Models that think — every Claude 5.5
+	// model does by default — put a thinking block first, whose text is empty
+	// unless a summary of the reasoning was requested. Reading content[0]
+	// stored that empty string as a completed summary.
+	var text strings.Builder
+	for _, b := range result.Content {
+		if b.Type == "text" {
+			text.WriteString(b.Text)
+		}
+	}
+	if text.Len() == 0 {
+		return "", nil, fmt.Errorf("empty response from Claude (stop_reason %q)", result.StopReason)
+	}
+
+	return text.String(), &Usage{
 		InputTokens:  result.Usage.InputTokens,
 		OutputTokens: result.Usage.OutputTokens,
 	}, nil
@@ -134,6 +192,17 @@ func maxOutputTokens(level string) int {
 		return 16000
 	}
 	return 4096
+}
+
+// claudeThinkingHeadroom is added to the answer budget for Claude. Thinking
+// tokens count against max_tokens, and the 5.5 models think adaptively by
+// default: on 2026-11-06 claude-sonnet-5-5 hit 4096 on a medium summary of a
+// 62-minute German podcast and finished with 8192. Only generated tokens are
+// billed, so the headroom costs nothing when it is not used.
+const claudeThinkingHeadroom = 12000
+
+func claudeMaxTokens(level string) int {
+	return maxOutputTokens(level) + claudeThinkingHeadroom
 }
 
 // truncateTranscript limits transcript length to avoid token limits.

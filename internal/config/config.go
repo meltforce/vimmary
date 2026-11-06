@@ -24,6 +24,24 @@ type Config struct {
 	Karakeep      KarakeepConfig               `yaml:"karakeep"`
 	YouTube       YouTubeConfig                `yaml:"youtube"`
 	Cast2MD       Cast2MDConfig                `yaml:"cast2md"`
+	Aperture      ApertureConfig               `yaml:"aperture"`
+	Embedding     EmbeddingConfig              `yaml:"embedding"`
+}
+
+// ApertureConfig names the tailnet's AI gateway. When BaseURL is set, Claude
+// requests go there over the tsnet node instead of to api.anthropic.com, and
+// no Anthropic key is needed: the gateway authorizes by tailnet identity and
+// substitutes the key it holds.
+type ApertureConfig struct {
+	BaseURL string `yaml:"base_url"` // e.g. "http://ai.coydog-fence.ts.net"
+}
+
+// EmbeddingConfig selects the embedding model. Changing it re-embeds the
+// library in the background; search compares only vectors of the same model.
+type EmbeddingConfig struct {
+	// Provider is "mistral" (mistral-embed, needs the Mistral key) or "openai"
+	// (text-embedding-3-large at 1024 dimensions through aperture.base_url).
+	Provider string `yaml:"provider"`
 }
 
 type SearchConfig struct {
@@ -83,6 +101,9 @@ func Load(path string) (*Config, error) {
 			MaxPerPoll:          25,
 			TimeoutSeconds:      60,
 		},
+		Embedding: EmbeddingConfig{
+			Provider: "mistral",
+		},
 		Tailscale: mkconfig.TailscaleConfig{
 			Enabled:  true,
 			Hostname: "vimmary",
@@ -104,6 +125,16 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Cast2MD.Enabled && cfg.Cast2MD.BaseURL == "" {
 		return nil, fmt.Errorf("config validation: cast2md.base_url is required when cast2md is enabled")
+	}
+
+	switch cfg.Embedding.Provider {
+	case "mistral":
+	case "openai":
+		if cfg.Aperture.BaseURL == "" {
+			return nil, fmt.Errorf("config validation: embedding.provider openai requires aperture.base_url")
+		}
+	default:
+		return nil, fmt.Errorf("config validation: embedding.provider must be mistral or openai, got %q", cfg.Embedding.Provider)
 	}
 
 	return cfg, nil

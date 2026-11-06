@@ -21,6 +21,68 @@ identifier rather than estimated.
 
 ---
 
+## 2026-11-06 — summaries come from Claude Sonnet 5.5, through Aperture
+
+**Decided:** 2026-11-06 (operator, after the comparison below)
+
+**Decision.** The summary provider is Claude with `claude-sonnet-5-5`, reached
+through the tailnet AI gateway Aperture (`aperture.base_url` in `config.yaml`)
+instead of `api.anthropic.com`. vimmary holds no Anthropic key: Aperture
+authorizes by tailnet identity — the `vimmary` node carries `tag:homelab`, and
+the grant `tag:homelab -> tag:ai` exists (homelab `DECISIONS.md`, 2026-10-27) —
+and substitutes the key it holds. Mistral stays configured for podcast
+transcription (Voxtral). Embeddings moved in the same change; see the entry
+of 2026-03 at the end of this file.
+
+**Reasoning.** Measured 2026-11-06 on three library items, each summarized by
+five models with vimmary's own prompts (`internal/summary`, unchanged), every
+summary graded blind against the transcript by a separate judge — faithfulness,
+coverage, usefulness for rereading, tags; 10 points each, 40 per item:
+
+| Model | Black Hat talk (EN, medium) | HYROX podcast (DE, medium) | Peter Attia #414 (EN, deep, 2.5 h) | Total /120 | Cost of the 3 |
+|---|---|---|---|---|---|
+| `claude-sonnet-5-5` | 32 | 33 | 33 | 98 | $0.35 |
+| `claude-haiku-5-5` | 25 | 25 | 30 | 80 | $0.02 |
+| `gpt-6.1-sol` | 24 | 26 | 28 | 78 | $0.24 |
+| `gpt-6-luna` | 23 | 26 | 29 | 78 | $0.01 |
+| `mistral-large-latest` (in use until then) | 15 | 13 | 12 | 40 | $0.04 |
+
+- Sonnet ranked first on all three items. It was the only model that kept
+  names, dates, figures and technical specifics correct throughout, which is
+  what a later keyword or semantic search hits.
+- `mistral-large-latest` ranked last on all three: invented action items (a
+  "for policymakers" item in a security talk), exercises absent from the
+  transcript, a "train to failure" recommendation the speaker contradicted,
+  italics against the prompt, duplicated sections, unrelated tags.
+- `gpt-6.1-sol` costs what Sonnet costs ($2/$10 per million tokens) and scored
+  with the two cheap models: faithful but generic, with first-person accounts
+  hedged as "allegedly", and on the deep item 41,947 characters — twice the
+  others — in 189 s.
+- Claude counts 1.5× the input tokens of GPT on English text and 2× on German
+  for the same transcript, so the list price understates Sonnet's cost against
+  Sol. Per summary Sonnet cost $0.04 (37-minute talk) to $0.20 (2.5-hour
+  episode, deep).
+
+**What the switch required in code.** `ClaudeSummarizer` read `content[0]`,
+which on every Claude 5.5 model is a `thinking` block with empty text; it would
+have stored an empty summary as `completed`. It now concatenates the text
+blocks, treats `stop_reason` `refusal` and `max_tokens` as failures, adds
+12,000 tokens of thinking headroom to `max_tokens` (thinking counts against it;
+Sonnet hit 4096 on the German podcast), and sends the server-side refusal
+fallback for the models that accept it, because security talks are in the
+library and the cyber classifier can decline one.
+
+**What it gives up.** Transcripts go to Anthropic in the US instead of Mistral
+in the EU, and Aperture records every standard-endpoint request body. An
+Aperture outage stops new summaries; they fail with the gateway's error and can
+be retried.
+
+**Trigger to re-open.** The API credits that made the price irrelevant run out
+— `claude-haiku-5-5` is the measured fallback at 80/120 for a twentieth of the
+cost — or a new model generation, measured the same way.
+
+---
+
 ## 2026-10-14 — CI rebuilds weekly and govulncheck blocks
 
 **Decided:** 2026-10-14
@@ -1300,18 +1362,40 @@ have.
 
 ---
 
-## 2026-03 — the summary provider is configurable, embeddings are not
+## 2026-03 — the summary provider is configurable, and the embedding model is a config value
 
-**Decided:** 2026-03-09
+**Decided:** 2026-03-09, revised 2026-11-06
 
 **Decision.** Summaries come from Claude or Mistral, selectable per config and
 per user, with the concrete model loaded dynamically from the provider API.
-Embeddings are always Mistral `mistral-embed` at 1024 dimensions.
+The embedding model is `embedding.provider` in `config.yaml`: `mistral`
+(`mistral-embed`) or `openai` (`text-embedding-3-large` shortened to 1024
+dimensions, through Aperture's direct-access path
+`/direct/openai/v1/embeddings`). Since 2026-11-06 the deployment runs `openai`.
 
 **Reasoning.** Summary quality is a matter of taste and cost, and both change —
 making it a setting costs one interface. Embeddings are not comparable that way:
-the dimension is baked into the `vector(1024)` column and the HNSW index, so a
-second provider means a migration and a full re-embed, not a config value.
+vectors of two models in one column compare as noise. Migration `000019`
+therefore records `embedding_model` per row, `match_videos` compares only rows
+of the query's model, and `service.reembedStale` replaces every vector whose
+model differs from the configured one, 50 rows every two minutes. A row being
+re-embedded drops out of semantic search, not out of keyword search, until it
+is redone.
 
-**Trigger to re-open.** A re-embedding path exists, or an embedding provider
-appears that is materially better at the same dimension.
+1024 dimensions keep the `vector(1024)` column and its HNSW index; pgvector's
+HNSW accepts at most 2,000 dimensions for `vector`, so the full 3,072 would need
+a `halfvec` column and a rebuilt index. text-embedding-3 models are trained to
+be shortened. karakeep uses the same model at full width through the same path
+(homelab `DECISIONS.md`, 2026-10-27), whose grant already covers `tag:homelab`.
+
+**Trigger to re-open.** An embedding model that is materially better at 1024
+dimensions, or a measured search-quality gap that the full width would close.
+
+**Revisions.**
+
+- 2026-11-06: the original form was "Embeddings are always Mistral
+  `mistral-embed` at 1024 dimensions", because the dimension is baked into the
+  column and a second provider meant a migration and a full re-embed. The
+  trigger it named — "a re-embedding path exists" — is what `000019` and
+  `reembedStale` built. The operator moved embeddings to OpenAI to match
+  karakeep.

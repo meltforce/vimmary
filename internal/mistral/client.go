@@ -40,6 +40,12 @@ func NewClient(key KeyFunc) *Client {
 	}
 }
 
+// Model identifies the vector space Embed produces. Stored per row, it is what
+// keeps search from comparing vectors of different models.
+func (c *Client) Model() string {
+	return embedModel
+}
+
 // Embed returns a 1024-dimensional embedding for the given text.
 func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
 	body := map[string]any{

@@ -60,7 +60,7 @@ func (s *Service) Search(ctx context.Context, userID int, query string, limit in
 			semCh <- semanticResult{nil, err}
 			return
 		}
-		matches, err := s.search.SearchVideos(ctx, userID, embedding, s.searchCfg.DefaultThreshold, fetchLimit, source)
+		matches, err := s.search.SearchVideos(ctx, userID, embedding, s.embedder.Model(), s.searchCfg.DefaultThreshold, fetchLimit, source)
 		semCh <- semanticResult{matches, err}
 	}()
 

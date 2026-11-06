@@ -69,7 +69,7 @@ func (s *Service) summarizeAndStore(ctx context.Context, req summarizeRequest) (
 	}
 
 	if err := s.db.UpdateVideoSummary(ctx, req.video.ID, sum.Text, req.level, providerName, model,
-		sum.Usage.InputTokens, sum.Usage.OutputTokens, embedding, metaJSON); err != nil {
+		sum.Usage.InputTokens, sum.Usage.OutputTokens, embedding, s.embedder.Model(), metaJSON); err != nil {
 		return "", fmt.Errorf("update summary: %w", err)
 	}
 

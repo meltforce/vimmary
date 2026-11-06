@@ -65,8 +65,8 @@ worker. Summaries are primarily English with occasional German.
 |-------------|---------------------------------------|
 | Backend     | Go, chi router                        |
 | Database    | PostgreSQL 16 + pgvector              |
-| Embeddings  | Mistral (`mistral-embed`, 1024-dim)   |
-| Summaries   | Claude API or Mistral (configurable)  |
+| Embeddings  | OpenAI `text-embedding-3-large` at 1024 dims via Aperture, or Mistral `mistral-embed` (configurable) |
+| Summaries   | Claude API (directly or via Aperture) or Mistral (configurable) |
 | Auth        | Tailscale tsnet                       |
 | Secrets     | API keys in the database, DB password from the environment |
 | Transcripts | YouTube InnerTube API (native Go)     |
@@ -115,6 +115,14 @@ database:
 
 summary:
   provider: "claude"          # "claude" or "mistral"
+
+# Optional, for a tailnet with a Tailscale Aperture gateway. Claude then needs
+# no API key, and embedding.provider "openai" becomes available.
+# aperture:
+#   base_url: "http://ai.<tailnet>.ts.net"
+# embedding:
+#   provider: "openai"        # "mistral" (default) or "openai"; a change
+#                             # re-embeds the library in the background
 
 youtube:
   sub_langs: [en]             # preferred transcript languages

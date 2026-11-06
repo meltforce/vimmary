@@ -149,3 +149,50 @@ func TestLoad_NonexistentFile(t *testing.T) {
 		t.Error("Load() should fail for nonexistent file")
 	}
 }
+
+func TestLoad_Embedding(t *testing.T) {
+	base := `
+database:
+  host: localhost
+  port: 5432
+  name: vimmary
+  user: vimmary
+  password: test
+tailscale:
+  enabled: false
+server:
+  port: 8080
+`
+	cases := []struct {
+		name    string
+		extra   string
+		wantErr bool
+		want    string
+	}{
+		{name: "default is mistral", extra: "", want: "mistral"},
+		{name: "openai through aperture", extra: "aperture:\n  base_url: http://ai.example.ts.net\nembedding:\n  provider: openai\n", want: "openai"},
+		{name: "openai without aperture", extra: "embedding:\n  provider: openai\n", wantErr: true},
+		{name: "unknown provider", extra: "embedding:\n  provider: voyage\n", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgFile := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(cfgFile, []byte(base+tc.extra), 0644); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Load(cfgFile)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("want a validation error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.Embedding.Provider != tc.want {
+				t.Errorf("Embedding.Provider = %q, want %q", cfg.Embedding.Provider, tc.want)
+			}
+		})
+	}
+}

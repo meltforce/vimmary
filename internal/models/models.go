@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -42,6 +43,19 @@ type Registry struct {
 	keyFor   KeyFunc
 	http     *http.Client
 	log      *slog.Logger
+
+	// claudeGateway, when set, is where Claude's model list comes from instead
+	// of api.anthropic.com; see UseClaudeGateway.
+	claudeGateway     string
+	claudeGatewayHTTP *http.Client
+}
+
+// UseClaudeGateway routes the Claude model list through the tailnet AI
+// gateway. The gateway authorizes by tailnet identity, so Claude then counts as
+// configured without a stored key, matching how summaries reach it.
+func (r *Registry) UseClaudeGateway(baseURL string, client *http.Client) {
+	r.claudeGateway = strings.TrimRight(baseURL, "/")
+	r.claudeGatewayHTTP = client
 }
 
 // NewRegistry creates a model registry that resolves API keys per call.
@@ -63,7 +77,8 @@ func (r *Registry) ListModels(ctx context.Context, provider string) ([]Model, er
 	if err != nil {
 		return nil, fmt.Errorf("api key for %q: %w", provider, err)
 	}
-	if apiKey == "" {
+	viaGateway := provider == "claude" && r.claudeGateway != ""
+	if apiKey == "" && !viaGateway {
 		return nil, nil
 	}
 
@@ -119,14 +134,20 @@ func (r *Registry) fetchModels(ctx context.Context, provider, apiKey string) ([]
 }
 
 func (r *Registry) fetchClaudeModels(ctx context.Context, apiKey string) ([]Model, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.anthropic.com/v1/models?limit=100", nil)
+	url, client := "https://api.anthropic.com/v1/models?limit=100", r.http
+	if r.claudeGateway != "" {
+		url, client = r.claudeGateway+"/v1/models", r.claudeGatewayHTTP
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("x-api-key", apiKey)
+	if apiKey != "" {
+		req.Header.Set("x-api-key", apiKey)
+	}
 	req.Header.Set("anthropic-version", "2023-06-01")
 
-	resp, err := r.http.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("claude models API: %w", err)
 	}
@@ -152,6 +173,11 @@ func (r *Registry) fetchClaudeModels(ctx context.Context, apiKey string) ([]Mode
 
 	var models []Model
 	for _, m := range result.Data {
+		// The gateway lists every provider it holds; only Claude models are
+		// served on the path the Claude summarizer uses.
+		if !strings.HasPrefix(m.ID, "claude-") {
+			continue
+		}
 		models = append(models, Model{
 			ID:          m.ID,
 			DisplayName: m.DisplayName,
