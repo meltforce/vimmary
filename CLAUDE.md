@@ -175,11 +175,13 @@ not support.
 
 **The app icon's mark must stay lighter than its field.**
 `web/scripts/build-icons.mjs` (`npm run icons`, needs Chrome and ImageMagick, not
-wired into the build) writes `web/public/app-icon/*` — `vm` in `#f3f2f2` on
-`#ec3013`. iOS 18 derives the dark and tinted home-screen variants from that one
-file, and a dark mark on a mid field collapses to an empty rounded square in
-both. The failure is invisible on desktop; FreeReps shipped it once and fixed it
-in `c7319b0`.
+wired into the build) writes `web/public/app-icon/*` — `vm` and a rule bar in
+amber `#d9a066` on an ink field `#241f1a`, the Shelf palette since `e52cbe2`
+(the `#f3f2f2` on `#ec3013` of the Modernist icon is gone). iOS 18 derives the
+dark and tinted home-screen variants from that one file, and a dark mark on a
+mid field collapses to an empty rounded square in both — which is why the pair
+is amber on ink and not ink on amber. The failure is invisible on desktop;
+FreeReps shipped it once and fixed it in `c7319b0`.
 
 **Each Settings section owns its queries and its own error state**
 (`web/src/pages/settings/`, one file per concern). The page holds none. The why:
