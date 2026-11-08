@@ -100,7 +100,7 @@ jobs:
     # See INCIDENTS.md, 2026-08-01.
     # github.ref stays correct and is refs/pull/N/merge on pull requests.
     if: github.ref == 'refs/heads/main'
-    uses: meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v7
+    uses: meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v8
     with:
       app_name: vimmary
       # smokey, the homelab VM shared by the in-house tsnet apps, since
