@@ -2,7 +2,10 @@
 FROM node:26.13.0-alpine AS frontend
 WORKDIR /app/web
 COPY web/package.json web/package-lock.json* ./
-RUN npm ci
+# The cache mounts in this file survive between builds on the persistent buildx
+# builder of ci-workflows (@v5 and later), so a dependency change re-resolves
+# rather than re-downloads, and Go compiles only what changed.
+RUN --mount=type=cache,target=/root/.npm npm ci
 COPY web/ .
 RUN npm run build
 
@@ -11,7 +14,7 @@ FROM golang:1.27-alpine AS backend
 RUN apk add --no-cache git
 WORKDIR /app
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
 COPY --from=frontend /app/web/dist ./web/dist
 
@@ -19,7 +22,9 @@ COPY --from=frontend /app/web/dist ./web/dist
 # reports "dev" and nothing downstream can tell which commit is serving — which
 # is what a deploy gate has to compare against.
 ARG VERSION=dev
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-s -w -X main.Version=${VERSION}" -o vimmary ./cmd/vimmary
 
 # Stage 3: Runtime
