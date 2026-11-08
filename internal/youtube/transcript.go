@@ -8,8 +8,14 @@ import (
 )
 
 // FetchTranscript fetches captions using the YouTube InnerTube API.
-func (c *Client) FetchTranscript(_ context.Context, youtubeID string) (*Transcript, error) {
-	transcripts, err := c.transcriptClient.GetTranscripts(youtubeID, c.subLangs)
+//
+// spokenLang is the video's original language as Metadata.Language reports
+// it, or "". A track in that language wins over the subtitle preference, so a
+// German video with an English track is transcribed — and summarised — in
+// German.
+func (c *Client) FetchTranscript(_ context.Context, youtubeID, spokenLang string) (*Transcript, error) {
+	langs := transcriptLanguages(spokenLang, c.subLangs)
+	transcripts, err := c.transcriptClient.GetTranscripts(youtubeID, langs)
 	if err != nil {
 		return nil, fmt.Errorf("fetch transcript for %s: %w", youtubeID, err)
 	}
@@ -19,19 +25,19 @@ func (c *Client) FetchTranscript(_ context.Context, youtubeID string) (*Transcri
 	}
 
 	// The library returns transcripts in non-deterministic order (goroutines).
-	// Re-sort by subLangs preference, preferring manual over auto-generated.
-	langRank := make(map[string]int, len(c.subLangs))
-	for i, lang := range c.subLangs {
+	// Re-sort by language preference, preferring manual over auto-generated.
+	langRank := make(map[string]int, len(langs))
+	for i, lang := range langs {
 		langRank[lang] = i
 	}
 	sort.SliceStable(transcripts, func(i, j int) bool {
 		ri, oki := langRank[transcripts[i].LanguageCode]
 		rj, okj := langRank[transcripts[j].LanguageCode]
 		if !oki {
-			ri = len(c.subLangs)
+			ri = len(langs)
 		}
 		if !okj {
-			rj = len(c.subLangs)
+			rj = len(langs)
 		}
 		if ri != rj {
 			return ri < rj
@@ -67,4 +73,19 @@ func (c *Client) FetchTranscript(_ context.Context, youtubeID string) (*Transcri
 		Source:   source,
 		Lines:    timed,
 	}, nil
+}
+
+// transcriptLanguages is the caption language order for one video: the spoken
+// language first when it is known, then the configured preference.
+func transcriptLanguages(spokenLang string, subLangs []string) []string {
+	if spokenLang == "" || (len(subLangs) > 0 && subLangs[0] == spokenLang) {
+		return subLangs
+	}
+	langs := []string{spokenLang}
+	for _, l := range subLangs {
+		if l != spokenLang {
+			langs = append(langs, l)
+		}
+	}
+	return langs
 }

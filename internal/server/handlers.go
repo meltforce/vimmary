@@ -52,6 +52,7 @@ func (s *Server) handleListVideos(w http.ResponseWriter, r *http.Request) {
 		Language:     q.Get("language"),
 		Topic:        q.Get("topic"),
 		Status:       q.Get("status"),
+		YouTubeID:    q.Get("youtube_id"),
 		// The source default is youtube, not "everything". That is what keeps
 		// the videos page, MCP list_recent and every older client video-only
 		// once podcast rows exist. "all" opts out.

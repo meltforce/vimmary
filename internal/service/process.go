@@ -180,7 +180,11 @@ func (s *Service) ProcessVideo(ctx context.Context, userID int, youtubeID, bookm
 		transcriptText = text
 		transcriptSource = "voxtral"
 	} else {
-		transcript, err := s.yt.FetchTranscript(ctx, youtubeID)
+		spokenLang := ""
+		if meta != nil {
+			spokenLang = meta.Language
+		}
+		transcript, err := s.yt.FetchTranscript(ctx, youtubeID, spokenLang)
 		if err != nil {
 			// Check if this is a no-captions error
 			if isNoCaptionsError(err) {

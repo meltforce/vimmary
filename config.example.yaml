@@ -32,6 +32,9 @@ karakeep:
   base_url: "https://karakeep.leo-royal.ts.net"
 
 youtube:
+  # Caption languages in order of preference. The video's spoken language,
+  # read from its watch page, goes before this list, so a German video with an
+  # English subtitle track is still transcribed and summarised in German.
   sub_langs:
     - en
     - de

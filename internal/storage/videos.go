@@ -608,16 +608,22 @@ type ListFilters struct {
 	Topic        string
 	Status       string
 	Source       string
+	// YouTubeID matches one video exactly. It is how a client that submitted
+	// a URL finds the row it produced: the submit endpoint answers with the
+	// YouTube ID only, because the row is inserted later by the worker.
+	YouTubeID string
 }
 
+// listedStatuses are the statuses the list shows when no status filter is
+// given.
+var listedStatuses = []string{"completed", "failed", "processing", "pending", "no_captions"}
+
 func (db *DB) ListRecent(ctx context.Context, userID int, filters ListFilters, limit, offset int) ([]Video, int, error) {
-	statusFilter := "status IN ('completed', 'failed', 'processing', 'pending', 'no_captions')"
-	if filters.Status != "" {
-		statusFilter = fmt.Sprintf("status = '%s'", filters.Status)
-	}
-	query := fmt.Sprintf(`SELECT `+videoColumnsNoTranscript+`
-		FROM videos WHERE user_id = $1 AND %s`, statusFilter)
-	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM videos WHERE user_id = $1 AND %s`, statusFilter)
+	// Every caller-supplied value is a bind parameter. Until 2026-11-08 the
+	// status was interpolated into the SQL text, which let ?status= of
+	// GET /api/v1/videos carry arbitrary SQL.
+	query := `SELECT ` + videoColumnsNoTranscript + ` FROM videos WHERE user_id = $1`
+	countQuery := `SELECT COUNT(*) FROM videos WHERE user_id = $1`
 	args := []any{userID}
 	argN := 2
 
@@ -629,8 +635,16 @@ func (db *DB) ListRecent(ctx context.Context, userID int, filters ListFilters, l
 		argN++
 	}
 
+	if filters.Status != "" {
+		addFilter(` AND status = $%d`, filters.Status)
+	} else {
+		addFilter(` AND status = ANY($%d)`, listedStatuses)
+	}
 	if filters.Source != "" {
 		addFilter(` AND source = $%d`, filters.Source)
+	}
+	if filters.YouTubeID != "" {
+		addFilter(` AND youtube_id = $%d`, filters.YouTubeID)
 	}
 	if filters.Channel != "" {
 		addFilter(` AND channel ILIKE '%%' || $%d || '%%'`, filters.Channel)

@@ -125,7 +125,7 @@ summary:
 #                             # re-embeds the library in the background
 
 youtube:
-  sub_langs: [en]             # preferred transcript languages
+  sub_langs: [en]             # caption preference after the spoken language
 
 secrets:
   postgres_password: "vimmary"
@@ -187,7 +187,10 @@ Nothing is written back to Karakeep for a video submitted this way, because
 there is no bookmark to write to.
 
 The web UI's own form posts `{"url": "..."}` to `POST /api/v1/videos`, which is
-the same path for a JSON client.
+the same path for a JSON client. It answers `202` with the `youtube_id` only,
+because the row is inserted when the worker picks the job up;
+`GET /api/v1/videos?youtube_id=<id>` returns that row once it exists, and its
+`id` is the page `/video/<id>`.
 
 ## Setup podcast summaries
 

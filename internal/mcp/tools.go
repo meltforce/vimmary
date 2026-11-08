@@ -108,9 +108,10 @@ func (h *handlers) resummarize(ctx context.Context, req mcp.CallToolRequest) (*m
 
 func (h *handlers) listRecent(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	filters := storage.ListFilters{
-		Channel:  req.GetString("channel", ""),
-		Language: req.GetString("language", ""),
-		Topic:    req.GetString("topic", ""),
+		Channel:   req.GetString("channel", ""),
+		Language:  req.GetString("language", ""),
+		Topic:     req.GetString("topic", ""),
+		YouTubeID: req.GetString("youtube_id", ""),
 		// Same default as the REST route: videos unless asked otherwise.
 		Source: normalizeSource(req.GetString("source", ""), storage.SourceYouTube),
 	}

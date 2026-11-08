@@ -145,3 +145,50 @@ func TestUpdateVideoMetadata_ThenTranscript(t *testing.T) {
 		t.Errorf("transcript = %q, want %q", got.Transcript, "Hello world transcript")
 	}
 }
+
+func TestListRecentFilters(t *testing.T) {
+	store := setupTestDB(t)
+	ctx := context.Background()
+
+	video := &storage.Video{
+		ID:          uuid.New(),
+		UserID:      1,
+		YouTubeID:   "test_list_" + uuid.NewString()[:8],
+		DetailLevel: "medium",
+		Status:      "pending",
+	}
+	if err := store.InsertVideo(ctx, video); err != nil {
+		t.Fatalf("insert video: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.DeleteVideo(ctx, video.UserID, video.ID)
+	})
+
+	got, total, err := store.ListRecent(ctx, 1, storage.ListFilters{YouTubeID: video.YouTubeID}, 10, 0)
+	if err != nil {
+		t.Fatalf("list by youtube_id: %v", err)
+	}
+	if total != 1 || len(got) != 1 || got[0].ID != video.ID {
+		t.Fatalf("list by youtube_id: total %d, rows %d, want the inserted row only", total, len(got))
+	}
+
+	_, total, err = store.ListRecent(ctx, 1,
+		storage.ListFilters{YouTubeID: video.YouTubeID, Status: "completed"}, 10, 0)
+	if err != nil {
+		t.Fatalf("list by youtube_id and status: %v", err)
+	}
+	if total != 0 {
+		t.Errorf("status filter: total %d, want 0", total)
+	}
+
+	// The status is a bind parameter: a quote in it matches nothing rather
+	// than ending the string literal.
+	_, total, err = store.ListRecent(ctx, 1,
+		storage.ListFilters{YouTubeID: video.YouTubeID, Status: "x' OR '1'='1"}, 10, 0)
+	if err != nil {
+		t.Fatalf("list with quoted status: %v", err)
+	}
+	if total != 0 {
+		t.Errorf("quoted status: total %d, want 0", total)
+	}
+}

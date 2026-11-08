@@ -65,7 +65,9 @@ func (s *Service) GetTranscriptSegments(ctx context.Context, userID int, id uuid
 		return nil, err
 	}
 
-	transcript, err := s.yt.FetchTranscript(ctx, video.YouTubeID)
+	// The stored language is the one the transcript was fetched in, so the
+	// timed lines match the plain transcript beside them.
+	transcript, err := s.yt.FetchTranscript(ctx, video.YouTubeID, video.Language)
 	if err != nil {
 		if isNoCaptionsError(err) {
 			// Permanent: cache the emptiness so this row never fetches again.
