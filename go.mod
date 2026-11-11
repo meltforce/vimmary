@@ -11,7 +11,7 @@ require (
 	github.com/meltforce/meltkit v0.2.0
 	github.com/pgvector/pgvector-go v0.4.1
 	github.com/yuin/goldmark v1.8.7
-	tailscale.com v1.104.5
+	tailscale.com v1.104.6
 )
 
 require (
@@ -52,7 +52,7 @@ require (
 	github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc // indirect
 	github.com/tailscale/setec v0.0.0-20260824224040-f8d7a936837c // indirect
 	github.com/tailscale/web-client-prebuilt v0.0.0-20260917222731-e0ed2d0d0fea // indirect
-	github.com/tailscale/wireguard-go v0.0.0-20260928213032-417aef361226 // indirect
+	github.com/tailscale/wireguard-go v0.0.0-20261106233718-9e0ab45c16ca // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
