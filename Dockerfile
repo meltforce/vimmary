@@ -1,5 +1,5 @@
 # Stage 1: Build frontend
-FROM node:26.13.0-alpine AS frontend
+FROM node:26.13.1-alpine AS frontend
 WORKDIR /app/web
 COPY web/package.json web/package-lock.json* ./
 # The cache mounts in this file survive between builds on the persistent buildx
