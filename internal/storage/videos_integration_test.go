@@ -19,8 +19,10 @@ func setupTestDB(t *testing.T) *storage.DB {
 
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
+		// In CI a missing database is a failure, never a skip: a skipped
+		// storage test reports green over code nothing ran.
 		if os.Getenv("CI") != "" {
-			t.Skip("skipping integration test in CI (no database)")
+			t.Fatal("TEST_DATABASE_URL is not set; CI requires the test database")
 		}
 		dsn = defaultDSN
 	}

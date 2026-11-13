@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# End-to-end checks against a running vimmary.
+#
+# With E2E_BASE_URL set, the HTTP checks run against that instance (a session
+# starts the app natively with seed_fixtures: true and sets it).
+#
+# Otherwise the script builds the production image of the working tree as
+# vimmary-local:<BUILD_SHA> and runs the upgrade test with compose.e2e.yaml:
+#
+#   1. the image of the base (E2E_BASE_REF, default origin/main) on an empty
+#      database, which seeds the fixtures once the base knows seed_fixtures;
+#   2. the new image on that database: /version reports BUILD_SHA inside the
+#      container and on the published port, the HTTP checks pass;
+#   3. the base image again on the migrated schema, because a rollback resets
+#      only the image.
+#
+# E2E_UPGRADE=0 skips steps 1 and 3.
+#
+#   BUILD_SHA=<sha> scripts/e2e     (default: git rev-parse HEAD)
+set -euo pipefail
+# shellcheck source=scripts/lib/common.sh
+source "$(dirname "$0")/lib/common.sh"
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+# get <url> -> body on stdout; fails on a non-2xx answer.
+get() { curl -fsS --max-time 10 "$1"; }
+
+# expect_json <url> <jq filter> <description>: the filter must yield true.
+expect_json() {
+  local body
+  body=$(get "$1") || fail "GET $1"
+  jq -e "$2" >/dev/null <<<"$body" || fail "$3 (GET $1: $(head -c 400 <<<"$body"))"
+  echo "ok   $3"
+}
+
+http_checks() {
+  local base=${1%/}
+  expect_json "$base/version" '.status == "ok"' "/version reports a reachable database"
+  expect_json "$base/api/v1/videos" '.total >= 1 and all(.videos[]; .source == "youtube")' \
+    "/api/v1/videos lists YouTube rows only"
+  expect_json "$base/api/v1/videos?source=podcast" '.total >= 1 and all(.videos[]; .source == "podcast")' \
+    "/api/v1/videos?source=podcast lists podcast rows only"
+  expect_json "$base/api/v1/search?q=Postgres" '.count >= 1' \
+    "/api/v1/search finds a fixture by keyword"
+  expect_json "$base/api/v1/stats" '.total_count >= 1' "/api/v1/stats counts the rows"
+  local html
+  html=$(get "$base/") || fail "GET $base/"
+  grep -q '<div id="root">' <<<"$html" || fail "GET / does not serve the frontend"
+  echo "ok   / serves the frontend"
+}
+
+if [[ -n "${E2E_BASE_URL:-}" ]]; then
+  http_checks "$E2E_BASE_URL"
+  echo
+  echo "e2e ok: ${E2E_BASE_URL}"
+  exit 0
+fi
+
+export BUILD_SHA="${BUILD_SHA:-$(git rev-parse HEAD)}"
+base_ref="${E2E_BASE_REF:-origin/main}"
+upgrade="${E2E_UPGRADE:-1}"
+project="vimmary-e2e-$$"
+compose=(docker compose --progress quiet -f compose.e2e.yaml -p "$project")
+
+cleanup() {
+  local status=$?
+  if [[ $status -ne 0 ]]; then
+    E2E_IMAGE=none "${compose[@]}" logs --no-color --tail 80 app >&2 || true
+  fi
+  E2E_IMAGE=none "${compose[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
+  exit "$status"
+}
+trap cleanup EXIT
+
+# in_app <url>: GET from inside the app container with busybox wget.
+in_app() { "${compose[@]}" exec -T app wget -qO- -T 5 "$1" 2>/dev/null || true; }
+
+# start <image> <sha>: (re)create the app container from <image> and wait up
+# to 120 s for /version on 127.0.0.1:8080 inside it to report <sha> - the
+# check pipeline-deploy makes. Then the published port answers the same, and
+# the loopback /healthz on 8081 (the Dockerfile HEALTHCHECK) reports <sha>.
+start() {
+  local image=$1 sha=$2 body=""
+  export E2E_IMAGE=$image
+  "${compose[@]}" up -d --force-recreate app >/dev/null
+  for _ in $(seq 1 120); do
+    body=$(in_app http://127.0.0.1:8080/version)
+    [[ "$body" == *"\"$sha\""* ]] && break
+    sleep 1
+  done
+  [[ "$body" == *"\"$sha\""* ]] || fail "$image: /version on 127.0.0.1:8080 reported '${body}', expected ${sha}"
+  echo "ok   $image reports ${sha} on /version inside the container"
+  base_url="http://$("${compose[@]}" port app 8080)"
+  expect_json "$base_url/version" ".build == \"$sha\" and .status == \"ok\"" "/version on the published port reports ${sha:0:12}"
+  body=$(in_app http://127.0.0.1:8081/healthz)
+  [[ "$body" == *"\"$sha\""* ]] || fail "$image: /healthz on 127.0.0.1:8081 reported '${body}', expected ${sha}"
+  echo "ok   loopback /healthz on 8081 reports ${sha:0:12}"
+}
+
+if [[ "$upgrade" == 1 ]]; then
+  base_sha=$(git rev-parse "${base_ref}^{commit}")
+  step "building base image ${base_ref} (${base_sha:0:12})"
+  git archive --format=tar "$base_sha" | docker build -q --build-arg "VERSION=${base_sha}" -t "vimmary-local:base-${base_sha}" - >/dev/null
+fi
+
+step "building vimmary-local:${BUILD_SHA}"
+docker build -q --build-arg "VERSION=${BUILD_SHA}" -t "vimmary-local:${BUILD_SHA}" . >/dev/null
+
+if [[ "$upgrade" == 1 ]]; then
+  step "1. base image on an empty database"
+  start "vimmary-local:base-${base_sha}" "$base_sha"
+fi
+
+step "2. new image"
+start "vimmary-local:${BUILD_SHA}" "$BUILD_SHA"
+http_checks "$base_url"
+
+if [[ "$upgrade" == 1 ]]; then
+  step "3. base image on the migrated schema"
+  start "vimmary-local:base-${base_sha}" "$base_sha"
+  expect_json "$base_url/version" '.status == "ok"' "base image serves on the migrated schema"
+  expect_json "$base_url/api/v1/videos" '.total >= 1' "base image lists the rows"
+fi
+
+echo
+if [[ "$upgrade" == 1 ]]; then
+  echo "e2e ok: ${BUILD_SHA}, upgrade from and rollback to ${base_ref}"
+else
+  echo "e2e ok: ${BUILD_SHA}"
+fi

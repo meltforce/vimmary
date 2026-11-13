@@ -1,106 +1,33 @@
 ---
 name: verify
-description: Run vimmary's full verification chain before committing — Go build, vet, race tests, golangci-lint, govulncheck, and the frontend build. Triggers — "verifizier das", "läuft der build", "prüf ob das durchgeht", "run the checks", "verify before commit", "does this still build". Also reach for it after changing anything under internal/, web/ or migrations/. Not for running the app — that is the run skill.
+description: Run vimmary's checks before committing — scripts/lint (gofmt, vet, golangci-lint, govulncheck, migration rules, script tests, frontend build) and scripts/test (race tests against Postgres + pgvector, frontend tests), scripts/e2e for startup, config, migration or Dockerfile changes. Triggers — "verifizier das", "läuft der build", "prüf ob das durchgeht", "run the checks", "verify before commit", "does this still build". Also reach for it after changing anything under internal/, web/ or migrations/. Not for running the app — that is the run skill.
 ---
 
 # Verify
 
-The chain CI runs, in the order that fails fastest. Run it from the repo root
-before committing.
-
-## 1. The embed stub comes first
-
-`web.go` carries `//go:embed all:web/dist`, and `.gitignore` excludes that
-directory. **Every Go command below fails with an embed error on a fresh
-checkout** until `web/dist` exists — this is not a broken build, it is a missing
-directory.
-
-Either build the frontend for real (step 5, needed anyway if you touched `web/`),
-or create the stub CI uses:
+The checks are the entry scripts CI runs; run them from the repo root.
 
 ```bash
-mkdir -p web/dist && touch web/dist/.gitkeep
+scripts/setup   # toolchain and npm dependencies, if the SessionStart hook has not run
+scripts/lint
+scripts/test
+scripts/e2e     # for a change to startup, config, migrations or the Dockerfile
 ```
 
-## 2. Build, format and vet
-
-```bash
-CGO_ENABLED=0 go build -o /tmp/vimmary ./cmd/vimmary
-gofmt -l internal/ cmd/
-go vet ./...
-```
-
-`CGO_ENABLED=0` matches the Docker image, which is built without a C toolchain.
-A build that only passes with cgo enabled will fail in CI.
-
-**`gofmt -l` prints the files that are not formatted and nothing else** — empty
-output is the pass. Nothing else in this chain checks it: golangci-lint's
-default set has no formatting linter, and CI runs neither. An unformatted file
-was committed on 2026-08-07 (`9afc86a`, a misaligned struct tag in
-`internal/models/models.go`) and no step objected.
-
-The two files that predated this step — `internal/mcp/server.go` (import order)
-and `internal/storage/videos_integration_test.go` — were formatted on
-2026-08-07. `gofmt -l` now prints nothing on a clean tree, so any output is
-from the change in front of you.
-
-## 3. Tests
-
-```bash
-go test -race ./...
-```
-
-**The storage tests need a database and do not skip locally.**
-`internal/storage/videos_integration_test.go` connects to
-`postgres://vimmary:vimmary@localhost:5434/vimmary`, which is what
-`docker compose up db` exposes — note the port is **5434**, not 5432. Start it
-first:
-
-```bash
-docker compose up -d db
-```
-
-Override with `TEST_DATABASE_URL` if the database lives elsewhere. The test skips
-only when `CI` is set, which means **CI does not cover the storage layer** — a
-regression there is caught locally or not at all.
-
-## 4. Lint and vulnerabilities
-
-```bash
-golangci-lint run
-go run golang.org/x/vuln/cmd/govulncheck@latest ./...
-```
-
-There is no `.golangci.yml` in this repo, so both CI and a local run use the
-default linter set. CI pins `version: latest` for the action, so a golangci-lint
-release can introduce findings without anything in this repo changing — when
-lint fails on code you did not touch, check the version before chasing the
-finding.
-
-`govulncheck` is `continue-on-error` in CI. It reports; it does not gate.
-
-## 5. Frontend
-
-Required when anything under `web/` changed, and it replaces the stub from step 1.
-
-```bash
-cd web && npm ci --no-audit --no-fund && npm run build && npm test
-```
-
-`npm run build` is `tsc -b && vite build`, so a type error fails the build. CI
-pins Node 22.23.2.
-
-`npm test` is `vitest run`. It covers the pure helpers in `web/src/display.ts`
-and nothing else — there is no component renderer and no browser here. A layout
-change is still verified by looking at it, not by this step.
+- `scripts/test` starts `compose.test.yaml` (pgvector) when
+  `TEST_DATABASE_URL` is unset and removes it afterwards; it needs Docker.
+- `scripts/lint` compares new migrations with `origin/main`
+  (`LINT_BASE_REF` overrides it), so fetch first.
+- `scripts/e2e` builds two images (the working tree and `origin/main`) and
+  runs the upgrade test; `E2E_UPGRADE=0` skips the image of `main`, and
+  `E2E_BASE_URL=<url>` runs only the HTTP checks against a running instance
+  started with `seed_fixtures: true`.
 
 ## What this does not cover
 
-- **Migrations are not verified here.** They run on service startup; a broken
-  migration surfaces when the app boots, not in this chain.
-- **No end-to-end path.** Transcript fetching hits YouTube's InnerTube API and
-  summarising hits a paid provider, so neither is exercised by the tests. A
-  change to `internal/youtube/` or `internal/summary/` needs a real video run
-  through the running app.
-- **The MCP surface has no test.** Tool handlers are thin wrappers over
+- Transcript fetching hits YouTube's InnerTube API and summarising hits a paid
+  provider; neither runs in the checks. A change to `internal/youtube/` or
+  `internal/summary/` needs a real video run through the running app.
+- The MCP surface has no test. Tool handlers are thin wrappers over
   `internal/service/`, which is where the coverage sits.
+- A layout change is verified by looking at it, on the preview or locally.

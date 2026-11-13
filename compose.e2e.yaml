@@ -1,0 +1,39 @@
+# End-to-end environment for scripts/e2e: a built image against pgvector,
+# without Tailscale and without an auth block, so every request is user 1,
+# with the preview fixtures seeded. The app runs read-only without
+# capabilities, as in production. Production compose lives in the homelab
+# repo.
+services:
+  app:
+    image: ${E2E_IMAGE:?E2E_IMAGE must be set}
+    pull_policy: never
+    environment:
+      VIMMARY_DB_HOST: db
+      VIMMARY_DB_PORT: "5432"
+      VIMMARY_POSTGRES_PASSWORD: vimmary
+    volumes:
+      - ./e2e/vimmary.yaml:/data/config.yaml:ro
+    ports:
+      - "127.0.0.1::8080"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: pgvector/pgvector:0.8.7-pg16
+    environment:
+      POSTGRES_USER: vimmary
+      POSTGRES_PASSWORD: vimmary
+      POSTGRES_DB: vimmary
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "vimmary", "-d", "vimmary"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

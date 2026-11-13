@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# Toolchain and dependencies for a session or a CI job: Go (the version in
+# go.mod), golangci-lint, govulncheck, Node (.node-version), the npm
+# dependencies of web/, and jq. Runs from the SessionStart hook in
+# .claude/settings.json; quiet when everything is in place.
+#
+# On Linux it installs what is missing or at another version. On other
+# systems it installs only into GOPATH and node_modules and reports a
+# mismatched Go or Node instead of replacing it.
+#
+# In a cloud session Docker is installed but its daemon is not running; as
+# root, the script starts it, so scripts/test can start compose.test.yaml.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+GOLANGCI_LINT_VERSION=v2.15.0
+GO_VERSION=$(sed -n 's/^go \([0-9.]*\)$/\1/p' go.mod)
+NODE_VERSION=$(tr -d ' \n' <.node-version)
+
+linux=false
+[[ "$(uname -s)" == Linux ]] && linux=true
+root=false
+[[ "$(id -u)" == 0 ]] && root=true
+say() { echo "setup: $*" >&2; }
+
+case "$(uname -m)" in
+  x86_64) arch=amd64; node_arch=x64 ;;
+  aarch64 | arm64) arch=arm64; node_arch=arm64 ;;
+  *) say "unsupported architecture $(uname -m)"; exit 1 ;;
+esac
+
+# Go
+have_go=$(command -v go >/dev/null 2>&1 && go env GOVERSION || echo none)
+if [[ "$have_go" != "go${GO_VERSION}" ]]; then
+  if $linux && $root; then
+    say "installing go ${GO_VERSION} (found: ${have_go})"
+    curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${arch}.tar.gz" -o /tmp/go.tgz
+    rm -rf /usr/local/go
+    tar -C /usr/local -xzf /tmp/go.tgz
+    rm /tmp/go.tgz
+    export PATH="/usr/local/go/bin:$PATH"
+  elif [[ "$have_go" == none ]]; then
+    say "go is not installed; install go ${GO_VERSION}"
+    exit 1
+  else
+    say "found ${have_go}, go.mod names ${GO_VERSION}; GOTOOLCHAIN=auto fetches it for go commands"
+  fi
+fi
+gobin="$(go env GOPATH)/bin"
+export PATH="${gobin}:$PATH"
+
+# golangci-lint and govulncheck
+if ! golangci-lint version 2>/dev/null | grep -q "version ${GOLANGCI_LINT_VERSION#v} "; then
+  say "installing golangci-lint ${GOLANGCI_LINT_VERSION}"
+  go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
+fi
+if ! command -v govulncheck >/dev/null 2>&1; then
+  say "installing govulncheck"
+  go install golang.org/x/vuln/cmd/govulncheck@latest
+fi
+
+# Node
+have_node=$(command -v node >/dev/null 2>&1 && node --version || echo none)
+if [[ "$have_node" != "v${NODE_VERSION}" ]]; then
+  if $linux && $root; then
+    say "installing node ${NODE_VERSION} (found: ${have_node})"
+    curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" -o /tmp/node.txz
+    tar -C /usr/local --strip-components=1 -xJf /tmp/node.txz
+    rm /tmp/node.txz
+    hash -r
+  elif [[ "$have_node" == none ]]; then
+    say "node is not installed; install node ${NODE_VERSION}"
+    exit 1
+  else
+    say "found node ${have_node}, .node-version names ${NODE_VERSION}"
+  fi
+fi
+
+# npm dependencies
+if [[ ! -f web/node_modules/.package-lock.json || web/package-lock.json -nt web/node_modules/.package-lock.json ]]; then
+  say "npm ci in web/"
+  (cd web && npm ci --no-audit --no-fund --loglevel=error) >&2
+fi
+
+# jq (hooks read their input with it)
+if ! command -v jq >/dev/null 2>&1 && $linux && $root && command -v apt-get >/dev/null 2>&1; then
+  say "installing jq"
+  { apt-get update -qq && apt-get install -y -qq jq; } >/dev/null
+fi
+
+# Docker daemon in a cloud session
+if $linux && $root && command -v dockerd >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
+  say "starting dockerd (log: /tmp/dockerd.log)"
+  nohup dockerd >/tmp/dockerd.log 2>&1 &
+  for _ in $(seq 1 30); do
+    docker info >/dev/null 2>&1 && break
+    sleep 1
+  done
+fi
+
+# Later shells of a Linux session find the toolchain.
+if $linux && $root; then
+  line="export PATH=\"/usr/local/go/bin:${gobin}:\$PATH\""
+  for rc in /etc/profile.d/vimmary-toolchain.sh "$HOME/.bashrc"; do
+    if [[ -w "$(dirname "$rc")" ]] && ! grep -qsF "$line" "$rc"; then
+      echo "$line" >>"$rc"
+    fi
+  done
+fi

@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# gofmt, go vet, golangci-lint, govulncheck, the migration rules, the tests of
+# the shell scripts, and the frontend type check and build.
+#
+# golangci-lint must be on PATH (scripts/setup, or golangci-lint-action in
+# CI). LINT_BASE_REF is the ref new migrations are compared with (default
+# origin/main).
+#
+#   scripts/lint
+set -euo pipefail
+# shellcheck source=scripts/lib/common.sh
+source "$(dirname "$0")/lib/common.sh"
+
+ensure_web_dist
+
+step "gofmt"
+unformatted=$(git ls-files -z '*.go' | xargs -0 gofmt -l)
+if [[ -n "$unformatted" ]]; then
+  echo "not gofmt-formatted:" >&2
+  echo "$unformatted" >&2
+  exit 1
+fi
+
+step "go vet"
+go vet ./...
+
+step "golangci-lint"
+if ! command -v golangci-lint >/dev/null 2>&1; then
+  echo "golangci-lint is not on PATH; run scripts/setup" >&2
+  exit 1
+fi
+golangci-lint run ./...
+
+step "govulncheck"
+if command -v govulncheck >/dev/null 2>&1; then
+  govulncheck ./...
+else
+  go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+fi
+
+step "migrations"
+scripts/check-migrations.sh "${LINT_BASE_REF:-origin/main}"
+
+step "script tests"
+scripts/check-migrations_test.sh
+scripts/resolve-sha_test.sh
+scripts/renovate-only_test.sh
+
+step "frontend type check and build"
+ensure_npm_deps
+(cd web && npm run build)
+
+echo
+echo "lint ok"

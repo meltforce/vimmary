@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Go tests with the race detector, including the storage and service tests
+# against Postgres + pgvector, and the frontend unit tests.
+#
+# The database comes from TEST_DATABASE_URL. When it is unset, the script
+# starts compose.test.yaml and removes it afterwards; with CI=true an unset
+# variable fails the run instead, because CI provides the database as a
+# service and a test that silently found none would report green.
+#
+#   scripts/test [go test flags/packages]     (default: ./...)
+set -euo pipefail
+# shellcheck source=scripts/lib/common.sh
+source "$(dirname "$0")/lib/common.sh"
+
+if [[ -z "${TEST_DATABASE_URL:-}" ]]; then
+  if is_ci; then
+    echo "scripts/test: TEST_DATABASE_URL is not set; CI must provide the test database" >&2
+    exit 1
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    echo "scripts/test: TEST_DATABASE_URL is not set and Docker is not reachable." >&2
+    echo "Start Docker or point TEST_DATABASE_URL at Postgres with pgvector." >&2
+    exit 1
+  fi
+  compose=(docker compose -f compose.test.yaml -p "vimmary-test-$$")
+  trap '"${compose[@]}" down -v --remove-orphans >/dev/null 2>&1 || true' EXIT
+  step "starting test database (compose.test.yaml)"
+  "${compose[@]}" up -d --wait --quiet-pull
+  addr=$("${compose[@]}" port db 5432)
+  export TEST_DATABASE_URL="postgres://vimmary:vimmary@${addr}/vimmary?sslmode=disable"
+fi
+
+ensure_web_dist
+
+step "go test -race"
+go test -race -count=1 "${@:-./...}"
+
+step "frontend tests"
+ensure_npm_deps
+(cd web && npm test)
+
+echo
+echo "test ok"

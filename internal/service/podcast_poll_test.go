@@ -99,7 +99,7 @@ func newPollTestService(t *testing.T, src PodcastSource) *Service {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
 		if os.Getenv("CI") != "" {
-			t.Skip("skipping poller test in CI (no database)")
+			t.Fatal("TEST_DATABASE_URL is not set; CI requires the test database")
 		}
 		dsn = pollTestDSN
 	}

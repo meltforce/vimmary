@@ -1,0 +1,13 @@
+# Config of the app in compose.e2e.yaml. Database host, port and password
+# come from the environment there.
+external_url: "http://localhost:8080"
+server:
+  host: "0.0.0.0"
+  port: 8080
+database:
+  name: vimmary
+  user: vimmary
+  sslmode: disable
+tailscale:
+  enabled: false
+seed_fixtures: true
