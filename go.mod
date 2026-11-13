@@ -8,7 +8,7 @@ require (
 	github.com/horiagug/youtube-transcript-api-go v0.0.13
 	github.com/jackc/pgx/v5 v5.13.0
 	github.com/mark3labs/mcp-go v1.5.0
-	github.com/meltforce/meltkit v0.4.0
+	github.com/meltforce/meltkit v0.4.1
 	github.com/pgvector/pgvector-go v0.4.1
 	github.com/yuin/goldmark v1.8.7
 	golang.org/x/term v0.48.0

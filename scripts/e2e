@@ -116,7 +116,7 @@ if [[ "$upgrade" == 1 ]]; then
 fi
 
 step "building vimmary-local:${BUILD_SHA}"
-docker build -q --build-arg "VERSION=${BUILD_SHA}" -t "vimmary-local:${BUILD_SHA}" . >/dev/null
+docker build -q --build-arg "VERSION=${BUILD_SHA}" --build-arg "BUILD_SHA=${BUILD_SHA}" -t "vimmary-local:${BUILD_SHA}" . >/dev/null
 
 if [[ "$upgrade" == 1 ]]; then
   step "1. base image on an empty database"

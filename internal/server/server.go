@@ -32,10 +32,18 @@ type Server struct {
 	isDisabled func(ctx context.Context, userID int) (bool, error)
 }
 
-// New builds the router. authn is nil when login is not configured.
-func New(svc *service.Service, store *storage.DB, version string, log *slog.Logger, authn *auth.Auth) *Server {
+// newBase builds the meltkit server, whose /healthz answers
+// {"status":"ok","sha":"<sha>"} (homelab STANDARDS.md § Image registry &
+// tagging).
+func newBase(sha string, log *slog.Logger) *mkserver.Server {
+	return mkserver.New(mkserver.WithLogger(log), mkserver.WithBuildSHA(sha))
+}
+
+// New builds the router. sha is the commit /healthz reports. authn is nil
+// when login is not configured.
+func New(svc *service.Service, store *storage.DB, version, sha string, log *slog.Logger, authn *auth.Auth) *Server {
 	s := &Server{
-		Server:  mkserver.New(mkserver.WithLogger(log)),
+		Server:  newBase(sha, log),
 		svc:     svc,
 		store:   store,
 		version: version,
@@ -57,10 +65,9 @@ func (s *Server) routes() {
 	r := s.Router()
 
 	// Version route — no Tailscale auth, same as /healthz. It reports which
-	// build is serving, which is what lets a deploy gate tell a real rollout
-	// from a green pipeline over an unchanged image. meltkit owns /healthz and
-	// answers a fixed "ok", so this is a route of its own rather than an
-	// override.
+	// build is serving and whether the database answers; pipeline-deploy waits
+	// on it. meltkit owns /healthz, which reports status and the build SHA
+	// without touching the database, so this is a route of its own.
 	r.Get("/version", s.handleVersion)
 
 	// Webhook route — no Tailscale auth, uses per-user Bearer token

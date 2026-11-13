@@ -42,6 +42,7 @@ jobs:
             ghcr.io/meltforce/vimmary:latest
           build-args: |
             VERSION=${{ github.ref_name }}
+            BUILD_SHA=${{ github.sha }}
 
       - name: GitHub release
         env:
