@@ -11,6 +11,7 @@ import {
 import { shortDate, clock } from "../../display.ts";
 import { useAuth } from "../../features.ts";
 import { useSignOut } from "../../hooks/useSignOut.ts";
+import { canSignOut, SIGNED_OUT_URL } from "../../signout.ts";
 import { Row, Section, SectionError, SectionLoading } from "./primitives.tsx";
 import TokensSection from "./TokensSection.tsx";
 
@@ -51,7 +52,8 @@ function when(iso: string): string {
  */
 export default function AccountSection() {
   const queryClient = useQueryClient();
-  const { method } = useAuth();
+  const auth = useAuth();
+  const { method } = auth;
   const account = useQuery({ queryKey: ["account"], queryFn: fetchAccount, retry: false });
   const methods = useQuery({ queryKey: ["auth", "methods"], queryFn: fetchLoginMethods, retry: false });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["account"] });
@@ -59,7 +61,7 @@ export default function AccountSection() {
   const signOut = useSignOut();
   const revoke = useMutation({
     mutationFn: (s: AuthSession) => revokeSession(s.id),
-    onSuccess: (_, s) => (s.current ? window.location.assign("/login?signed_out=1") : refresh()),
+    onSuccess: (_, s) => (s.current ? window.location.assign(SIGNED_OUT_URL) : refresh()),
   });
   const unlink = useMutation({
     mutationFn: ({ issuer, subject }: { issuer: string; subject: string }) => unlinkIdentity(issuer, subject),
@@ -98,7 +100,7 @@ export default function AccountSection() {
       >
         <Row label="Login" value={acct.login} />
         <Row label="Signed in by" value={method === "oidc" ? oidcName : method === "password" ? "Password" : "Tailscale"} />
-        {method !== "tailscale" ? (
+        {canSignOut(auth) ? (
           <Row label="Session">
             <button
               type="button"

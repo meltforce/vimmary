@@ -4,6 +4,7 @@ import { useAuth, usePodcastsEnabled } from "../features.ts";
 import { useIsDesktop } from "../hooks/useMediaQuery.ts";
 import { useInboxCount } from "../hooks/useInboxCount.ts";
 import { useSignOut } from "../hooks/useSignOut.ts";
+import { canSignOut } from "../signout.ts";
 import { LogOutIcon } from "./icons.tsx";
 import Toast, { useToast } from "./Toast.tsx";
 
@@ -46,11 +47,6 @@ export default function Layout({ children }: { children: ReactNode }) {
   const signOut = useSignOut();
   const toast = useToast();
 
-  // Only a session can be ended. A request recognised through Tailscale (or an
-  // instance without login) is signed in again by WhoIs on the next request,
-  // so a button there would do nothing.
-  const canSignOut = auth.enabled && (auth.method === "password" || auth.method === "oidc");
-
   // Without cast2md there is no second content type, so the entry is absent
   // rather than disabled.
   const items = [
@@ -85,7 +81,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
         </div>
-        {canSignOut ? (
+        {canSignOut(auth) ? (
           <button
             type="button"
             className="nav-signout"
