@@ -4,9 +4,9 @@
 # dependency-only, exit 1 names the first file that is not.
 #
 # Dependency files: go.mod, go.sum, web/package.json, web/package-lock.json,
-# Dockerfile, .node-version, compose*.yml / compose*.yaml at the root, and
-# .github/workflows/*.yml where every changed line is a `uses: …@…`, a
-# `version:` or an `image: …:<tag>` pin. A file GitHub sends without a patch
+# Dockerfile, docker-compose.yml, .node-version, compose*.yml / compose*.yaml
+# at the root, and .github/workflows/*.yml where every changed line is a
+# `uses: …@…`, a `version:` or an `image: …:<tag>` pin. A file GitHub sends without a patch
 # (too large, binary) counts as other.
 #
 # claude-review.yml runs this script from the base branch, after checking
@@ -27,7 +27,7 @@ for i in $(seq 0 $((count - 1))); do
     exit 1
   fi
   case "$name" in
-    go.mod | go.sum | web/package.json | web/package-lock.json | Dockerfile | .node-version) continue ;;
+    go.mod | go.sum | web/package.json | web/package-lock.json | Dockerfile | docker-compose.yml | .node-version) continue ;;
     compose*.yml | compose*.yaml)
       [[ "$name" != */* ]] && continue
       ;;

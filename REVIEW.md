@@ -36,11 +36,12 @@ summary if they matter; do not request changes for them.
 
 A PR opened by `renovate[bot]`, whose commits are all by `renovate[bot]` and
 whose diff touches only `go.mod`, `go.sum`, `web/package.json`,
-`web/package-lock.json`, `Dockerfile`, `.node-version`, `compose*.y*ml` at the
-root, or `uses:`, `version:` and `image:` pins in `.github/workflows/*.yml`,
-passes the `review` check without a Claude run (`scripts/renovate-only.sh`,
-from `main`). `test`, `lint` and `e2e` still gate it. Any other file in the
-diff, or a commit by anyone else, brings the normal review.
+`web/package-lock.json`, `Dockerfile`, `docker-compose.yml`, `.node-version`,
+`compose*.y*ml` at the root, or `uses:`, `version:` and `image:` pins in
+`.github/workflows/*.yml`, passes the `review` check without a Claude run
+(`scripts/renovate-only.sh`, from `main`). `test`, `lint` and `e2e` still
+gate it. Any other file in the diff, or a commit by anyone else, brings the
+normal review.
 
 ## Summary
 

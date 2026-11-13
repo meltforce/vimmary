@@ -1,22 +1,10 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Renovate on GitHub (Mend app): one PR per update, merged by GitHub auto-merge once test, lint, e2e and review are green. A PR that touches dependency pins only passes review without a Claude run (REVIEW.md, Dependency updates). Majors wait for the dashboard checkbox. The rules below are what vimmary needs from the Forgejo preset local>meltforce.net/homelab, which Renovate on GitHub cannot reach.",
-  "extends": ["config:recommended"],
-  "timezone": "Europe/Berlin",
-  "constraints": {
-    "node": "^26",
-    "npm": "^11"
-  },
+  "description": "Renovate on GitHub (Mend app) with the shared preset; below only what vimmary adds to it.",
+  "extends": ["github>meltforce/renovate-config"],
   "rangeStrategy": "pin",
   "postUpdateOptions": ["gomodTidy"],
-  "automerge": true,
-  "automergeType": "pr",
-  "platformAutomerge": true,
   "automergeStrategy": "squash",
-  "prHourlyLimit": 0,
-  "prConcurrentLimit": 10,
-  "dependencyDashboard": true,
-  "dependencyDashboardTitle": "Renovate Dashboard",
   "customManagers": [
     {
       "description": "golangci-lint is pinned for the prebuilt binary in ci.yml (and the weekly gate in deploy.yml) and for the go install in scripts/setup. One dependency, so all pins move in one PR.",
@@ -32,43 +20,14 @@
   ],
   "packageRules": [
     {
-      "description": "Majors do not merge automatically: tick the checkbox in the dependency dashboard and Renovate opens the PR.",
-      "matchUpdateTypes": ["major"],
-      "dependencyDashboardApproval": true
-    },
-    {
-      "description": "All npm deps share one package-lock.json; bumped individually they conflict with each other. One branch for all non-major JS updates means one lockfile change.",
-      "matchManagers": ["npm"],
-      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
-      "groupName": "npm non-major"
-    },
-    {
-      "description": "The Vite toolchain majors move in one branch: vitest, vite and @vitejs/plugin-react declare each other in peer ranges and share the lockfile.",
+      "description": "tailwindcss and @tailwindcss/vite are released together and share the lockfile.",
       "matchManagers": ["npm"],
       "matchUpdateTypes": ["major"],
-      "matchPackageNames": ["vite", "@vitejs/**", "vitest", "@vitest/**", "@tailwindcss/vite", "tailwindcss"],
-      "groupName": "vite toolchain"
+      "matchPackageNames": ["tailwindcss", "@tailwindcss/**"],
+      "groupName": "tailwind"
     },
     {
-      "description": "The go directive in go.mod names the release setup-go installs and govulncheck checks the standard library of. Renovate reads `go 1.27.4` as `^1.27.4`, which every 1.x satisfies, so without `bump` the line never moves.",
-      "matchManagers": ["gomod"],
-      "matchDepTypes": ["golang"],
-      "rangeStrategy": "bump"
-    },
-    {
-      "description": "A Go minor moves the go directive and the builder image `golang:1.N-alpine` together; a directive ahead of the builder image fails the build. Patches merge automatically.",
-      "matchUpdateTypes": ["minor"],
-      "matchPackageNames": ["go", "golang"],
-      "groupName": "go minor",
-      "dependencyDashboardApproval": true
-    },
-    {
-      "description": "The Node release of the Dockerfile and of .node-version (CI and scripts/setup) is one version.",
-      "matchDepNames": ["node"],
-      "groupName": "node"
-    },
-    {
-      "description": "pgvector is pinned in compose.test.yaml, compose.e2e.yaml and the test service of ci.yml; production pins it in the homelab repo.",
+      "description": "pgvector is pinned in compose.test.yaml, compose.e2e.yaml, docker-compose.yml and the test services of ci.yml and deploy.yml; production pins it in the homelab repo.",
       "matchDepNames": ["pgvector/pgvector"],
       "groupName": "pgvector"
     },

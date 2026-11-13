@@ -30,7 +30,7 @@ mixed=$'@@ -1,3 +1,3 @@\n-      - uses: actions/checkout@v7.0.1\n+      - uses: 
 
 expect "go.mod and go.sum"              0 "$(arr "$(f go.mod)" "$(f go.sum)")"
 expect "npm manifest and lockfile"      0 "$(arr "$(f web/package.json)" "$(f web/package-lock.json)")"
-expect "Dockerfile, compose, node"      0 "$(arr "$(f Dockerfile)" "$(f compose.test.yaml)" "$(f .node-version)")"
+expect "Dockerfile, compose, node"      0 "$(arr "$(f Dockerfile)" "$(f compose.test.yaml)" "$(f docker-compose.yml)" "$(f .node-version)")"
 expect "workflow uses pin"              0 "$(arr "$(f .github/workflows/ci.yml modified "$pin")")"
 expect "workflow uses sha with comment" 0 "$(arr "$(f .github/workflows/ci.yml modified "$pinsha")")"
 expect "workflow version input"         0 "$(arr "$(f .github/workflows/ci.yml modified "$ver")")"
