@@ -4,7 +4,6 @@
   "extends": ["github>meltforce/renovate-config"],
   "rangeStrategy": "pin",
   "postUpdateOptions": ["gomodTidy"],
-  "automergeStrategy": "squash",
   "customManagers": [
     {
       "description": "golangci-lint is pinned for the prebuilt binary in ci.yml (and the weekly gate in deploy.yml) and for the go install in scripts/setup. One dependency, so all pins move in one PR.",
