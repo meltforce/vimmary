@@ -22,7 +22,8 @@
 # docker build fails on the egress proxy's certificate). It builds the
 # frontend and the binary, starts them against Postgres from
 # compose.test.yaml with the fixtures, and runs the HTTP checks and the
-# Playwright tests. There is no upgrade test; CI runs it.
+# Playwright tests. There is no upgrade test; CI runs it. E2E_CONFIG replaces
+# e2e/vimmary.yaml as the app's config (scripts/e2e-native_test.sh).
 #
 #   BUILD_SHA=<sha> scripts/e2e     (default: git rev-parse HEAD)
 set -euo pipefail
@@ -107,7 +108,7 @@ if [[ "${E2E_NATIVE:-0}" == 1 ]]; then
 
   # The loopback health listener is the container's; off here, so a second
   # instance on this machine does not collide on 8081.
-  { cat e2e/vimmary.yaml; echo 'health_addr: ""'; } >"$tmp/config.yaml"
+  { cat "${E2E_CONFIG:-e2e/vimmary.yaml}"; echo 'health_addr: ""'; } >"$tmp/config.yaml"
   port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
   base_url="http://127.0.0.1:${port}"
 
