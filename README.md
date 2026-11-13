@@ -337,15 +337,6 @@ PR gets a comment with the result.
 A tag `v*` publishes `ghcr.io/meltforce/vimmary:<tag>` and `:latest` and a
 GitHub release (`release.yml`).
 
-## Repository documents
-
-| File | Holds |
-|---|---|
-| [`CLAUDE.md`](CLAUDE.md) | What the repo is, and the gotchas the file tree does not show. |
-| [`archive/DECISIONS.md`](archive/DECISIONS.md) | Decisions taken, with their reasoning and the condition that would re-open them. |
-| [`ROADMAP.md`](ROADMAP.md) | Open work only. |
-| [`archive/INCIDENTS.md`](archive/INCIDENTS.md) | Postmortems up to 2026-11-13, frozen. |
-
 ## Related projects
 
 - [meltkit](https://github.com/meltforce/meltkit) — shared Go library (db, config, secrets, middleware, MCP)
