@@ -295,6 +295,24 @@ a:hover { color: var(--color-accent-700); text-decoration: underline; }
   font: 700 10.5px/1 var(--font-body);
 }
 
+/* Sign-out sits after the pill row on the same ground, so it reads as part of
+   the nav without taking a pill's width on a phone. */
+.nav-signout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  cursor: pointer;
+}
+.nav-signout:hover:not(:disabled) { color: var(--color-text); }
+.nav-signout:disabled { opacity: 0.45; cursor: not-allowed; }
+
 /* ── Page head ───────────────────────────────────────────────────────────── */
 
 .page-head {
