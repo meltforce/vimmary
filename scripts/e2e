@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # End-to-end checks against a running vimmary.
 #
-# With E2E_BASE_URL set, the HTTP checks run against that instance (a session
-# starts the app natively with seed_fixtures: true and sets it).
+# With E2E_BASE_URL set, the HTTP checks and the Playwright tests in e2e/ run
+# against that instance (a session starts the app natively with
+# seed_fixtures: true and sets it).
 #
 # Otherwise the script builds the production image of the working tree as
 # vimmary-local:<BUILD_SHA> and runs the upgrade test with compose.e2e.yaml:
@@ -10,7 +11,8 @@
 #   1. the image of the base (E2E_BASE_REF, default origin/main) on an empty
 #      database, which seeds the fixtures once the base knows seed_fixtures;
 #   2. the new image on that database: /version reports BUILD_SHA inside the
-#      container and on the published port, the HTTP checks pass;
+#      container and on the published port, the HTTP checks and the
+#      Playwright tests pass;
 #   3. the base image again on the migrated schema, because a rollback resets
 #      only the image.
 #
@@ -50,8 +52,17 @@ http_checks() {
   echo "ok   / serves the frontend"
 }
 
+# browser_tests <base url>: the Playwright tests in e2e/. On failure the
+# traces and screenshots are in e2e/test-results.
+browser_tests() {
+  step "browser tests (e2e/)"
+  ensure_playwright
+  E2E_BASE_URL="${1%/}" playwright test
+}
+
 if [[ -n "${E2E_BASE_URL:-}" ]]; then
   http_checks "$E2E_BASE_URL"
+  browser_tests "$E2E_BASE_URL"
   echo
   echo "e2e ok: ${E2E_BASE_URL}"
   exit 0
@@ -115,6 +126,7 @@ fi
 step "2. new image"
 start "vimmary-local:${BUILD_SHA}" "$BUILD_SHA"
 http_checks "$base_url"
+browser_tests "$base_url"
 
 if [[ "$upgrade" == 1 ]]; then
   step "3. base image on the migrated schema"

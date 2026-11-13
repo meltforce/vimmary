@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Toolchain and dependencies for a session or a CI job: Go (the version in
 # go.mod), golangci-lint, govulncheck, Node (.node-version), the npm
-# dependencies of web/, and jq. Runs from the SessionStart hook in
+# dependencies of web/ and e2e/, Playwright's Chromium, and jq. Runs from the SessionStart hook in
 # .claude/settings.json; quiet when everything is in place.
 #
 # On Linux as root it installs a missing Go and a missing or mismatched Node;
@@ -93,6 +93,13 @@ fi
 if [[ ! -f web/node_modules/.package-lock.json || web/package-lock.json -nt web/node_modules/.package-lock.json ]]; then
   say "npm ci in web/"
   (cd web && npm ci --no-audit --no-fund --loglevel=error) >&2
+fi
+
+# Playwright for the browser tests in e2e/
+# shellcheck source=scripts/lib/common.sh
+source scripts/lib/common.sh
+if ! ensure_playwright >/tmp/vimmary-playwright.log 2>&1; then
+  say "Playwright browser install failed (log: /tmp/vimmary-playwright.log)"
 fi
 
 # jq (hooks read their input with it)

@@ -322,7 +322,7 @@ docker buildx build --platform linux/amd64 -t vimmary:local .
 | `scripts/setup` | installs the toolchain (Go, golangci-lint, govulncheck, Node, npm dependencies); runs at session start |
 | `scripts/test` | Go tests with the race detector, the storage and service tests against Postgres + pgvector (`TEST_DATABASE_URL`, or `compose.test.yaml`), the frontend tests |
 | `scripts/lint` | gofmt, go vet, golangci-lint, govulncheck, the migration rules (`scripts/check-migrations.sh`), the script tests, the frontend type check and build |
-| `scripts/e2e` | the built image with pgvector and the fixture data: `/version` and the loopback `/healthz` report the SHA, the API and the frontend answer; upgrade from the image of `main` and back |
+| `scripts/e2e` | the built image with pgvector and the fixture data: `/version` and the loopback `/healthz` report the SHA, the API and the frontend answer, the Playwright tests in `e2e/` pass; upgrade from the image of `main` and back |
 
 CI runs `test`, `lint` and `e2e` on the head commit of every pull request,
 and `review` (Claude, rules in `REVIEW.md`); all four are required checks.

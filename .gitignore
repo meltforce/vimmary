@@ -40,6 +40,11 @@ web/node_modules/
 web/dist/
 web/tsconfig.tsbuildinfo
 
+# Browser tests
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
+
 # Internal docs
 plan.md
 internal_docs/
