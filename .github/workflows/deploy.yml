@@ -139,6 +139,10 @@ jobs:
 
   deploy:
     needs: build
+    # The implicit success() also checks gate, which build depends on and
+    # which a push skips; without this condition every push skips the deploy
+    # and the run still ends green.
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     environment: production
     permissions:
