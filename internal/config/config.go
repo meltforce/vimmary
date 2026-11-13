@@ -133,6 +133,11 @@ func Load(path string) (*Config, error) {
 	}
 
 	if cfg.Auth != nil {
+		// Personal access tokens read "vimmary_pat_…", so a leaked one names
+		// the service it belongs to.
+		if cfg.Auth.TokenPrefix == "" {
+			cfg.Auth.TokenPrefix = "vimmary"
+		}
 		if err := cfg.Auth.Validate(); err != nil {
 			return nil, fmt.Errorf("config validation: %w", err)
 		}

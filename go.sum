@@ -195,6 +195,8 @@ github.com/mdlayher/socket v0.7.0 h1:qVREPVwtUMg17pwvveQxpurq0PVisMxi3FGgpsorMYQ
 github.com/mdlayher/socket v0.7.0/go.mod h1:f7iKql2EK/rfsWYDKofKjk2Ig7I+6HQWdMIdn1tO4A4=
 github.com/meltforce/meltkit v0.3.0 h1:cic5C9gaJUlNFWMAl/Wu1gpC7gSB2sHNJDjSaZTmO8Q=
 github.com/meltforce/meltkit v0.3.0/go.mod h1:CYQKT7ZNW2yTZVvll0jbhz1KsZ2K2K6zXf+ZhIX+gDc=
+github.com/meltforce/meltkit v0.4.0 h1:+PEITWLt5caApuUXoyORHWZKB26zSWv0mFgZPInHfsk=
+github.com/meltforce/meltkit v0.4.0/go.mod h1:CYQKT7ZNW2yTZVvll0jbhz1KsZ2K2K6zXf+ZhIX+gDc=
 github.com/miekg/dns v1.1.73 h1:uhT8nJxmTrPJYClxVxTCX+CVn6qnzSiybRk72Z6DgrE=
 github.com/miekg/dns v1.1.73/go.mod h1:RW2Obtfd5NZHvOFe3zYG0W8koWOQtAzyHaLo8vASBuQ=
 github.com/mitchellh/go-ps v1.0.0 h1:i6ampVEEF4wQFF+bkYfwYgY+F/uYJDktmvLPf7qIgjc=

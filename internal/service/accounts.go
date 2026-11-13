@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/meltforce/meltkit/pkg/auth"
@@ -74,6 +75,9 @@ type Authenticator interface {
 	ListIdentities(ctx context.Context, userID int64) ([]auth.IdentityLink, error)
 	UnlinkIdentity(ctx context.Context, userID int64, issuer, subject string) error
 	DeleteUser(ctx context.Context, userID int64) error
+	CreateToken(ctx context.Context, userID int64, name string, scopes []string, expiresAt time.Time) (string, auth.Token, error)
+	ListTokens(ctx context.Context, userID int64) ([]auth.Token, error)
+	RevokeToken(ctx context.Context, userID, tokenID int64) error
 }
 
 // AuthBackend joins *auth.Auth with its store, which answers whether a user
@@ -504,7 +508,8 @@ func (a *Accounts) SetUserPassword(ctx context.Context, userID int, password str
 }
 
 // SetUserDisabled disables or re-enables a user. Disabling ends the user's
-// sessions; the admin cannot disable themselves.
+// sessions and revokes their personal access tokens, because the bearer path
+// does not consult the resolver; the admin cannot disable themselves.
 func (a *Accounts) SetUserDisabled(ctx context.Context, actorID, userID int, disabled bool) error {
 	if !a.Enabled() {
 		return ErrAuthDisabled
@@ -515,8 +520,25 @@ func (a *Accounts) SetUserDisabled(ctx context.Context, actorID, userID int, dis
 	if err := a.db.SetUserDisabled(ctx, userID, disabled); err != nil {
 		return err
 	}
-	if disabled {
-		return a.auth.RevokeUserSessions(ctx, int64(userID))
+	if !disabled {
+		return nil
+	}
+	if err := a.auth.RevokeUserSessions(ctx, int64(userID)); err != nil {
+		return err
+	}
+	return a.revokeUserTokens(ctx, userID)
+}
+
+// revokeUserTokens deletes every personal access token of the user.
+func (a *Accounts) revokeUserTokens(ctx context.Context, userID int) error {
+	tokens, err := a.auth.ListTokens(ctx, int64(userID))
+	if err != nil {
+		return err
+	}
+	for _, t := range tokens {
+		if err := a.auth.RevokeToken(ctx, int64(userID), t.ID); err != nil && !errors.Is(err, auth.ErrNotFound) {
+			return err
+		}
 	}
 	return nil
 }
@@ -536,7 +558,7 @@ func (a *Accounts) SetUserAdmin(ctx context.Context, actorID, userID int, admin 
 const builtInUserID = 1
 
 // DeleteUser removes a user that owns no library rows, with its sessions,
-// identities and password. A user with library rows can only be disabled.
+// identities, password and tokens. A user with library rows can only be disabled.
 func (a *Accounts) DeleteUser(ctx context.Context, actorID, userID int) error {
 	if !a.Enabled() {
 		return ErrAuthDisabled
@@ -681,6 +703,95 @@ func (a *Accounts) UnlinkIdentity(ctx context.Context, userID int, issuer, subje
 		return ErrAccountLastLogin
 	}
 	err = a.auth.UnlinkIdentity(ctx, int64(userID), issuer, subject)
+	if errors.Is(err, auth.ErrNotFound) {
+		return storage.ErrNotFound
+	}
+	return err
+}
+
+// TokenView is one of the user's personal access tokens; the secret is never
+// part of it.
+type TokenView struct {
+	auth.Token
+	Expired bool `json:"expired"`
+}
+
+// NewToken is a token just created, with its secret, which is shown once.
+type NewToken struct {
+	TokenView
+	Secret string `json:"token"`
+}
+
+// ListTokens returns the user's personal access tokens, newest first.
+func (a *Accounts) ListTokens(ctx context.Context, userID int) ([]TokenView, error) {
+	if !a.Enabled() {
+		return nil, ErrAuthDisabled
+	}
+	tokens, err := a.auth.ListTokens(ctx, int64(userID))
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	out := make([]TokenView, 0, len(tokens))
+	for _, t := range tokens {
+		out = append(out, tokenView(t, now))
+	}
+	slices.SortFunc(out, func(x, y TokenView) int { return y.CreatedAt.Compare(x.CreatedAt) })
+	return out, nil
+}
+
+func tokenView(t auth.Token, now time.Time) TokenView {
+	if t.Scopes == nil {
+		t.Scopes = []string{}
+	}
+	return TokenView{Token: t, Expired: !t.ExpiresAt.IsZero() && !t.ExpiresAt.After(now)}
+}
+
+// CreateToken creates a personal access token for a user who is not
+// disabled. A zero expiresAt means no expiry.
+func (a *Accounts) CreateToken(ctx context.Context, userID int, name string, scopes []string, expiresAt time.Time) (NewToken, error) {
+	if !a.Enabled() {
+		return NewToken{}, ErrAuthDisabled
+	}
+	disabled, err := a.IsDisabled(ctx, userID)
+	if err != nil {
+		return NewToken{}, err
+	}
+	if disabled {
+		return NewToken{}, fmt.Errorf("%w: the account is disabled", ErrAccountInvalid)
+	}
+	secret, t, err := a.auth.CreateToken(ctx, int64(userID), name, scopes, expiresAt)
+	if errors.Is(err, auth.ErrInvalidTokenRequest) {
+		return NewToken{}, fmt.Errorf("%w: %s", ErrAccountInvalid, strings.TrimPrefix(err.Error(), auth.ErrInvalidTokenRequest.Error()+": "))
+	}
+	if err != nil {
+		return NewToken{}, err
+	}
+	return NewToken{TokenView: tokenView(t, time.Now()), Secret: secret}, nil
+}
+
+// CreateTokenForLogin is the CLI's create-token: it creates a token for the
+// user with this login.
+func (a *Accounts) CreateTokenForLogin(ctx context.Context, login, name string, scopes []string, expiresAt time.Time) (NewToken, error) {
+	if !a.Enabled() {
+		return NewToken{}, ErrAuthDisabled
+	}
+	uid, err := a.db.GetUserIDByLogin(ctx, strings.TrimSpace(login))
+	if errors.Is(err, storage.ErrNotFound) {
+		return NewToken{}, fmt.Errorf("%w: no user with login %q", ErrAccountInvalid, login)
+	}
+	if err != nil {
+		return NewToken{}, err
+	}
+	return a.CreateToken(ctx, uid, name, scopes, expiresAt)
+}
+
+// RevokeToken deletes one of the user's own tokens.
+func (a *Accounts) RevokeToken(ctx context.Context, userID int, tokenID int64) error {
+	if !a.Enabled() {
+		return ErrAuthDisabled
+	}
+	err := a.auth.RevokeToken(ctx, int64(userID), tokenID)
 	if errors.Is(err, auth.ErrNotFound) {
 		return storage.ErrNotFound
 	}

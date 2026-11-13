@@ -68,11 +68,19 @@ Data model
   `auth:` block an instance with no admin falls back to the primary user
   (`storage.GetPrimaryUser`) and records it; with one, only the flag counts.
   Tagged tailnet nodes still resolve to the primary user through WhoIs.
-- With an `auth:` block, a request without a session falls back to WhoIs only
-  while tsnet runs; off the tailnet meltkit's identity middleware is
-  DevIdentity (user 1). For the same reason `/mcp` is not mounted with `auth:`
-  and Tailscale off, until it takes tokens. User 1 (`local`) is what MCP stdio
-  mode acts as and cannot be deleted.
+- With an `auth:` block, a request without a bearer token or session falls
+  back to WhoIs only while tsnet runs; off the tailnet meltkit's identity
+  middleware is DevIdentity (user 1). User 1 (`local`) is what MCP stdio mode
+  acts as and cannot be deleted.
+- Personal access tokens (`vimmary_pat_…`) exist only with `auth:`. `/mcp`
+  takes scope `mcp`, the REST group scope `api`; a session satisfies `api`
+  only, so a browser cookie on `/mcp` gets 401 off the tailnet. A bearer
+  request never reaches the WhoIs fallback. Without `auth:`, `/mcp` is
+  meltkit's WhoIs mount, unchanged.
+- The bearer path does not ask the resolver: disabling a user revokes their
+  tokens, and `refuseDisabledToken` refuses any that survived. Token requests
+  carry an empty `UserInfo`; login and name come from the user table. Machine
+  clients' tokens belong to the admin user (`vimmary auth create-token`).
 - The Atom feed route is outside the Tailscale auth middleware; the token in
   the path is the only access control, and an invalid one answers 404.
 

@@ -374,19 +374,13 @@ func runMCPStdio(svc *service.Service, log *slog.Logger) error {
 func buildHTTPServer(cfg *config.Config, svc *service.Service, store *storage.DB, authn *auth.Auth, log *slog.Logger) (*server.Server, error) {
 	srv := server.New(svc, store, Version, log, authn)
 
-	// /mcp authenticates by WhoIs until it takes tokens (meltkit v0.4.0).
-	// Without tsnet that middleware is DevIdentity, which would serve user 1
-	// to anyone on an instance that otherwise requires login, so /mcp is not
-	// mounted in that combination.
-	if authn != nil && !cfg.Tailscale.Enabled {
-		log.Warn("/mcp is not served: login is configured and Tailscale is off")
-	} else {
-		mcpSrv := vimmarymcp.New(svc, Version, log)
-		srv.SetMCP(mcpSrv, func(ctx context.Context, r *http.Request) context.Context {
-			uid, _ := middleware.UserIDFromContext(r)
-			return vimmarymcp.WithUserID(ctx, uid)
-		})
-	}
+	// With login configured, /mcp takes personal access tokens with scope
+	// mcp, and WhoIs only while tsnet runs; without it, WhoIs as before.
+	mcpSrv := vimmarymcp.New(svc, Version, log)
+	srv.SetMCP(mcpSrv, func(ctx context.Context, r *http.Request) context.Context {
+		uid, _ := middleware.UserIDFromContext(r)
+		return vimmarymcp.WithUserID(ctx, uid)
+	})
 
 	webDist, err := fs.Sub(vimmary.WebFS, "web/dist")
 	if err != nil {

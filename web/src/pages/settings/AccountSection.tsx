@@ -12,6 +12,7 @@ import {
 import { shortDate, clock } from "../../display.ts";
 import { useAuth } from "../../features.ts";
 import { Row, Section, SectionError, SectionLoading } from "./primitives.tsx";
+import TokensSection from "./TokensSection.tsx";
 
 /** Browser and system from a user agent, enough to tell sessions apart. */
 function describeAgent(ua: string): string {
@@ -193,6 +194,8 @@ export default function AccountSection() {
         )}
         {revoke.error ? <p className="field-error">{(revoke.error as Error).message}</p> : null}
       </Section>
+
+      <TokensSection />
     </>
   );
 }

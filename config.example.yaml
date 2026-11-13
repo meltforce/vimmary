@@ -58,6 +58,7 @@ cast2md:
 #   session_ttl: 720h
 #   trusted_proxies: []                       # CIDRs whose X-Forwarded-For is read
 #   initial_admin: ""                         # OIDC email or local username
+#   token_prefix: vimmary                     # personal access tokens read vimmary_pat_…
 #   oidc:
 #     issuer: "https://idp.example.ts.net"
 #     client_id: "vimmary"

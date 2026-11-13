@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/meltforce/meltkit/pkg/auth"
 	"github.com/meltforce/vimmary/internal/storage"
@@ -144,6 +146,8 @@ type fakeAuth struct {
 	identities   map[int64][]auth.IdentityLink
 	revoked      []int64
 	deleted      []int64
+	tokens       []auth.Token
+	nextToken    int64
 }
 
 func newFakeAuth() *fakeAuth {
@@ -205,6 +209,36 @@ func (f *fakeAuth) UnlinkIdentity(_ context.Context, uid int64, issuer, subject 
 func (f *fakeAuth) DeleteUser(_ context.Context, uid int64) error {
 	f.deleted = append(f.deleted, uid)
 	return nil
+}
+
+func (f *fakeAuth) CreateToken(_ context.Context, uid int64, name string, scopes []string, expiresAt time.Time) (string, auth.Token, error) {
+	if strings.TrimSpace(name) == "" || len(scopes) == 0 {
+		return "", auth.Token{}, fmt.Errorf("%w: name and scope are required", auth.ErrInvalidTokenRequest)
+	}
+	f.nextToken++
+	t := auth.Token{ID: f.nextToken, UserID: uid, Name: name, Scopes: scopes, CreatedAt: time.Now(), ExpiresAt: expiresAt}
+	f.tokens = append(f.tokens, t)
+	return fmt.Sprintf("vimmary_pat_%d", t.ID), t, nil
+}
+
+func (f *fakeAuth) ListTokens(_ context.Context, uid int64) ([]auth.Token, error) {
+	var out []auth.Token
+	for _, t := range f.tokens {
+		if t.UserID == uid {
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeAuth) RevokeToken(_ context.Context, uid, id int64) error {
+	for i, t := range f.tokens {
+		if t.ID == id && t.UserID == uid {
+			f.tokens = append(f.tokens[:i], f.tokens[i+1:]...)
+			return nil
+		}
+	}
+	return auth.ErrNotFound
 }
 
 func quietLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
@@ -433,8 +467,13 @@ func TestAdminActions(t *testing.T) {
 		return db, au, enabledAccounts(db, au, auth.MethodPassword)
 	}
 
-	t.Run("disable ends sessions, not on self", func(t *testing.T) {
+	t.Run("disable ends sessions and tokens, not on self", func(t *testing.T) {
 		db, au, a := newSetup()
+		for _, uid := range []int{1, 2, 2} {
+			if _, err := a.CreateToken(ctx, uid, "client", []string{auth.ScopeMCP}, time.Time{}); err != nil {
+				t.Fatal(err)
+			}
+		}
 		if err := a.SetUserDisabled(ctx, 1, 1, true); !errors.Is(err, ErrAccountSelf) {
 			t.Errorf("self disable: err = %v", err)
 		}
@@ -443,6 +482,12 @@ func TestAdminActions(t *testing.T) {
 		}
 		if !db.users[2].Disabled() || len(au.revoked) != 1 || au.revoked[0] != 2 {
 			t.Errorf("disabled=%v revoked=%v", db.users[2].Disabled(), au.revoked)
+		}
+		if len(au.tokens) != 1 || au.tokens[0].UserID != 1 {
+			t.Errorf("tokens after disabling user 2: %+v, want only user 1's", au.tokens)
+		}
+		if _, err := a.CreateToken(ctx, 2, "again", []string{auth.ScopeMCP}, time.Time{}); !errors.Is(err, ErrAccountInvalid) {
+			t.Errorf("token for disabled user: err = %v, want ErrAccountInvalid", err)
 		}
 	})
 
@@ -558,5 +603,53 @@ func TestSetPolicyValidates(t *testing.T) {
 	got, _ := a.Policy(ctx)
 	if got.Mode != PolicyOIDCAuto || len(got.EmailDomains) != 1 {
 		t.Errorf("Policy = %+v", got)
+	}
+}
+
+func TestTokens(t *testing.T) {
+	ctx := context.Background()
+	db := newFakeAccounts(
+		storage.UserAccount{ID: 1, Login: "local"},
+		storage.UserAccount{ID: 2, Login: "admin@example.com", IsAdmin: true},
+		storage.UserAccount{ID: 3, Login: "bob"},
+	)
+	au := newFakeAuth()
+	a := enabledAccounts(db, au, auth.MethodOIDC)
+
+	tok, err := a.CreateTokenForLogin(ctx, "admin@example.com", "tsmcp", []string{auth.ScopeMCP}, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.Secret == "" || tok.UserID != 2 || tok.Expired {
+		t.Errorf("CreateTokenForLogin = %+v", tok)
+	}
+	if _, err := a.CreateTokenForLogin(ctx, "ghost", "x", []string{auth.ScopeMCP}, time.Time{}); !errors.Is(err, ErrAccountInvalid) {
+		t.Errorf("unknown login: err = %v, want ErrAccountInvalid", err)
+	}
+	if _, err := a.CreateToken(ctx, 2, " ", []string{auth.ScopeMCP}, time.Time{}); !errors.Is(err, ErrAccountInvalid) {
+		t.Errorf("empty name: err = %v, want ErrAccountInvalid", err)
+	}
+	if _, err := a.CreateToken(ctx, 3, "bob's", []string{auth.ScopeAPI}, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := a.ListTokens(ctx, 2)
+	if err != nil || len(list) != 1 || list[0].Name != "tsmcp" {
+		t.Fatalf("ListTokens(2) = %+v, %v", list, err)
+	}
+	// Another user's token is not found, and stays.
+	if err := a.RevokeToken(ctx, 3, tok.ID); !errors.Is(err, storage.ErrNotFound) {
+		t.Errorf("revoke other user's token: err = %v, want ErrNotFound", err)
+	}
+	if err := a.RevokeToken(ctx, 2, tok.ID); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := a.ListTokens(ctx, 2); len(list) != 0 {
+		t.Errorf("tokens after revoke: %+v", list)
+	}
+
+	off := NewAccounts(db, quietLog())
+	if _, err := off.ListTokens(ctx, 2); !errors.Is(err, ErrAuthDisabled) {
+		t.Errorf("without login: err = %v, want ErrAuthDisabled", err)
 	}
 }

@@ -270,6 +270,17 @@ The MCP server is always available at `/mcp` (HTTP + SSE transport) and can also
 }
 ```
 
+With an `auth:` block, `/mcp` takes a personal access token with scope `mcp`
+(`Authorization: Bearer vimmary_pat_…`); tailnet callers without one are still
+identified by Tailscale while tsnet runs. A token comes from Settings → Account
+or from the command line:
+
+```bash
+vimmary --config config.yaml auth create-token --user <login> --name tsmcp --scope mcp [--expires 90d]
+```
+
+A token with scope `api` is accepted by the REST API under `/api/v1`.
+
 **Stdio (local development):**
 
 ```json

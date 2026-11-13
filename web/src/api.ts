@@ -300,7 +300,7 @@ export interface Features {
   auth_enabled: boolean;
   /** How this request was authenticated: "password" or "oidc" for a session,
    * "tailscale" for the WhoIs fallback, empty without application login. */
-  auth_method: "" | "password" | "oidc" | "tailscale";
+  auth_method: "" | "password" | "oidc" | "tailscale" | "token";
 }
 
 export function fetchFeatures(): Promise<Features> {
@@ -754,6 +754,37 @@ export function changePassword(current: string, password: string): Promise<{ sta
 
 export function unlinkIdentity(issuer: string, subject: string): Promise<{ status: string }> {
   return sendJSON("POST", "/api/v1/account/identities/unlink", { issuer, subject });
+}
+
+export type TokenScope = "mcp" | "api";
+
+/** A personal access token. Zero times ("0001-01-01T00:00:00Z") mean never
+ * used or no expiry. */
+export interface AccessToken {
+  id: number;
+  name: string;
+  scopes: TokenScope[];
+  created_at: string;
+  expires_at: string;
+  last_used_at: string;
+  expired: boolean;
+}
+
+export function listTokens(): Promise<{ tokens: AccessToken[] }> {
+  return fetchJSON("/api/v1/account/tokens");
+}
+
+/** Creates a token; `token` in the answer is the secret, returned this once. */
+export function createToken(
+  name: string,
+  scopes: TokenScope[],
+  expiresInDays: number,
+): Promise<AccessToken & { token: string }> {
+  return sendJSON("POST", "/api/v1/account/tokens", { name, scopes, expires_in_days: expiresInDays });
+}
+
+export function revokeToken(id: number): Promise<{ status: string }> {
+  return sendJSON("DELETE", `/api/v1/account/tokens/${id}`);
 }
 
 export interface ManagedUser {

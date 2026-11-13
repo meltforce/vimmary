@@ -243,6 +243,20 @@ auth:
 	if cfg.Auth == nil || cfg.Auth.SessionTTL.Hours() != 48 || !cfg.Auth.OIDC.LinkByEmail || cfg.Auth.InitialAdmin != "root" {
 		t.Errorf("Auth = %+v", cfg.Auth)
 	}
+	if cfg.Auth.TokenPrefix != "vimmary" {
+		t.Errorf("TokenPrefix = %q, want the default vimmary", cfg.Auth.TokenPrefix)
+	}
+
+	cfg, err = load(t, "auth:\n  base_url: http://localhost:8080\n  methods: [password]\n  token_prefix: vim2\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Auth.TokenPrefix != "vim2" {
+		t.Errorf("TokenPrefix = %q, want vim2", cfg.Auth.TokenPrefix)
+	}
+	if _, err := load(t, "auth:\n  base_url: http://localhost:8080\n  methods: [password]\n  token_prefix: Bad-Prefix\n"); err == nil {
+		t.Error("invalid token_prefix accepted")
+	}
 
 	if _, err := load(t, "auth:\n  base_url: http://vimmary.example.com\n  methods: [password]\n"); err == nil {
 		t.Error("http base_url on a non-loopback host accepted")
