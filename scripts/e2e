@@ -18,6 +18,12 @@
 #
 # E2E_UPGRADE=0 skips steps 1 and 3.
 #
+# E2E_NATIVE=1 is for a machine that cannot build the image (a cloud session:
+# docker build fails on the egress proxy's certificate). It builds the
+# frontend and the binary, starts them against Postgres from
+# compose.test.yaml with the fixtures, and runs the HTTP checks and the
+# Playwright tests. There is no upgrade test; CI runs it.
+#
 #   BUILD_SHA=<sha> scripts/e2e     (default: git rev-parse HEAD)
 set -euo pipefail
 # shellcheck source=scripts/lib/common.sh
@@ -69,6 +75,60 @@ if [[ -n "${E2E_BASE_URL:-}" ]]; then
 fi
 
 export BUILD_SHA="${BUILD_SHA:-$(git rev-parse HEAD)}"
+
+if [[ "${E2E_NATIVE:-0}" == 1 ]]; then
+  tmp=$(mktemp -d)
+  db=(docker compose --progress quiet -f compose.test.yaml -p "vimmary-e2e-native-$$")
+  app_pid=""
+  # shellcheck disable=SC2329 # invoked by the EXIT trap
+  native_cleanup() {
+    local status=$?
+    if [[ -n "$app_pid" ]]; then
+      kill "$app_pid" 2>/dev/null || true
+      wait "$app_pid" 2>/dev/null || true
+    fi
+    if [[ $status -ne 0 && -f "$tmp/vimmary.log" ]]; then
+      tail -n 80 "$tmp/vimmary.log" >&2
+    fi
+    "${db[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
+    rm -rf "$tmp"
+    exit "$status"
+  }
+  trap native_cleanup EXIT
+
+  step "starting the database (compose.test.yaml)"
+  "${db[@]}" up -d --wait --quiet-pull
+  db_addr=$("${db[@]}" port db 5432)
+
+  step "building the frontend and the binary"
+  ensure_npm_deps
+  (cd web && npm run build) >/dev/null
+  go build -ldflags "-X main.Version=${BUILD_SHA}" -o "$tmp/vimmary" ./cmd/vimmary
+
+  # The loopback health listener is the container's; off here, so a second
+  # instance on this machine does not collide on 8081.
+  { cat e2e/vimmary.yaml; echo 'health_addr: ""'; } >"$tmp/config.yaml"
+  port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+  base_url="http://127.0.0.1:${port}"
+
+  step "starting vimmary on ${base_url}"
+  VIMMARY_SERVER_HOST=127.0.0.1 VIMMARY_SERVER_PORT="$port" \
+    VIMMARY_DB_HOST=127.0.0.1 VIMMARY_DB_PORT="${db_addr##*:}" VIMMARY_POSTGRES_PASSWORD=vimmary \
+    "$tmp/vimmary" --config "$tmp/config.yaml" >"$tmp/vimmary.log" 2>&1 &
+  app_pid=$!
+  for _ in $(seq 1 120); do
+    curl -fsS --max-time 2 "$base_url/version" 2>/dev/null | grep -q "\"$BUILD_SHA\"" && break
+    kill -0 "$app_pid" 2>/dev/null || fail "vimmary exited during startup"
+    sleep 1
+  done
+  expect_json "$base_url/version" ".build == \"$BUILD_SHA\" and .status == \"ok\"" "/version reports ${BUILD_SHA:0:12}"
+  http_checks "$base_url"
+  browser_tests "$base_url"
+  echo
+  echo "e2e ok (native): ${BUILD_SHA}"
+  exit 0
+fi
+
 base_ref="${E2E_BASE_REF:-origin/main}"
 upgrade="${E2E_UPGRADE:-1}"
 project="vimmary-e2e-$$"
