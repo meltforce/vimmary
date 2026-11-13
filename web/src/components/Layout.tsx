@@ -1,8 +1,11 @@
 import { ReactNode, useEffect, useRef } from "react";
 import { Link, NavLink } from "react-router-dom";
-import { usePodcastsEnabled } from "../features.ts";
+import { useAuth, usePodcastsEnabled } from "../features.ts";
 import { useIsDesktop } from "../hooks/useMediaQuery.ts";
 import { useInboxCount } from "../hooks/useInboxCount.ts";
+import { useSignOut } from "../hooks/useSignOut.ts";
+import { LogOutIcon } from "./icons.tsx";
+import Toast, { useToast } from "./Toast.tsx";
 
 /**
  * Publishes the nav's height as `--nav-h` so anything that pins below it — the
@@ -39,6 +42,14 @@ export default function Layout({ children }: { children: ReactNode }) {
   const isDesktop = useIsDesktop();
   const inbox = useInboxCount();
   const navRef = useNavHeight();
+  const auth = useAuth();
+  const signOut = useSignOut();
+  const toast = useToast();
+
+  // Only a session can be ended. A request recognised through Tailscale (or an
+  // instance without login) is signed in again by WhoIs on the next request,
+  // so a button there would do nothing.
+  const canSignOut = auth.enabled && (auth.method === "password" || auth.method === "oidc");
 
   // Without cast2md there is no second content type, so the entry is absent
   // rather than disabled.
@@ -74,9 +85,26 @@ export default function Layout({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
         </div>
+        {canSignOut ? (
+          <button
+            type="button"
+            className="nav-signout"
+            aria-label="Sign out"
+            title="Sign out"
+            disabled={signOut.isPending}
+            onClick={() =>
+              signOut.mutate(undefined, {
+                onError: (err) => toast.show(`Signing out failed: ${(err as Error).message}`),
+              })
+            }
+          >
+            <LogOutIcon size={16} />
+          </button>
+        ) : null}
       </nav>
 
       <main className="flex-1 flex flex-col">{children}</main>
+      <Toast message={toast.message} onDismiss={toast.dismiss} />
     </div>
   );
 }

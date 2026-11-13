@@ -4,13 +4,13 @@ import {
   changePassword,
   fetchAccount,
   fetchLoginMethods,
-  logout,
   revokeSession,
   unlinkIdentity,
   type AuthSession,
 } from "../../api.ts";
 import { shortDate, clock } from "../../display.ts";
 import { useAuth } from "../../features.ts";
+import { useSignOut } from "../../hooks/useSignOut.ts";
 import { Row, Section, SectionError, SectionLoading } from "./primitives.tsx";
 import TokensSection from "./TokensSection.tsx";
 
@@ -56,10 +56,7 @@ export default function AccountSection() {
   const methods = useQuery({ queryKey: ["auth", "methods"], queryFn: fetchLoginMethods, retry: false });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["account"] });
 
-  const signOut = useMutation({
-    mutationFn: logout,
-    onSuccess: () => window.location.assign("/login?signed_out=1"),
-  });
+  const signOut = useSignOut();
   const revoke = useMutation({
     mutationFn: (s: AuthSession) => revokeSession(s.id),
     onSuccess: (_, s) => (s.current ? window.location.assign("/login?signed_out=1") : refresh()),
