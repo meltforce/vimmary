@@ -1,0 +1,97 @@
+# Build every push to a claude/** branch and deploy it to the preview host
+# (knox), so the change can be looked at in a browser before it merges.
+#
+# build never joins the tailnet. deploy runs in the environment `preview`,
+# which admits only claude/** branches: there the job's OIDC token is
+# accepted by a second Tailscale federated identity, which issues only
+# tag:gh-preview. That node reaches knox as `deploy` and nothing else, and
+# cannot reach production (tag:gh-deploy and its identity belong to
+# `production`, which admits only main). knox runs the app with fixture data
+# and reaches nothing in the tailnet (homelab repo,
+# configuration/pipeline-deploy, preview_targets). vimmary runs there without
+# Tailscale and without an auth block, with seed_fixtures: true.
+#
+# One preview slot per app: the newest push wins, older runs are cancelled.
+name: preview
+
+on:
+  push:
+    branches: ["claude/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview
+  cancel-in-progress: true
+
+env:
+  APP: vimmary
+  TARGET: knox.coydog-fence.ts.net
+  URL: https://knox.coydog-fence.ts.net:8091/
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Build image
+        run: |
+          docker build --build-arg "VERSION=$GITHUB_SHA" -t "$APP-local:$GITHUB_SHA" .
+          docker save "$APP-local:$GITHUB_SHA" | gzip > image.tar.gz
+          ls -lh image.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image
+          path: image.tar.gz
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: preview
+      url: ${{ env.URL }}
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: image
+
+      - name: Join the tailnet
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ vars.TS_CLIENT_ID }}
+          audience: ${{ vars.TS_AUDIENCE }}
+          tags: tag:gh-preview
+
+      - name: Deploy
+        run: |
+          set -o pipefail
+          gunzip -c image.tar.gz \
+            | ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                  -o ConnectTimeout=30 "deploy@$TARGET" "$APP $GITHUB_SHA" 2>&1 \
+            | tee deploy.log
+
+      - name: Report
+        if: always()
+        env:
+          RESULT: ${{ job.status }}
+        run: |
+          if [ "$RESULT" = success ]; then
+            line="preview: \`${GITHUB_SHA:0:7}\` is live at $URL"
+          else
+            line="preview: deploy of \`${GITHUB_SHA:0:7}\` failed ([run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID))"
+          fi
+          echo "$line" >> "$GITHUB_STEP_SUMMARY"
+          pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls?head=${GITHUB_REPOSITORY_OWNER}:${GITHUB_REF_NAME}&state=open" --jq '.[0].number // empty' || true)
+          if [ -n "$pr" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/issues/$pr/comments" -f body="$line" >/dev/null
+          fi

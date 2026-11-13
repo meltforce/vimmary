@@ -1,0 +1,84 @@
+# Required checks test, lint, e2e. They run on the PR head commit, so the
+# result describes exactly what the session pushed. Each job calls one entry
+# script; the setup actions only provide the toolchain.
+name: ci
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg16
+        env:
+          POSTGRES_USER: vimmary
+          POSTGRES_PASSWORD: vimmary
+          POSTGRES_DB: vimmary
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vimmary -d vimmary"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgres://vimmary:vimmary@localhost:5432/vimmary?sslmode=disable
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: scripts/test
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # The prebuilt binary; go install spends about two minutes compiling it.
+      # The version matches GOLANGCI_LINT_VERSION in scripts/setup.
+      - uses: golangci/golangci-lint-action@v9.3.0
+        with:
+          version: v2.15.0
+          install-only: true
+      - run: scripts/lint
+        env:
+          LINT_BASE_REF: origin/${{ github.base_ref }}
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - run: scripts/e2e
+        env:
+          BUILD_SHA: ${{ github.event.pull_request.head.sha }}
+          E2E_BASE_REF: origin/${{ github.base_ref }}

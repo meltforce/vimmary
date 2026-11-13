@@ -1,8 +1,7 @@
 # Standalone deployment example.
 #
-# `docker-compose.yml` in this repo is the *development* stack: it pulls the
-# `:edge` image from a tailnet-internal registry and is not reachable from
-# outside. This file is the one to copy if you just want to run vimmary.
+# `docker-compose.yml` in this repo is the *development* stack: it builds the
+# working tree. This file is the one to copy if you just want to run vimmary.
 #
 #   curl -O https://raw.githubusercontent.com/meltforce/vimmary/main/compose.example.yml
 #   curl -o config.yaml https://raw.githubusercontent.com/meltforce/vimmary/main/config.example.yaml

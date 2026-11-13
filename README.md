@@ -96,8 +96,7 @@ curl -LO https://raw.githubusercontent.com/meltforce/vimmary/main/compose.exampl
 ```
 
 It runs `ghcr.io/meltforce/vimmary:latest` alongside pgvector. (`docker-compose.yml`
-in the repo is the *development* stack — it pulls `:edge` from a
-tailnet-internal registry and is not usable from outside.)
+in the repo is the *development* stack — it builds the working tree.)
 
 ### 3. Create `config.yaml`
 
@@ -157,7 +156,7 @@ Open `http://localhost:8080` and start adding videos. Migrations run automatical
 # Start only the database
 docker compose up db
 
-# Run the backend (requires Go 1.23+)
+# Run the backend (Go version from go.mod)
 go run ./cmd/vimmary --config config.yaml
 
 # Run the frontend with hot-reload (separate terminal)
@@ -316,6 +315,28 @@ docker buildx build --platform linux/amd64 -t vimmary:local .
 | `resummarize`     | Regenerate summary with different detail level   |
 | `stats`           | Aggregate statistics, optionally per source      |
 
+## Checks
+
+| Command | What it checks |
+|---|---|
+| `scripts/setup` | installs the toolchain (Go, golangci-lint, govulncheck, Node, npm dependencies); runs at session start |
+| `scripts/test` | Go tests with the race detector, the storage and service tests against Postgres + pgvector (`TEST_DATABASE_URL`, or `compose.test.yaml`), the frontend tests |
+| `scripts/lint` | gofmt, go vet, golangci-lint, govulncheck, the migration rules (`scripts/check-migrations.sh`), the script tests, the frontend type check and build |
+| `scripts/e2e` | the built image with pgvector and the fixture data: `/version` and the loopback `/healthz` report the SHA, the API and the frontend answer; upgrade from the image of `main` and back |
+
+CI runs `test`, `lint` and `e2e` on the head commit of every pull request,
+and `review` (Claude, rules in `REVIEW.md`); all four are required checks.
+A merge to `main` deploys to production without a further step; production
+compose and `config.yaml` live in the homelab repo.
+
+Every push to a `claude/**` branch is built and deployed to the preview host
+(`preview.yml`, environment `preview`): https://knox.coydog-fence.ts.net:8091/,
+tailnet only, fixture data (`seed_fixtures: true`). The newest push wins; the
+PR gets a comment with the result.
+
+A tag `v*` publishes `ghcr.io/meltforce/vimmary:<tag>` and `:latest` and a
+GitHub release (`release.yml`).
+
 ## Repository documents
 
 | File | Holds |
@@ -330,6 +351,3 @@ docker buildx build --platform linux/amd64 -t vimmary:local .
 - [meltkit](https://github.com/meltforce/meltkit) — shared Go library (db, config, secrets, middleware, MCP)
 - [totalrecall](https://github.com/meltforce/totalrecall) — personal knowledge system (architectural blueprint)
 
----
-
-Source-of-truth development happens on a self-hosted Forgejo (private); [github.com/meltforce/vimmary](https://github.com/meltforce/vimmary) is the public mirror.

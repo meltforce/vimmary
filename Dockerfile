@@ -2,9 +2,9 @@
 FROM node:26.13.1-alpine AS frontend
 WORKDIR /app/web
 COPY web/package.json web/package-lock.json* ./
-# The cache mounts in this file survive between builds on the persistent buildx
-# builder of ci-workflows (@v5 and later), so a dependency change re-resolves
-# rather than re-downloads, and Go compiles only what changed.
+# The cache mounts in this file survive between builds on one Docker host, so
+# a local rebuild re-resolves rather than re-downloads; a CI runner starts
+# without them.
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY web/ .
 RUN npm run build
@@ -18,9 +18,9 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
 COPY --from=frontend /app/web/dist ./web/dist
 
-# CI passes VERSION=edge-<sha>. Without it linked into the binary, every build
-# reports "dev" and nothing downstream can tell which commit is serving — which
-# is what a deploy gate has to compare against.
+# deploy.yml and preview.yml pass the full commit SHA, release.yml the tag.
+# /version and the loopback /healthz report it as "build"; pipeline-deploy
+# waits for the SHA on /version. Without it every build reports "dev".
 ARG VERSION=dev
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \

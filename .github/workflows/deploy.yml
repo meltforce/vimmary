@@ -1,0 +1,134 @@
+# Build the merge commit and deploy it to production (smokey).
+#
+# build runs code from the repo and never joins the tailnet. deploy runs in
+# the environment `production`, which admits only main: only there does the
+# job get an OIDC token that the Tailscale federated identity accepts, and
+# with it an ephemeral node tagged tag:gh-deploy. That node may do one thing:
+# SSH as `deploy` to smokey, whose login shell accepts `<app> <sha>` and
+# hands the image on stdin to pipeline-deploy (homelab repo,
+# configuration/pipeline-deploy). Its exit code is the result.
+#
+# workflow_dispatch with `sha` redeploys a commit, e.g. to roll back further
+# than the previous image.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Full commit SHA to deploy (default: the head of main)"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  APP: vimmary
+  TARGET: smokey.coydog-fence.ts.net
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      # scripts/resolve-sha.sh is tested in the lint check
+      # (scripts/resolve-sha_test.sh).
+      - name: Resolve commit
+        id: sha
+        env:
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          sha=$(scripts/resolve-sha.sh "$INPUT_SHA" "$GITHUB_SHA")
+          git checkout --detach "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      # VERSION is linked into the binary; /version reports it as "build",
+      # which is what pipeline-deploy waits for.
+      - name: Build image
+        env:
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          docker build --build-arg "VERSION=$SHA" -t "$APP-local:$SHA" .
+          docker save "$APP-local:$SHA" | gzip > image.tar.gz
+          ls -lh image.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image
+          path: image.tar.gz
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+      issues: write
+      pull-requests: write
+    env:
+      SHA: ${{ needs.build.outputs.sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: image
+
+      - name: Join the tailnet
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ vars.TS_CLIENT_ID }}
+          audience: ${{ vars.TS_AUDIENCE }}
+          tags: tag:gh-deploy
+
+      - name: Deploy
+        id: deploy
+        run: |
+          set -o pipefail
+          gunzip -c image.tar.gz \
+            | ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                  -o ConnectTimeout=30 "deploy@$TARGET" "$APP $SHA" 2>&1 \
+            | tee deploy.log
+
+      - name: Report live
+        if: success()
+        run: |
+          pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/pulls" --jq '.[0].number // empty')
+          if [ -n "$pr" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/issues/$pr/comments" \
+              -f body="live: \`${SHA:0:7}\` is deployed to production ([run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID))." >/dev/null
+          fi
+          echo "live: ${SHA:0:7}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report failure
+        if: failure()
+        run: |
+          pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/pulls" --jq '.[0].number // empty' || true)
+          {
+            echo "The deploy of \`$SHA\` failed. Production runs the previous image if there was one (the deploy script rolls back on a failed health check); a migration that ran stays applied."
+            echo
+            [ -n "$pr" ] && echo "Merged through #$pr." && echo
+            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            echo "Last lines of the deploy log:"
+            echo
+            echo '```'
+            tail -n 60 deploy.log 2>/dev/null || echo "(no deploy log: the job failed before the deploy step)"
+            echo '```'
+            echo
+            echo "This issue is the task for the next session: find the cause, fix it in a PR."
+          } > issue.md
+          gh api "repos/$GITHUB_REPOSITORY/issues" \
+            -f title="deploy failed: ${SHA:0:7}" -F "body=@issue.md" -f 'labels[]=deploy-failed' --jq .html_url

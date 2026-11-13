@@ -5,7 +5,10 @@ transcribed by cast2md into searchable LLM summaries (Postgres + pgvector; web
 UI, MCP endpoint, Atom feeds). It is not a transcription service: livestreams,
 Shorts and playlists are out of scope, and it never downloads podcast audio.
 
-Run the `verify` skill (`.claude/skills/verify/`) before committing.
+`scripts/setup`, `scripts/test`, `scripts/lint` and `scripts/e2e` are the
+checks; CI, the hooks in `.claude/settings.json` and sessions call only these.
+Run `scripts/lint` and `scripts/test` before committing, `scripts/e2e` as well
+for a change to startup, config, migrations or the Dockerfile.
 
 ## Gotchas
 
@@ -13,9 +16,15 @@ Build and deploy
 - `web/dist/` is generated and embedded (`//go:embed`); `go build` fails on a
   fresh checkout. Build the frontend or `mkdir -p web/dist && touch
   web/dist/.gitkeep`.
-- `docker-compose.yml` is the development stack (tailnet registry, `:edge`);
-  `compose.example.yml` is the public one (`ghcr.io`). Neither follows the
-  other.
+- `docker-compose.yml` is the development stack: it builds the working tree,
+  and its database on port 5434 is what the storage tests use without
+  `TEST_DATABASE_URL`. `compose.example.yml` is the public one (`ghcr.io`,
+  from `release.yml`). Neither follows the other.
+- A merge to `main` deploys to smokey through `deploy.yml` and
+  `pipeline-deploy` (homelab), which waits up to 120 s for
+  `http://127.0.0.1:8080/version` inside the container to report the full
+  commit SHA: the image is built with `VERSION=<sha>`, a tag with
+  `VERSION=<tag>`.
 - **No network call before the HTTP listener, except tsnet.** `run()` in
   `cmd/vimmary/main.go` is the init order, and every `defer` stays in `run`.
   A secret fetched over the tailnet at startup once left the container up with
@@ -27,8 +36,6 @@ Build and deploy
   vimmary never talks to setec although the package is linked through meltkit.
 - `meltkit` is a separate repo: a change there is a release there plus a bump
   here.
-- Forgejo is canonical; `github.com/meltforce/vimmary` is an asynchronous push
-  mirror, which is why the CI release job waits for the tag to appear there.
 
 Code rules
 - Business logic lives in `internal/service/` and is called from both MCP and
@@ -57,6 +64,9 @@ Data model
   fields address every such row. `UpdateVideoStatus` does not fan out.
 - The summary prompt and model preference are service-wide but stored per
   user; Karakeep key, webhook token and feed token stay private.
+- `seed_fixtures: true` writes `internal/storage/fixtures/preview.json` for
+  user 1 when `videos` is empty. The preview and e2e run with it, without
+  `auth:` and without Tailscale.
 - Every embedding carries its model (`videos.embedding_model`); a changed
   `embedding.provider` removes rows from semantic search until
   `reembedStale` has redone them.
@@ -126,10 +136,21 @@ Decisions and incidents cited by date are in `archive/`.
 
 ## Git
 
-`main` is the only long-lived branch: commit and push to `main` yourself once a
-change is complete and verified, no PR. This overrides the harness default of
-branching first. Stage paths explicitly, never `git add -A` — parallel sessions
-share this checkout.
+GitHub `meltforce/vimmary` is canonical. Work on a `claude/*` branch, open a
+PR from the template and enable auto-merge (squash) when opening it; it merges
+once `test`, `lint`, `e2e` and `review` are green, and a merge deploys to
+production without a further step. No push to `main`. Stage paths explicitly,
+never `git add -A` — parallel sessions share this checkout.
+
+Every push to a `claude/*` branch is deployed to the preview
+(https://knox.coydog-fence.ts.net:8091/, tailnet only, fixture data); the
+result is a comment on the PR and in `gh run list --workflow preview.yml`.
+
+The production compose file and `config.yaml` live in the homelab repo. A PR
+that needs a new variable, config key or volume names it in the PR text;
+without it the health check fails and the deploy rolls back. A rollback
+(`gh workflow run deploy.yml -f sha=<earlier main sha>`) resets only the
+image, so the previous image has to start on the new schema.
 
 ## Documents
 
