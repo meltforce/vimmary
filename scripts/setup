@@ -4,9 +4,9 @@
 # dependencies of web/, and jq. Runs from the SessionStart hook in
 # .claude/settings.json; quiet when everything is in place.
 #
-# On Linux it installs what is missing or at another version. On other
-# systems it installs only into GOPATH and node_modules and reports a
-# mismatched Go or Node instead of replacing it.
+# On Linux as root it installs a missing Go and a missing or mismatched Node;
+# Go switches versions itself (below). On other systems it installs only into
+# GOPATH and node_modules and reports a mismatched Node instead of replacing it.
 #
 # In a cloud session Docker is installed but its daemon is not running; as
 # root, the script starts it, so scripts/test can start compose.test.yaml.
@@ -29,34 +29,40 @@ case "$(uname -m)" in
   *) say "unsupported architecture $(uname -m)"; exit 1 ;;
 esac
 
-# Go
-have_go=$(command -v go >/dev/null 2>&1 && go env GOVERSION || echo none)
-if [[ "$have_go" != "go${GO_VERSION}" ]]; then
+# Go. Any go >= 1.21 runs the version go.mod names by itself (GOTOOLCHAIN=auto:
+# fetched from proxy.golang.org and checked against sum.golang.org), so an
+# installed go of another version stays. Only a machine without go downloads
+# one, from go.dev, which not every egress allowlist reaches.
+if ! command -v go >/dev/null 2>&1; then
   if $linux && $root; then
-    say "installing go ${GO_VERSION} (found: ${have_go})"
+    say "installing go ${GO_VERSION}"
     curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${arch}.tar.gz" -o /tmp/go.tgz
     rm -rf /usr/local/go
     tar -C /usr/local -xzf /tmp/go.tgz
     rm /tmp/go.tgz
     export PATH="/usr/local/go/bin:$PATH"
-  elif [[ "$have_go" == none ]]; then
+  else
     say "go is not installed; install go ${GO_VERSION}"
     exit 1
-  else
-    say "found ${have_go}, go.mod names ${GO_VERSION}; GOTOOLCHAIN=auto fetches it for go commands"
   fi
+fi
+have_go=$(go env GOVERSION)
+if [[ "$have_go" != "go${GO_VERSION}" ]]; then
+  say "go runs as ${have_go}, go.mod names ${GO_VERSION} (GOTOOLCHAIN=$(go env GOTOOLCHAIN))"
 fi
 gobin="$(go env GOPATH)/bin"
 export PATH="${gobin}:$PATH"
 
-# golangci-lint and govulncheck
-if ! golangci-lint version 2>/dev/null | grep -q "version ${GOLANGCI_LINT_VERSION#v} "; then
+# golangci-lint and govulncheck, built by the go that runs in this module:
+# go install pkg@version ignores go.mod and would otherwise switch only to the
+# tool's own minimum, and golangci-lint refuses a module newer than its build.
+if ! golangci-lint version 2>/dev/null | grep -q "version ${GOLANGCI_LINT_VERSION#v} built with ${have_go} "; then
   say "installing golangci-lint ${GOLANGCI_LINT_VERSION}"
-  go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
+  GOTOOLCHAIN="$have_go" go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
 fi
 if ! command -v govulncheck >/dev/null 2>&1; then
   say "installing govulncheck"
-  go install golang.org/x/vuln/cmd/govulncheck@latest
+  GOTOOLCHAIN="$have_go" go install golang.org/x/vuln/cmd/govulncheck@latest
 fi
 
 # Node
@@ -64,10 +70,17 @@ have_node=$(command -v node >/dev/null 2>&1 && node --version || echo none)
 if [[ "$have_node" != "v${NODE_VERSION}" ]]; then
   if $linux && $root; then
     say "installing node ${NODE_VERSION} (found: ${have_node})"
-    curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" -o /tmp/node.txz
-    tar -C /usr/local --strip-components=1 -xJf /tmp/node.txz
-    rm /tmp/node.txz
-    hash -r
+    if curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" -o /tmp/node.txz; then
+      tar -C /usr/local --strip-components=1 -xJf /tmp/node.txz
+      rm /tmp/node.txz
+      hash -r
+    elif [[ "$have_node" == none ]]; then
+      say "nodejs.org is unreachable and node is not installed"
+      exit 1
+    else
+      # CI builds with .node-version; a session continues on the installed node.
+      say "nodejs.org is unreachable; continuing with node ${have_node}"
+    fi
   elif [[ "$have_node" == none ]]; then
     say "node is not installed; install node ${NODE_VERSION}"
     exit 1
