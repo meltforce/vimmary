@@ -37,9 +37,9 @@ cast2md ──poll/deep-link─▶│                     ┌──────�
 - **Podcast backfill** — subscribing summarizes the 3 newest episodes by default; per feed you can pull the last N, summarize the whole back catalogue, or ask cast2md to transcribe the rest of the feed. None of it disturbs the running poll.
 - **MCP server** — 5 tools for searching and browsing summaries of both kinds
 - **RSS feeds** — three Atom feeds per user (videos, podcasts, both), with per-user feed tokens for authentication
-- **Web UI** — React frontend embedded in the Go binary (Videos, Podcasts, Stats, Settings pages)
-- **Tailscale auth** — zero-config authentication via tsnet
-- **Login** (optional `auth:` block) — sessions with local passwords, an OIDC provider, or both; user management and account policy in Settings
+- **Web UI** — React frontend embedded in the Go binary (Videos, Inbox, Podcasts, Channels, Stats, Settings)
+- **Tailscale identity** — on a tailnet (tsnet), the calling device's Tailscale login is the account; no password
+- **Login** (optional `auth:` block) — sessions with local passwords, an OIDC provider, or both; works without Tailscale. User management, account policy and personal access tokens in Settings
 - **Multi-user support** — per-user video libraries (same YouTube video can be bookmarked by multiple users independently)
 - **Per-user Karakeep integration** — each user configures their own API key and webhook token via the Settings page
 - **Bidirectional sync** — summaries written back to Karakeep notes; bookmark deletions in Karakeep remove videos from vimmary
@@ -69,7 +69,7 @@ worker. Summaries are primarily English with occasional German.
 | Embeddings  | OpenAI `text-embedding-3-large` at 1024 dims via Aperture, or Mistral `mistral-embed` (configurable) |
 | Summaries   | Claude API (directly or via Aperture) or Mistral (configurable) |
 | Auth        | Tailscale tsnet; optional login via meltkit `pkg/auth` |
-| Secrets     | API keys in the database, DB password from the environment |
+| Secrets     | LLM API keys in the database (Settings → LLM); DB password and OIDC client secret from the environment or `config.yaml` |
 | Transcripts | YouTube InnerTube API (native Go)     |
 | Search      | Hybrid: keyword + semantic with RRF   |
 | MCP         | mcp-go, HTTP + stdio transports       |
@@ -80,8 +80,11 @@ worker. Summaries are primarily English with occasional German.
 ### Prerequisites
 
 - Docker and Docker Compose
-- A **Mistral API key** for embeddings ([console.mistral.ai](https://console.mistral.ai))
-- A **Claude API key** or **Mistral API key** for summaries
+- A **Mistral API key** for embeddings ([console.mistral.ai](https://console.mistral.ai)), unless embeddings run through Aperture (`embedding.provider: openai`)
+- A **Claude API key** or the Mistral key for summaries
+
+The keys are not part of the configuration: they are entered in **Settings →
+LLM** once vimmary runs, stored in the database and used without a restart.
 
 ### 1. Create a project directory
 
@@ -113,8 +116,13 @@ database:
   name: vimmary
   user: vimmary
 
+# tsnet is on by default and would wait for a Tailscale login. This setup
+# serves plain HTTP on server.port instead; see "Access and login".
+tailscale:
+  enabled: false
+
 summary:
-  provider: "claude"          # "claude" or "mistral"
+  provider: "claude"          # "claude" or "mistral"; Settings → LLM overrides it
 
 # Optional, for a tailnet with a Tailscale Aperture gateway. Claude then needs
 # no API key, and embedding.provider "openai" becomes available.
@@ -128,17 +136,18 @@ youtube:
   sub_langs: [en]             # caption preference after the spoken language
 
 secrets:
-  postgres_password: "vimmary"
-  mistral_api_key: "your-mistral-key"   # required (embeddings)
-  claude_api_key: "your-claude-key"     # required if provider is "claude"
+  postgres_password: "vimmary"   # or VIMMARY_POSTGRES_PASSWORD
 ```
+
+`config.example.yaml` in the repo lists every key with its default.
 
 Host, port and database settings can be overridden from the environment:
 `VIMMARY_SERVER_HOST`, `VIMMARY_SERVER_PORT`, `VIMMARY_DB_HOST`,
 `VIMMARY_DB_PORT`, `VIMMARY_DB_NAME`, `VIMMARY_DB_USER`, `VIMMARY_DB_SSLMODE`,
-`VIMMARY_TS_ENABLED`, `VIMMARY_TS_HOSTNAME`, `VIMMARY_TS_STATE_DIR`. Secrets are
-read from `config.yaml` or from the configured secret backend, not from the
-environment.
+`VIMMARY_TS_ENABLED`, `VIMMARY_TS_HOSTNAME`, `VIMMARY_TS_STATE_DIR`. The two
+secrets read at startup, `postgres_password` and `oidc_client_secret`, come
+from `VIMMARY_POSTGRES_PASSWORD` / `VIMMARY_OIDC_CLIENT_SECRET` first and from
+`secrets:` in `config.yaml` otherwise.
 
 ### 4. Start
 
@@ -148,7 +157,84 @@ echo "POSTGRES_PASSWORD=vimmary" > .env
 docker compose -f compose.example.yml up -d
 ```
 
-Open `http://localhost:8080` and start adding videos. Migrations run automatically on startup.
+Open `http://localhost:8080`, enter the API keys under **Settings → LLM**, and
+start adding videos. Migrations run automatically on startup.
+
+This configuration has **no access control**: without Tailscale and without an
+`auth:` block every request acts as the built-in user `local`, who is admin.
+That is fine on `localhost`; the compose file publishes port 8080 on all
+interfaces, so anything reachable beyond the machine needs a login (next
+section) or Tailscale.
+
+## Access and login
+
+Who a request belongs to depends on two settings: whether vimmary runs as a
+Tailscale node (`tailscale.enabled`, default `true`) and whether
+`config.yaml` has an `auth:` block.
+
+| Tailscale | `auth:` | Who is the user |
+|---|---|---|
+| on | — | The calling device's Tailscale login (WhoIs). Each tailnet user gets their own library; nothing to sign in to. |
+| on | yes | A session (password or OIDC) or a personal access token; a tailnet request without either still falls back to WhoIs. |
+| off | yes | A session or a personal access token. Anything else gets 401, and the web UI goes to `/login`. |
+| off | — | Nobody is checked: every request is user `local` (user 1). Local development and single-user `localhost` only. |
+
+With Tailscale on, vimmary listens only on the tailnet (`https://<hostname>.<tailnet>.ts.net`,
+TLS from Tailscale); `server.port` is not opened. Without it, vimmary serves
+plain HTTP on `server.host:server.port`; put a TLS-terminating reverse proxy in
+front for anything but `localhost`.
+
+### Password login
+
+```yaml
+auth:
+  base_url: "https://vimmary.example.com"   # public origin; http only on localhost
+  methods: [password]
+  # session_ttl: 720h
+  # trusted_proxies: ["10.0.0.0/8"]         # proxies whose X-Forwarded-For is read
+```
+
+The first admin is created on the command line; the password is prompted for,
+or read from stdin:
+
+```bash
+docker compose -f compose.example.yml exec app ./vimmary --config /data/config.yaml auth create-user --admin <username>
+```
+
+Further users are created by an admin under **Settings → Users**.
+
+### OIDC login
+
+```yaml
+auth:
+  base_url: "https://vimmary.example.com"
+  methods: [oidc]                 # or [oidc, password]
+  initial_admin: "you@example.com"  # the email of the first admin
+  oidc:
+    issuer: "https://idp.example.com"
+    client_id: "vimmary"
+    client_secret: ""             # or VIMMARY_OIDC_CLIENT_SECRET
+    display_name: "Single sign-on"
+```
+
+Register `<base_url>/auth/oidc/callback` as the redirect URI at the provider.
+The first login of `initial_admin` creates the admin account. Whether a first
+login of anyone else creates an account (optionally limited to email domains)
+or needs an admin to create it first is the account policy under **Settings →
+Users**. With OIDC as the only method, `/login` hands over to the provider
+directly.
+
+### Sessions and tokens
+
+The nav carries a sign-out button whenever the browser has a session; Settings
+→ Account lists the sessions of every browser, the linked logins and the
+password. A request recognised through Tailscale has no session, so there is
+nothing to sign out of.
+
+Personal access tokens (`vimmary_pat_…`) exist only with an `auth:` block.
+They carry a scope: `api` for the REST API under `/api/v1`, `mcp` for `/mcp`.
+A token is created under Settings → Account or with `vimmary auth create-token`
+(see [MCP configuration](#mcp-configuration)).
 
 ### Local development
 
@@ -165,19 +251,19 @@ cd web && npm install && npm run dev
 
 ## Setup Karakeep integration
 
-1. Open vimmary's **Settings** page (Tailscale auth required)
+1. Open vimmary's **Settings → Karakeep** page
 2. Enter your **Karakeep API key** (from Karakeep Settings → API Keys)
 3. Copy the generated **Webhook URL** and **Bearer Token**
 4. In Karakeep Settings → Webhooks, create webhooks for `created` and `deleted` events
-5. If Karakeep runs in Docker and vimmary is on Tailscale, add `CRAWLER_ALLOWED_INTERNAL_HOSTNAMES=.your-tailnet.ts.net` to Karakeep's env to allow webhook delivery
+5. Karakeep must be able to reach the webhook URL. The URL authenticates with its bearer token, not with Tailscale or a login. If Karakeep runs in Docker and vimmary is on Tailscale, add `CRAWLER_ALLOWED_INTERNAL_HOSTNAMES=.your-tailnet.ts.net` to Karakeep's env to allow webhook delivery
 
 ## Submit a video without Karakeep
 
-`GET /submit?url=<video URL>` queues a video directly. The route sits behind the
-Tailscale identity middleware, so the calling device's Tailscale login is the
-whole authentication — no token, and the summary lands on that user's row. It
+`GET /submit?url=<video URL>` queues a video for the signed-in user and
 answers a redirect to the list, which makes it usable as a share-sheet target,
-an iOS Shortcut, or a bookmarklet:
+an iOS Shortcut, or a bookmarklet. It authenticates like the web UI: the
+browser's session, or the device's Tailscale login on a tailnet. Without
+either, it redirects to `/login` and comes back afterwards.
 
 ```
 https://vimmary.<tailnet>.ts.net/submit?url=https://youtu.be/dQw4w9WgXcQ
@@ -251,7 +337,7 @@ An RSS reader cannot filter, which is why the split lives in the URL rather than
 3. Subscribe in your RSS reader
 4. Optional: append `?limit=100` to fetch more than the default 50 entries (max 200)
 
-Each user has their own feed token. The token is the only authentication — no Tailscale auth is needed for the feed URL, so it works with any RSS reader.
+Each user has their own feed token. The token is the only authentication — the feed URL needs neither Tailscale nor a login, so it works with any RSS reader.
 
 ## MCP configuration
 
@@ -269,10 +355,11 @@ The MCP server is always available at `/mcp` (HTTP + SSE transport) and can also
 }
 ```
 
-With an `auth:` block, `/mcp` takes a personal access token with scope `mcp`
-(`Authorization: Bearer vimmary_pat_…`); tailnet callers without one are still
-identified by Tailscale while tsnet runs. A token comes from Settings → Account
-or from the command line:
+Without an `auth:` block, `/mcp` identifies the caller by Tailscale like the
+web UI. With one, it takes a personal access token with scope `mcp`
+(`Authorization: Bearer vimmary_pat_…`); a browser session does not count, and
+tailnet callers without a token are still identified by Tailscale while tsnet
+runs. A token comes from Settings → Account or from the command line:
 
 ```bash
 vimmary --config config.yaml auth create-token --user <login> --name tsmcp --scope mcp [--expires 90d]
@@ -293,7 +380,7 @@ A token with scope `api` is accepted by the REST API under `/api/v1`.
 }
 ```
 
-Authentication is handled via Tailscale (HTTP mode) or defaults to user ID 1 (stdio mode).
+Stdio mode has no authentication and acts as user 1 (`local`).
 
 ## Build
 
