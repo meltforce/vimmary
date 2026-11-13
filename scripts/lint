@@ -45,6 +45,7 @@ step "script tests"
 scripts/check-migrations_test.sh
 scripts/resolve-sha_test.sh
 scripts/renovate-only_test.sh
+scripts/e2e-native_test.sh
 
 step "frontend type check and build"
 ensure_npm_deps

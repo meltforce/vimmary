@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Run vimmary's checks before committing — scripts/lint (gofmt, vet, golangci-lint, govulncheck, migration rules, script tests, frontend build) and scripts/test (race tests against Postgres + pgvector, frontend tests), scripts/e2e for startup, config, migration or Dockerfile changes. Triggers — "verifizier das", "läuft der build", "prüf ob das durchgeht", "run the checks", "verify before commit", "does this still build". Also reach for it after changing anything under internal/, web/ or migrations/. Not for running the app — that is the run skill.
+description: Run vimmary's checks before committing — scripts/lint (gofmt, vet, golangci-lint, govulncheck, migration rules, script tests, frontend build) and scripts/test (race tests against Postgres + pgvector, frontend tests), scripts/e2e for startup, config, migration, Dockerfile or web/ changes. Triggers — "verifizier das", "läuft der build", "prüf ob das durchgeht", "run the checks", "verify before commit", "does this still build". Also reach for it after changing anything under internal/, web/ or migrations/. Not for running the app — that is the run skill.
 ---
 
 # Verify
@@ -11,7 +11,8 @@ The checks are the entry scripts CI runs; run them from the repo root.
 scripts/setup   # toolchain and npm dependencies, if the SessionStart hook has not run
 scripts/lint
 scripts/test
-scripts/e2e     # for a change to startup, config, migrations or the Dockerfile
+scripts/e2e     # for a change to startup, config, migrations, the Dockerfile or web/
+E2E_NATIVE=1 scripts/e2e   # the same without the image, where docker build fails (cloud session)
 ```
 
 - `scripts/test` starts `compose.test.yaml` (pgvector) when

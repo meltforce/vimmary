@@ -8,7 +8,9 @@ Shorts and playlists are out of scope, and it never downloads podcast audio.
 `scripts/setup`, `scripts/test`, `scripts/lint` and `scripts/e2e` are the
 checks; CI, the hooks in `.claude/settings.json` and sessions call only these.
 Run `scripts/lint` and `scripts/test` before committing, `scripts/e2e` as well
-for a change to startup, config, migrations or the Dockerfile.
+for a change to startup, config, migrations, the Dockerfile or `web/`. Where
+`docker build` fails (a cloud session), `E2E_NATIVE=1 scripts/e2e` runs it
+without the image and without the upgrade test.
 
 ## Gotchas
 
