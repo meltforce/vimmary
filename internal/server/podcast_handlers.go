@@ -53,6 +53,8 @@ func (s *Server) handleGetFeatures(w http.ResponseWriter, r *http.Request) {
 		"user_id":      uid,
 		"login":        login,
 		"display_name": displayName,
+		"auth_enabled": s.auth != nil,
+		"auth_method":  s.authMethod(r),
 	})
 }
 

@@ -16,7 +16,7 @@ import { Row, Section } from "./primitives.tsx";
  * works that way now; the chain is gone.
  *
  * It renders nothing at all for a non-admin — not a disabled card, not an
- * explanation. Service-wide keys are the primary user's business.
+ * explanation. Service-wide keys are the admin's business.
  */
 export default function LLMSection() {
   const queryClient = useQueryClient();
@@ -131,7 +131,7 @@ export default function LLMSection() {
   return (
     <Section
       title="LLM providers"
-      subtitle="Service-wide and visible to the primary user only. The Mistral key also serves podcast transcription, and embeddings when the embedding model is mistral-embed; the Anthropic key may be left empty."
+      subtitle="Service-wide and visible to admins only. The Mistral key also serves podcast transcription, and embeddings when the embedding model is mistral-embed; the Anthropic key may be left empty."
     >
       {keyRow("mistral", "Mistral key", llm.mistral_configured, false)}
       {llm.anthropic_gateway ? (

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -96,6 +95,7 @@ type Service struct {
 	searchCfg       config.SearchConfig
 	summaryCfg      config.SummaryConfig
 	gateway         *LLMGateway
+	accounts        *Accounts
 	log             *slog.Logger
 	queue           chan processJob
 	episodeQueue    chan episodeJob
@@ -139,6 +139,7 @@ func New(
 		searchCfg:       searchCfg,
 		summaryCfg:      summaryCfg,
 		gateway:         gateway,
+		accounts:        NewAccounts(db, log),
 		log:             log,
 		queue:           make(chan processJob, 100),
 		episodeQueue:    make(chan episodeJob, 200),
@@ -402,37 +403,19 @@ func (s *Service) SetSummaryProvider(ctx context.Context, provider string) error
 	return s.db.SetAppSetting(ctx, storage.SettingSummaryProvider, provider)
 }
 
-// IsAdmin reports whether the user may change the service-wide settings.
-//
-// The rule is "you are the primary user" — the first login containing `@`, by
-// creation time. That is not a new notion of owner: meltkit's identity
-// middleware already resolves every tagged device to exactly this user, so
-// reusing it keeps one answer to who owns the instance instead of two that can
-// disagree.
-//
-// When no primary user exists, the caller is admin. That state means no
-// personal Tailscale login has ever reached this instance, so there is no owner
-// to protect the settings from — it is a local run against the seeded `local`
-// user, where the alternative is a deployment whose keys cannot be configured
-// at all. It cannot occur behind Tailscale: the middleware rejects a tagged
-// device with "no registered user yet" until a personal device has logged in,
-// and that login creates the primary user. The rule therefore tightens by
-// itself the moment there is someone to tighten it for.
 // Identity returns the login and display name of the signed-in user.
 func (s *Service) Identity(ctx context.Context, userID int) (login, displayName string, err error) {
 	return s.db.GetUserIdentity(ctx, userID)
 }
 
+// IsAdmin reports whether the user may change the service-wide settings and
+// manage users; Accounts.IsAdmin carries the rule.
 func (s *Service) IsAdmin(ctx context.Context, userID int) (bool, error) {
-	primaryID, _, err := s.db.GetPrimaryUser(ctx)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return true, nil
-		}
-		return false, err
-	}
-	return userID == primaryID, nil
+	return s.accounts.IsAdmin(ctx, userID)
 }
+
+// Accounts returns account management.
+func (s *Service) Accounts() *Accounts { return s.accounts }
 
 // getSummarizer builds the summarizer for the given provider name. If provider
 // is empty, the configured default is used.

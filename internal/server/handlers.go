@@ -513,7 +513,7 @@ func (s *Server) handleSetKarakeepKey(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
 }
 
-// mustAdmin resolves the caller and requires that they are the primary user.
+// mustAdmin resolves the caller and requires that they are admin.
 // It answers 404 rather than 403 for a non-admin, so the response does not
 // confirm that an admin-only surface exists — the same reasoning as the Atom
 // feed token in server.go.

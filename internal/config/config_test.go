@@ -196,3 +196,58 @@ server:
 		})
 	}
 }
+
+func TestLoad_Auth(t *testing.T) {
+	base := `
+database:
+  host: localhost
+  port: 5432
+  name: vimmary
+  user: vimmary
+tailscale:
+  enabled: false
+server:
+  port: 8080
+`
+	load := func(t *testing.T, extra string) (*Config, error) {
+		t.Helper()
+		f := filepath.Join(t.TempDir(), "config.yaml")
+		if err := os.WriteFile(f, []byte(base+extra), 0644); err != nil {
+			t.Fatal(err)
+		}
+		return Load(f)
+	}
+
+	cfg, err := load(t, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Auth != nil {
+		t.Errorf("Auth = %+v without an auth block, want nil", cfg.Auth)
+	}
+
+	cfg, err = load(t, `
+auth:
+  base_url: http://localhost:8080
+  methods: [password, oidc]
+  session_ttl: 48h
+  initial_admin: root
+  oidc:
+    issuer: https://idp.example.com
+    client_id: vimmary
+    link_by_email: true
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Auth == nil || cfg.Auth.SessionTTL.Hours() != 48 || !cfg.Auth.OIDC.LinkByEmail || cfg.Auth.InitialAdmin != "root" {
+		t.Errorf("Auth = %+v", cfg.Auth)
+	}
+
+	if _, err := load(t, "auth:\n  base_url: http://vimmary.example.com\n  methods: [password]\n"); err == nil {
+		t.Error("http base_url on a non-loopback host accepted")
+	}
+	if _, err := load(t, "auth:\n  base_url: https://vimmary.example.com\n  methods: [oidc]\n"); err == nil {
+		t.Error("oidc without issuer accepted")
+	}
+}

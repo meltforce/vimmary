@@ -17,3 +17,7 @@ import "errors"
 // POST /videos/{id}/resummarize on a missing row answered 500 where the handler
 // intended 404.
 var ErrNotFound = errors.New("not found")
+
+// ErrConflict is what an insert returns when a unique key is taken, and what
+// a delete returns when other rows still reference the row.
+var ErrConflict = errors.New("conflict")

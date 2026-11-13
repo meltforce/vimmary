@@ -46,7 +46,27 @@ cast2md:
   max_per_poll: 25            # episodes queued per feed per tick
   timeout_seconds: 60         # transcript fetch; metadata calls use 15 s
 
-# The database password is the only secret vimmary resolves at startup.
+# Optional application login (meltkit pkg/auth). Without this block the
+# identity comes from Tailscale WhoIs alone. With it, a session is required;
+# a request without one falls back to WhoIs only while Tailscale is enabled.
+# The first admin of a password instance:
+#   vimmary -config config.yaml auth create-user --admin <username>
+# (the password is read from stdin or prompted for).
+# auth:
+#   base_url: "https://vimmary.example.com"   # http only on a loopback host
+#   methods: [password]                       # and/or oidc
+#   session_ttl: 720h
+#   trusted_proxies: []                       # CIDRs whose X-Forwarded-For is read
+#   initial_admin: ""                         # OIDC email or local username
+#   oidc:
+#     issuer: "https://idp.example.ts.net"
+#     client_id: "vimmary"
+#     client_secret: ""   # or VIMMARY_OIDC_CLIENT_SECRET / secrets.oidc_client_secret
+#     display_name: "Tailscale"
+#     link_by_email: false
+
+# The database password is the only secret vimmary needs at startup; with OIDC
+# login the client secret is resolved the same way.
 # VIMMARY_POSTGRES_PASSWORD in the environment takes precedence over the value
 # here, which is what a deployment sets; the literal below is for local runs.
 secrets:

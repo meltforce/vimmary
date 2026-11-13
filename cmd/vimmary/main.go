@@ -14,6 +14,7 @@ import (
 	"time"
 
 	mcpserver "github.com/mark3labs/mcp-go/server"
+	"github.com/meltforce/meltkit/pkg/auth"
 	mkconfig "github.com/meltforce/meltkit/pkg/config"
 	"github.com/meltforce/meltkit/pkg/db"
 	"github.com/meltforce/meltkit/pkg/middleware"
@@ -39,7 +40,7 @@ var Version = "dev"
 // therefore spread over the named functions below in the order they must run:
 //
 //	newLogger -> config.Load -> startTailscale -> openDatabase -> buildService
-//	-> buildHTTPServer -> openListener -> health listener -> serve
+//	-> buildAuth -> buildHTTPServer -> openListener -> health listener -> serve
 //
 // run() is that sequence and nothing else. Two properties are load-bearing:
 //
@@ -53,7 +54,18 @@ func main() {
 	configPath := flag.String("config", "config.yaml", "path to config file")
 	migrateOnly := flag.Bool("migrate-only", false, "run migrations and exit")
 	mcpMode := flag.Bool("mcp", false, "run as MCP server over stdio")
+	flag.Usage = usage
 	flag.Parse()
+
+	// A subcommand is an administrative one-off against the database; it
+	// logs to stderr so its own output stays readable.
+	if flag.NArg() > 0 {
+		if err := runCommand(*configPath, flag.Args(), newLogger(true)); err != nil {
+			fmt.Fprintln(os.Stderr, "vimmary:", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	log := newLogger(*mcpMode)
 	log.Info("vimmary starting", "version", Version)
@@ -113,7 +125,12 @@ func run(configPath string, migrateOnly, mcpMode bool, log *slog.Logger) error {
 	// Embed rows whose embedding is missing or from another model.
 	svc.StartEmbeddingBackfill(pollCtx)
 
-	srv, err := buildHTTPServer(svc, store, log)
+	authn, err := buildAuth(cfg, store, svc, tsnetHTTPClient, log)
+	if err != nil {
+		return err
+	}
+
+	srv, err := buildHTTPServer(cfg, svc, store, authn, log)
 	if err != nil {
 		return err
 	}
@@ -214,6 +231,12 @@ func openDatabase(cfg *config.Config, migrateOnly, mcpMode bool, log *slog.Logge
 		if err := db.RunMigrations(dsn, migrationsFS); err != nil {
 			return nil, false, fmt.Errorf("migration: %w", err)
 		}
+		// The auth tables have their own version table, so they run with or
+		// without an auth block and do not interleave with vimmary's
+		// numbering.
+		if err := auth.RunMigrations(dsn); err != nil {
+			return nil, false, fmt.Errorf("auth migration: %w", err)
+		}
 		log.Info("migrations applied")
 	}
 
@@ -291,6 +314,41 @@ func buildService(cfg *config.Config, store *storage.DB, tsnetHTTPClient *http.C
 		cfg.Search, cfg.Summary, gateway, log)
 }
 
+// buildAuth sets up application login when the config has an `auth:` block,
+// and returns nil otherwise. It makes no network request: pkg/auth discovers
+// the OIDC provider on first use, and the client secret comes from the
+// environment or the config file.
+//
+// The OIDC provider (tsidp) sits inside the tailnet, so its requests take the
+// tsnet transport like cast2md's.
+func buildAuth(cfg *config.Config, store *storage.DB, svc *service.Service, tsnetHTTPClient *http.Client, log *slog.Logger) (*auth.Auth, error) {
+	if cfg.Auth == nil {
+		return nil, nil
+	}
+	ac := *cfg.Auth
+	if ac.HasMethod(auth.MethodOIDC) {
+		resolver := secrets.NewResolver(cfg.Secrets, "VIMMARY")
+		if v, err := resolver.ResolveSecret("oidc_client_secret"); err == nil && v != "" {
+			ac.OIDC.ClientSecret = v
+		}
+	}
+	return newAuth(ac, store, svc.Accounts(), log,
+		auth.WithHTTPClient(&http.Client{Transport: tsnetHTTPClient.Transport, Timeout: 30 * time.Second}))
+}
+
+// newAuth builds pkg/auth with the accounts as resolver and attaches it to
+// them.
+func newAuth(ac auth.Config, store *storage.DB, accounts *service.Accounts, log *slog.Logger, opts ...auth.Option) (*auth.Auth, error) {
+	pg := auth.NewPgxStore(store.Pool)
+	a, err := auth.New(ac, pg, accounts, append([]auth.Option{auth.WithLogger(log)}, opts...)...)
+	if err != nil {
+		return nil, fmt.Errorf("auth: %w", err)
+	}
+	accounts.Attach(service.AuthBackend{Auth: a, Store: pg}, ac.Methods)
+	log.Info("application login enabled", "methods", ac.Methods, "base_url", ac.BaseURL)
+	return a, nil
+}
+
 // runMCPStdio serves the MCP protocol over stdin and stdout and returns when
 // the peer closes the stream. There is no HTTP listener and no poller in this
 // mode; the identity middleware has no request to read, so every call is the
@@ -313,14 +371,22 @@ func runMCPStdio(svc *service.Service, log *slog.Logger) error {
 // endpoint and the embedded frontend. It opens no listener — that is
 // openListener, and keeping the two apart is what lets the health listener come
 // after everything is mounted.
-func buildHTTPServer(svc *service.Service, store *storage.DB, log *slog.Logger) (*server.Server, error) {
-	srv := server.New(svc, store, Version, log)
+func buildHTTPServer(cfg *config.Config, svc *service.Service, store *storage.DB, authn *auth.Auth, log *slog.Logger) (*server.Server, error) {
+	srv := server.New(svc, store, Version, log, authn)
 
-	mcpSrv := vimmarymcp.New(svc, Version, log)
-	srv.SetMCP(mcpSrv, func(ctx context.Context, r *http.Request) context.Context {
-		uid, _ := middleware.UserIDFromContext(r)
-		return vimmarymcp.WithUserID(ctx, uid)
-	})
+	// /mcp authenticates by WhoIs until it takes tokens (meltkit v0.4.0).
+	// Without tsnet that middleware is DevIdentity, which would serve user 1
+	// to anyone on an instance that otherwise requires login, so /mcp is not
+	// mounted in that combination.
+	if authn != nil && !cfg.Tailscale.Enabled {
+		log.Warn("/mcp is not served: login is configured and Tailscale is off")
+	} else {
+		mcpSrv := vimmarymcp.New(svc, Version, log)
+		srv.SetMCP(mcpSrv, func(ctx context.Context, r *http.Request) context.Context {
+			uid, _ := middleware.UserIDFromContext(r)
+			return vimmarymcp.WithUserID(ctx, uid)
+		})
+	}
 
 	webDist, err := fs.Sub(vimmary.WebFS, "web/dist")
 	if err != nil {

@@ -13,6 +13,11 @@ const (
 	SettingMistralAPIKey   = "mistral_api_key"
 	SettingAnthropicAPIKey = "anthropic_api_key"
 	SettingSummaryProvider = "summary_provider"
+	// SettingAccountPolicy is "closed" or "oidc_auto"; unset means closed.
+	SettingAccountPolicy = "account_policy"
+	// SettingAccountDomains is a comma-separated email-domain allowlist for
+	// oidc_auto; empty allows every domain.
+	SettingAccountDomains = "account_email_domains"
 )
 
 // GetLLMKey returns a summary provider's API key, empty when unset. It is the

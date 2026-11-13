@@ -1,5 +1,5 @@
 import { useTheme, type ThemePreference } from "../../theme.tsx";
-import { useIdentity, useIsAdmin, usePodcastsEnabled } from "../../features.ts";
+import { useAuth, useIdentity, useIsAdmin, usePodcastsEnabled } from "../../features.ts";
 import { Row, Section } from "./primitives.tsx";
 
 const THEMES: { value: ThemePreference; label: string }[] = [
@@ -18,11 +18,16 @@ export default function IdentitySection() {
   const isAdmin = useIsAdmin();
   const podcasts = usePodcastsEnabled();
   const { userId, login, displayName } = useIdentity();
+  const auth = useAuth();
 
   return (
     <Section
       title="Identity"
-      subtitle="Who you are to vimmary, and how it looks in this browser. Access is decided by Tailscale; there is no password to set here."
+      subtitle={
+        auth.enabled
+          ? "Who you are to vimmary, and how it looks in this browser. Logins and sessions are under Account."
+          : "Who you are to vimmary, and how it looks in this browser. Access is decided by Tailscale; there is no password to set here."
+      }
     >
       {/* The account comes first: it is the answer to "whose library is this",
           and the role below only qualifies it. Falls back to the numeric ID,
@@ -31,7 +36,13 @@ export default function IdentitySection() {
       {displayName && displayName !== login && (
         <Row label="Name" value={displayName} />
       )}
-      <Row label="Role" value={isAdmin ? "Primary user" : "Member"} />
+      <Row label="Role" value={isAdmin ? "Admin" : "Member"} />
+      {auth.enabled ? (
+        <Row
+          label="Signed in by"
+          value={auth.method === "password" ? "Password" : auth.method === "oidc" ? "Single sign-on" : "Tailscale"}
+        />
+      ) : null}
       <Row
         label="Podcasts"
         value={podcasts ? "cast2md is configured" : "cast2md is not configured"}

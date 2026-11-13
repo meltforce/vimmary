@@ -34,6 +34,8 @@ export function useFeatures(): Features {
       user_id: 0,
       login: "",
       display_name: "",
+      auth_enabled: false,
+      auth_method: "",
     }
   );
 }
@@ -58,10 +60,10 @@ export function usePodcastsEnabled(): boolean {
 }
 
 /**
- * useIsAdmin reports whether the signed-in user is the primary user. It gates
- * the service-wide LLM settings, which everyone else does not see at all — the
- * server answers 404 on those routes for them, so rendering the section would
- * only produce a broken panel.
+ * useIsAdmin reports whether the signed-in user is an admin. It gates the
+ * service-wide LLM settings and user management, which everyone else does not
+ * see at all — the server answers 404 on those routes for them, so rendering
+ * the section would only produce a broken panel.
  */
 export function useIsAdmin(): boolean {
   return useFeatures().is_admin;
@@ -71,11 +73,17 @@ export function useIsAdmin(): boolean {
  * useIdentity reports which account the server resolved this request to.
  *
  * It is shown rather than merely used because vimmary is multi-user and the
- * identity arrives from Tailscale without any visible sign-in: on a shared
+ * identity can arrive from Tailscale without any visible sign-in: on a shared
  * device nothing on screen said whose library was being displayed, and every
  * row hangs off this user ID.
  */
 export function useIdentity(): { userId: number; login: string; displayName: string } {
   const f = useFeatures();
   return { userId: f.user_id, login: f.login, displayName: f.display_name };
+}
+
+/** How the session was authenticated, and whether application login exists. */
+export function useAuth(): { enabled: boolean; method: Features["auth_method"] } {
+  const f = useFeatures();
+  return { enabled: f.auth_enabled, method: f.auth_method };
 }

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 
+	"github.com/meltforce/meltkit/pkg/auth"
 	mkconfig "github.com/meltforce/meltkit/pkg/config"
 )
 
@@ -26,6 +27,10 @@ type Config struct {
 	Cast2MD       Cast2MDConfig                `yaml:"cast2md"`
 	Aperture      ApertureConfig               `yaml:"aperture"`
 	Embedding     EmbeddingConfig              `yaml:"embedding"`
+	// Auth switches on application login (sessions, passwords, OIDC). Absent,
+	// identity comes from Tailscale WhoIs alone. oidc.client_secret may be
+	// left empty and supplied as the secret `oidc_client_secret`.
+	Auth *auth.Config `yaml:"auth"`
 }
 
 // ApertureConfig names the tailnet's AI gateway. When BaseURL is set, Claude
@@ -125,6 +130,12 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Cast2MD.Enabled && cfg.Cast2MD.BaseURL == "" {
 		return nil, fmt.Errorf("config validation: cast2md.base_url is required when cast2md is enabled")
+	}
+
+	if cfg.Auth != nil {
+		if err := cfg.Auth.Validate(); err != nil {
+			return nil, fmt.Errorf("config validation: %w", err)
+		}
 	}
 
 	switch cfg.Embedding.Provider {

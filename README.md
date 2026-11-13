@@ -39,6 +39,7 @@ cast2md ──poll/deep-link─▶│                     ┌──────�
 - **RSS feeds** — three Atom feeds per user (videos, podcasts, both), with per-user feed tokens for authentication
 - **Web UI** — React frontend embedded in the Go binary (Videos, Podcasts, Stats, Settings pages)
 - **Tailscale auth** — zero-config authentication via tsnet
+- **Login** (optional `auth:` block) — sessions with local passwords, an OIDC provider, or both; user management and account policy in Settings
 - **Multi-user support** — per-user video libraries (same YouTube video can be bookmarked by multiple users independently)
 - **Per-user Karakeep integration** — each user configures their own API key and webhook token via the Settings page
 - **Bidirectional sync** — summaries written back to Karakeep notes; bookmark deletions in Karakeep remove videos from vimmary
@@ -67,7 +68,7 @@ worker. Summaries are primarily English with occasional German.
 | Database    | PostgreSQL 16 + pgvector              |
 | Embeddings  | OpenAI `text-embedding-3-large` at 1024 dims via Aperture, or Mistral `mistral-embed` (configurable) |
 | Summaries   | Claude API (directly or via Aperture) or Mistral (configurable) |
-| Auth        | Tailscale tsnet                       |
+| Auth        | Tailscale tsnet; optional login via meltkit `pkg/auth` |
 | Secrets     | API keys in the database, DB password from the environment |
 | Transcripts | YouTube InnerTube API (native Go)     |
 | Search      | Hybrid: keyword + semantic with RRF   |

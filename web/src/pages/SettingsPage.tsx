@@ -1,8 +1,10 @@
 import { useSearchParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.tsx";
 import { useIsDesktop } from "../hooks/useMediaQuery.ts";
-import { useIsAdmin, usePodcastsEnabled } from "../features.ts";
+import { useAuth, useIsAdmin, usePodcastsEnabled } from "../features.ts";
+import AccountSection from "./settings/AccountSection.tsx";
 import IdentitySection from "./settings/IdentitySection.tsx";
+import UsersSection from "./settings/UsersSection.tsx";
 import KarakeepSection from "./settings/KarakeepSection.tsx";
 import LLMSection from "./settings/LLMSection.tsx";
 import SummariesSection from "./settings/SummariesSection.tsx";
@@ -10,7 +12,7 @@ import RSSSection from "./settings/RSSSection.tsx";
 import PodcastSection from "./settings/PodcastSection.tsx";
 
 /**
- * Settings is six unrelated concerns, and each one owns its queries, its state
+ * Settings is a set of unrelated concerns, and each one owns its queries, its state
  * and its own error rendering.
  *
  * That ownership is the point of the split. The page used to bundle four
@@ -31,15 +33,19 @@ export default function SettingsPage() {
   const isDesktop = useIsDesktop();
   const isAdmin = useIsAdmin();
   const podcasts = usePodcastsEnabled();
+  const auth = useAuth();
   const [params, setParams] = useSearchParams();
 
   const tabs = [
     { id: "identity", label: "Identity", render: () => <IdentitySection /> },
+    // Login, sessions and user management exist only with application login.
+    ...(auth.enabled ? [{ id: "account", label: "Account", render: () => <AccountSection /> }] : []),
     { id: "karakeep", label: "Karakeep", render: () => <KarakeepSection /> },
     { id: "feed", label: "Feed", render: () => <RSSSection /> },
     { id: "summaries", label: "Summaries", render: () => <SummariesSection /> },
-    // Service-wide keys: the server answers 404 to everyone but the primary user.
+    // Service-wide keys and users: the server answers 404 to everyone but an admin.
     ...(isAdmin ? [{ id: "llm", label: "LLM", render: () => <LLMSection /> }] : []),
+    ...(isAdmin && auth.enabled ? [{ id: "users", label: "Users", render: () => <UsersSection /> }] : []),
     // Absent rather than disabled when cast2md is not configured.
     ...(podcasts ? [{ id: "podcasts", label: "Podcasts", render: () => <PodcastSection /> }] : []),
   ];

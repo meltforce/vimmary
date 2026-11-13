@@ -90,13 +90,48 @@ export interface VideoStats {
 
 // API functions
 
-async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
+/**
+ * A 401 means application login is configured and this browser has no
+ * session. The whole app needs one, so it leaves for the login page and comes
+ * back to where it was. The login page itself is exempt, or a 401 there would
+ * reload it forever.
+ */
+function redirectOnUnauthenticated(res: Response) {
+  if (res.status !== 401 || window.location.pathname === "/login") return;
+  const next = window.location.pathname + window.location.search;
+  window.location.assign(`/login?next=${encodeURIComponent(next)}`);
+}
+
+async function checked(res: Response): Promise<Response> {
   if (!res.ok) {
+    redirectOnUnauthenticated(res);
     const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(body.error || res.statusText);
+    throw new ApiError(res.status, body.error || res.statusText);
   }
+  return res;
+}
+
+/** An error answer of the API, with its status for callers that branch on it. */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await checked(await fetch(url, init));
   return res.json();
+}
+
+function sendJSON<T>(method: string, url: string, body?: unknown): Promise<T> {
+  return fetchJSON(url, {
+    method,
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
 }
 
 // The server defaults `source` to "youtube", so a call without it stays
@@ -163,11 +198,7 @@ export function searchVideos(
 }
 
 export async function deleteVideo(id: string): Promise<void> {
-  const res = await fetch(`/api/v1/videos/${id}`, { method: "DELETE" });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(body.error || res.statusText);
-  }
+  await checked(await fetch(`/api/v1/videos/${id}`, { method: "DELETE" }));
 }
 
 export function resummarizeVideo(
@@ -257,15 +288,19 @@ export function fetchProviders(): Promise<ProvidersInfo> {
 export interface Features {
   podcasts: boolean;
   cast2md_url: string;
-  // True for the primary user — the first Tailscale login, which the server
-  // also treats as the owner that tagged devices resolve to. Gates the
-  // service-wide LLM settings.
+  // True for an admin (`users.is_admin`). Gates the service-wide LLM settings
+  // and user management.
   is_admin: boolean;
-  /** Who the request was resolved to. The identity comes from Tailscale, so
-   * these are read-only and there is nothing to set. */
+  /** Who the request was resolved to. */
   user_id: number;
   login: string;
   display_name: string;
+  /** Application login is configured (an `auth:` block). Without it the
+   * identity comes from Tailscale alone. */
+  auth_enabled: boolean;
+  /** How this request was authenticated: "password" or "oidc" for a session,
+   * "tailscale" for the WhoIs fallback, empty without application login. */
+  auth_method: "" | "password" | "oidc" | "tailscale";
 }
 
 export function fetchFeatures(): Promise<Features> {
@@ -633,4 +668,136 @@ export function setModel(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ provider, model }),
   });
+}
+
+// ── Login and accounts ──────────────────────────────────────────────────────
+
+export interface LoginMethod {
+  type: "oidc" | "password";
+  display_name?: string;
+  start_url?: string;
+}
+
+/** The enabled login methods, or null when login is not configured (404). */
+export async function fetchLoginMethods(): Promise<LoginMethod[] | null> {
+  const res = await fetch("/auth/methods");
+  if (res.status === 404) return null;
+  const body = await (await checked(res)).json();
+  return body.methods ?? [];
+}
+
+/** Whether this browser has a session. */
+export async function fetchSession(): Promise<{ login: string; display_name: string } | null> {
+  const res = await fetch("/auth/me");
+  if (!res.ok) return null;
+  return res.json();
+}
+
+/** Password login. Errors carry the status: 401 wrong credentials, 403 no
+ * account, 429 rate-limited. */
+export async function login(username: string, password: string): Promise<void> {
+  const res = await fetch("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new ApiError(res.status, body.error || res.statusText);
+  }
+}
+
+export async function logout(): Promise<void> {
+  await checked(await fetch("/auth/logout", { method: "POST" }));
+}
+
+export interface AuthSession {
+  id: number;
+  method: string;
+  login: string;
+  created_at: string;
+  expires_at: string;
+  last_used_at: string;
+  client_ip: string;
+  user_agent: string;
+  current: boolean;
+}
+
+export interface LinkedIdentity {
+  issuer: string;
+  subject: string;
+  email: string;
+  created_at: string;
+  can_unlink?: boolean;
+}
+
+export interface Account {
+  user_id: number;
+  login: string;
+  methods: ("oidc" | "password")[];
+  password_username: string;
+  sessions: AuthSession[];
+  identities: LinkedIdentity[];
+}
+
+export function fetchAccount(): Promise<Account> {
+  return fetchJSON("/api/v1/account");
+}
+
+export function revokeSession(id: number): Promise<{ status: string }> {
+  return sendJSON("DELETE", `/api/v1/account/sessions/${id}`);
+}
+
+export function changePassword(current: string, password: string): Promise<{ status: string }> {
+  return sendJSON("PUT", "/api/v1/account/password", { current, password });
+}
+
+export function unlinkIdentity(issuer: string, subject: string): Promise<{ status: string }> {
+  return sendJSON("POST", "/api/v1/account/identities/unlink", { issuer, subject });
+}
+
+export interface ManagedUser {
+  id: number;
+  login: string;
+  display_name: string;
+  is_admin: boolean;
+  disabled_at?: string;
+  created_at: string;
+  last_seen: string;
+  items: number;
+  password_username: string;
+  identities: LinkedIdentity[];
+}
+
+export function listUsers(): Promise<{ users: ManagedUser[] }> {
+  return fetchJSON("/api/v1/admin/users");
+}
+
+export function createUser(username: string, password: string, isAdmin: boolean): Promise<ManagedUser> {
+  return sendJSON("POST", "/api/v1/admin/users", { username, password, is_admin: isAdmin });
+}
+
+export function updateUser(id: number, change: { disabled?: boolean; is_admin?: boolean }): Promise<{ status: string }> {
+  return sendJSON("PUT", `/api/v1/admin/users/${id}`, change);
+}
+
+export function setUserPassword(id: number, password: string): Promise<{ status: string }> {
+  return sendJSON("PUT", `/api/v1/admin/users/${id}/password`, { password });
+}
+
+export function deleteUser(id: number): Promise<{ status: string }> {
+  return sendJSON("DELETE", `/api/v1/admin/users/${id}`);
+}
+
+export interface AccountPolicy {
+  mode: "closed" | "oidc_auto";
+  email_domains: string[];
+}
+
+export function fetchAccountPolicy(): Promise<AccountPolicy> {
+  return fetchJSON("/api/v1/admin/account-policy");
+}
+
+export function saveAccountPolicy(p: AccountPolicy): Promise<AccountPolicy> {
+  return sendJSON("PUT", "/api/v1/admin/account-policy", p);
 }

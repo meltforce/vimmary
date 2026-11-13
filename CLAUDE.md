@@ -64,7 +64,15 @@ Data model
   entered in Settings works without a restart. There is deliberately no
   startup check for a key. The Mistral key also feeds the transcriber and the
   embedder. With `aperture.base_url` set, Claude needs no key.
-- Admin is the primary user (`storage.GetPrimaryUser`); non-admins get 404.
+- Admin is `users.is_admin`; non-admins get 404 on admin routes. Without an
+  `auth:` block an instance with no admin falls back to the primary user
+  (`storage.GetPrimaryUser`) and records it; with one, only the flag counts.
+  Tagged tailnet nodes still resolve to the primary user through WhoIs.
+- With an `auth:` block, a request without a session falls back to WhoIs only
+  while tsnet runs; off the tailnet meltkit's identity middleware is
+  DevIdentity (user 1). For the same reason `/mcp` is not mounted with `auth:`
+  and Tailscale off, until it takes tokens. User 1 (`local`) is what MCP stdio
+  mode acts as and cannot be deleted.
 - The Atom feed route is outside the Tailscale auth middleware; the token in
   the path is the only access control, and an invalid one answers 404.
 

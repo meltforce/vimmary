@@ -1,10 +1,13 @@
 package server
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/meltforce/meltkit/pkg/auth"
+	"github.com/meltforce/meltkit/pkg/middleware"
 	mkserver "github.com/meltforce/meltkit/pkg/server"
 	"github.com/meltforce/vimmary/internal/feed"
 	"github.com/meltforce/vimmary/internal/karakeep"
@@ -18,18 +21,36 @@ type Server struct {
 	store   *storage.DB
 	version string
 	log     *slog.Logger
+	// auth is nil without an `auth:` block; the identity group then uses
+	// Tailscale WhoIs alone, as before application login existed.
+	auth *auth.Auth
+	// tailnet is set by SetTailscale. The WhoIs fallback behind a missing
+	// session exists only then: without it meltkit's identity middleware
+	// would hand every request DevIdentity (user 1).
+	tailnet bool
+	// isDisabled answers refuseDisabled; a field so a test can replace it.
+	isDisabled func(ctx context.Context, userID int) (bool, error)
 }
 
-func New(svc *service.Service, store *storage.DB, version string, log *slog.Logger) *Server {
+// New builds the router. authn is nil when login is not configured.
+func New(svc *service.Service, store *storage.DB, version string, log *slog.Logger, authn *auth.Auth) *Server {
 	s := &Server{
 		Server:  mkserver.New(mkserver.WithLogger(log)),
 		svc:     svc,
 		store:   store,
 		version: version,
 		log:     log,
+		auth:    authn,
 	}
+	s.isDisabled = svc.Accounts().IsDisabled
 	s.routes()
 	return s
+}
+
+// SetTailscale enables WhoIs identity. Call it before serving.
+func (s *Server) SetTailscale(lc middleware.WhoisClient, us middleware.UserStore) {
+	s.Server.SetTailscale(lc, us)
+	s.tailnet = true
 }
 
 func (s *Server) routes() {
@@ -52,12 +73,27 @@ func (s *Server) routes() {
 	r.Get("/feed/atom/{token}/podcasts", feed.HandlePodcastFeed(s.svc, s.store))
 	r.Get("/feed/atom/{token}/all", feed.HandleCombinedFeed(s.svc, s.store))
 
-	r.Group(func(r chi.Router) {
-		r.Use(s.IdentityMiddleware())
+	// Login endpoints of pkg/auth. Without an auth block they answer 404, so
+	// the login page can tell that login is not configured.
+	if s.auth != nil {
+		r.Handle("/auth/*", s.auth.Handler())
+	} else {
+		r.Handle("/auth/*", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "login is not configured"})
+		}))
+	}
 
-		// Share-sheet target. Not under /api/v1 because it answers a redirect
-		// for a browser tab rather than JSON for a client.
-		r.Get("/submit", s.handleShareSubmit)
+	// Share-sheet target. Not under /api/v1 because it answers a redirect for
+	// a browser tab rather than JSON for a client, which is also why a missing
+	// login redirects to the login page instead of answering 401.
+	r.With(s.identity(http.HandlerFunc(redirectToLogin))).Get("/submit", s.handleShareSubmit)
+
+	r.Group(func(r chi.Router) {
+		r.Use(s.identity(http.HandlerFunc(unauthenticated)))
+
+		if s.auth != nil {
+			s.accountRoutes(r)
+		}
 
 		r.Get("/api/v1/videos", s.handleListVideos)
 		r.Get("/api/v1/videos/facets", s.handleVideoFacets)
