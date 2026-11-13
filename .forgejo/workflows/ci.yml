@@ -60,18 +60,6 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
 
-  check-docs:
-    runs-on: docker
-    steps:
-      - uses: actions/checkout@v7.0.1
-      # Exits 0 when it found nothing, 1 when it found something, 2 when it
-      # could not run at all — a missing python3 or an unreadable
-      # .claude/project-standards.json fail here rather than passing quietly.
-      #
-      # Detects; does not prevent. Run tools/check-docs.sh locally before
-      # committing, or wire it into .githooks/pre-commit for prevention.
-      - run: ./tools/check-docs.sh
-
   web-build:
     runs-on: docker
     defaults:

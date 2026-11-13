@@ -309,9 +309,9 @@ docker buildx build --platform linux/amd64 -t vimmary:local .
 | File | Holds |
 |---|---|
 | [`CLAUDE.md`](CLAUDE.md) | What the repo is, and the gotchas the file tree does not show. |
-| [`DECISIONS.md`](DECISIONS.md) | Decisions taken, with their reasoning and the condition that would re-open them. |
+| [`archive/DECISIONS.md`](archive/DECISIONS.md) | Decisions taken, with their reasoning and the condition that would re-open them. |
 | [`ROADMAP.md`](ROADMAP.md) | Open work only. |
-| [`INCIDENTS.md`](INCIDENTS.md) | Postmortems. |
+| [`archive/INCIDENTS.md`](archive/INCIDENTS.md) | Postmortems up to 2026-11-13, frozen. |
 
 ## Related projects
 

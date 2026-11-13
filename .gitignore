@@ -30,7 +30,6 @@ tsnet-*/
 # looks for project skills, so an ignored one exists on a single machine.
 .claude/*
 !.claude/skills/
-!.claude/project-standards.json
 .claude/settings.local.json
 .claude/agents/
 
