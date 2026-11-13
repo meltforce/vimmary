@@ -50,6 +50,9 @@ server:
 	if len(cfg.YouTube.SubLangs) != 2 || cfg.YouTube.SubLangs[0] != "en" {
 		t.Errorf("YouTube.SubLangs = %v, want [en de]", cfg.YouTube.SubLangs)
 	}
+	if cfg.SeedFixtures {
+		t.Error("SeedFixtures = true by default, want false")
+	}
 }
 
 func TestLoad_OverrideDefaults(t *testing.T) {
@@ -74,6 +77,7 @@ summary:
   default_level: deep
 youtube:
   sub_langs: [fr, es]
+seed_fixtures: true
 `
 	if err := os.WriteFile(cfgFile, []byte(content), 0644); err != nil {
 		t.Fatal(err)
@@ -98,6 +102,9 @@ youtube:
 	}
 	if len(cfg.YouTube.SubLangs) != 2 || cfg.YouTube.SubLangs[0] != "fr" {
 		t.Errorf("YouTube.SubLangs = %v, want [fr es]", cfg.YouTube.SubLangs)
+	}
+	if !cfg.SeedFixtures {
+		t.Error("SeedFixtures = false, want true from seed_fixtures: true")
 	}
 }
 

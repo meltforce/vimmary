@@ -1,0 +1,165 @@
+{
+  "videos": [
+    {
+      "source": "youtube",
+      "youtube_id": "fxTalk00001",
+      "source_url": "https://www.youtube.com/watch?v=fxTalk00001",
+      "thumbnail_url": "https://i.ytimg.com/vi/fxTalk00001/hqdefault.jpg",
+      "published_at": "2026-11-10T09:00:00Z",
+      "title": "Fixture: Postgres indexes in fifteen minutes",
+      "channel": "Fixture Engineering",
+      "duration_seconds": 912,
+      "language": "en",
+      "detail_level": "medium",
+      "summary_provider": "fixture",
+      "summary_model": "fixture",
+      "transcript": "Welcome back. Today we look at indexes in Postgres. A B-tree index keeps keys sorted, which serves equality and range lookups. A GIN index maps each element of a composite value, such as the keys of a JSONB document, to the rows that contain it. An index costs write time and disk space, so add one when a query needs it, and check with EXPLAIN that the planner uses it.",
+      "summary": "## Overview\n\nA short tour of the index types Postgres offers and when each pays off.\n\n## B-tree\n\nThe default. It keeps keys sorted and serves equality and range conditions.\n\n## GIN\n\nIndexes the elements of composite values, for example the keys of a JSONB column.\n\n## Costs\n\nEvery index slows writes and takes disk space; `EXPLAIN` shows whether the planner uses it.",
+      "metadata": {
+        "topics": ["postgres", "databases"],
+        "key_points": [
+          "B-tree serves equality and range lookups",
+          "GIN indexes the elements of JSONB and arrays",
+          "Each index costs write time and disk space"
+        ],
+        "action_items": ["Run EXPLAIN on the slowest query before adding an index"]
+      }
+    },
+    {
+      "source": "youtube",
+      "youtube_id": "fxTalk00002",
+      "source_url": "https://www.youtube.com/watch?v=fxTalk00002",
+      "thumbnail_url": "https://i.ytimg.com/vi/fxTalk00002/hqdefault.jpg",
+      "published_at": "2026-11-08T15:30:00Z",
+      "title": "Fixture: Context cancellation in Go",
+      "channel": "Fixture Engineering",
+      "duration_seconds": 1430,
+      "language": "en",
+      "detail_level": "deep",
+      "summary_provider": "fixture",
+      "summary_model": "fixture",
+      "transcript": "A context carries a deadline and a cancellation signal across API boundaries. Pass it as the first argument. Derive a child with WithTimeout when a call needs its own limit, and always call the cancel function. A goroutine that ignores ctx.Done keeps running after its caller has given up.",
+      "summary": "## Overview\n\nHow `context.Context` carries deadlines and cancellation through a Go program.\n\n## Rules\n\n- Pass the context as the first argument.\n- Derive a child with `WithTimeout` for a call with its own limit.\n- Call the cancel function, also on the success path.\n\n## Pitfall\n\nA goroutine that does not select on `ctx.Done()` outlives its caller.",
+      "metadata": {
+        "topics": ["go", "concurrency"],
+        "key_points": [
+          "Context is the first argument",
+          "Every derived context has a cancel function that must be called",
+          "Goroutines must watch ctx.Done()"
+        ],
+        "action_items": []
+      }
+    },
+    {
+      "source": "youtube",
+      "youtube_id": "fxTalk00003",
+      "source_url": "https://www.youtube.com/watch?v=fxTalk00003",
+      "thumbnail_url": "https://i.ytimg.com/vi/fxTalk00003/hqdefault.jpg",
+      "published_at": "2026-11-05T18:00:00Z",
+      "title": "Fixture: Sourdough starter from scratch",
+      "channel": "Fixture Kitchen",
+      "duration_seconds": 640,
+      "language": "en",
+      "detail_level": "medium",
+      "summary_provider": "fixture",
+      "summary_model": "fixture",
+      "transcript": "Mix equal weights of flour and water. Keep it warm. Every day discard half and feed it again with equal weights. After about a week it doubles within six hours of a feed, and then it is ready to bake with.",
+      "summary": "## Overview\n\nA starter needs flour, water, warmth and a week of daily feeding.\n\n## Method\n\nEqual weights of flour and water; discard half and feed daily.\n\n## Ready when\n\nIt doubles within about six hours after a feed.",
+      "metadata": {
+        "topics": ["cooking", "bread"],
+        "key_points": ["Equal weights of flour and water", "Discard half before every feed", "Ready when it doubles within six hours"],
+        "action_items": ["Feed the starter at the same time every day"]
+      }
+    },
+    {
+      "source": "youtube",
+      "youtube_id": "fxTalk00004",
+      "source_url": "https://www.youtube.com/watch?v=fxTalk00004",
+      "thumbnail_url": "https://i.ytimg.com/vi/fxTalk00004/hqdefault.jpg",
+      "published_at": "2026-11-01T12:00:00Z",
+      "title": "Fixture: Vortrag über Wärmepumpen",
+      "channel": "Fixture Haustechnik",
+      "duration_seconds": 2105,
+      "language": "de",
+      "detail_level": "medium",
+      "summary_provider": "fixture",
+      "summary_model": "fixture",
+      "transcript": "Eine Wärmepumpe hebt Wärme aus der Umgebung auf ein höheres Temperaturniveau. Je geringer die Vorlauftemperatur, desto höher die Jahresarbeitszahl. Große Heizflächen erlauben eine niedrige Vorlauftemperatur.",
+      "summary": "## Overview\n\nThe talk explains how a heat pump works and what decides its efficiency.\n\n## Efficiency\n\nThe lower the flow temperature, the higher the seasonal performance factor; large radiators allow a low flow temperature.",
+      "metadata": {
+        "topics": ["energy", "heating"],
+        "key_points": ["Low flow temperature raises efficiency", "Radiator area decides the flow temperature"],
+        "action_items": []
+      }
+    },
+    {
+      "source": "podcast",
+      "external_id": "fixture-episode-101",
+      "source_url": "https://cast2md.invalid/episodes/fixture-episode-101",
+      "source_feed_id": "fixture-feed-1",
+      "published_at": "2026-11-09T06:00:00Z",
+      "title": "Fixture Weekly 101: Backups that restore",
+      "channel": "Fixture Weekly",
+      "duration_seconds": 3320,
+      "language": "en",
+      "detail_level": "medium",
+      "summary_provider": "fixture",
+      "summary_model": "fixture",
+      "transcript": "HOST: This week, backups. GUEST: A backup you have never restored is a hope, not a backup. Schedule a restore test, measure how long it takes, and write the steps down while you do it.",
+      "summary": "## Overview\n\nThe hosts argue that a backup counts only once it has been restored.\n\n## Advice\n\n- Schedule regular restore tests.\n- Measure the restore time.\n- Write the restore steps down during the test.",
+      "metadata": {
+        "topics": ["backups", "operations"],
+        "key_points": ["An untested backup is not a backup", "Restore time is a number to measure"],
+        "action_items": ["Schedule a quarterly restore test"]
+      }
+    },
+    {
+      "source": "podcast",
+      "external_id": "fixture-episode-100",
+      "source_url": "https://cast2md.invalid/episodes/fixture-episode-100",
+      "source_feed_id": "fixture-feed-1",
+      "published_at": "2026-11-02T06:00:00Z",
+      "title": "Fixture Weekly 100: A hundred episodes",
+      "channel": "Fixture Weekly",
+      "duration_seconds": 2710,
+      "language": "en",
+      "detail_level": "medium",
+      "summary_provider": "fixture",
+      "summary_model": "fixture",
+      "transcript": "HOST: One hundred episodes. We look back at the three topics listeners asked about most: monitoring, backups and on-call.",
+      "summary": "## Overview\n\nAn anniversary episode revisiting the three most requested topics: monitoring, backups and on-call.",
+      "metadata": {
+        "topics": ["operations"],
+        "key_points": ["Monitoring, backups and on-call were the most requested topics"],
+        "action_items": []
+      }
+    }
+  ],
+  "channels": [
+    {
+      "channel_id": "UCfixture000000000000000",
+      "title": "Fixture Engineering",
+      "enabled": false,
+      "inbox": [
+        {
+          "youtube_id": "fxInbox0001",
+          "title": "Fixture: Reading a query plan",
+          "published_at": "2026-11-12T10:00:00Z"
+        },
+        {
+          "youtube_id": "fxInbox0002",
+          "title": "Fixture: Testing with a real database",
+          "published_at": "2026-11-11T10:00:00Z"
+        }
+      ]
+    }
+  ],
+  "podcast_subscriptions": [
+    {
+      "feed_id": "fixture-feed-1",
+      "feed_title": "Fixture Weekly",
+      "detail_level": "medium",
+      "watermark": "2026-11-09T06:00:00Z"
+    }
+  ]
+}

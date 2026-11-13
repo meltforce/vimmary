@@ -31,6 +31,9 @@ type Config struct {
 	// identity comes from Tailscale WhoIs alone. oidc.client_secret may be
 	// left empty and supplied as the secret `oidc_client_secret`.
 	Auth *auth.Config `yaml:"auth"`
+	// SeedFixtures writes the embedded preview data set for user 1 at startup
+	// when the videos table is empty. For the preview host and e2e only.
+	SeedFixtures bool `yaml:"seed_fixtures"`
 }
 
 // ApertureConfig names the tailnet's AI gateway. When BaseURL is set, Claude

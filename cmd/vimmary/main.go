@@ -40,7 +40,8 @@ var Version = "dev"
 // therefore spread over the named functions below in the order they must run:
 //
 //	newLogger -> config.Load -> startTailscale -> openDatabase -> buildService
-//	-> buildAuth -> buildHTTPServer -> openListener -> health listener -> serve
+//	-> seedFixtures -> buildAuth -> buildHTTPServer -> openListener
+//	-> health listener -> serve
 //
 // run() is that sequence and nothing else. Two properties are load-bearing:
 //
@@ -114,6 +115,13 @@ func run(configPath string, migrateOnly, mcpMode bool, log *slog.Logger) error {
 
 	if mcpMode {
 		return runMCPStdio(svc, log)
+	}
+
+	// Before the pollers, so they see the seeded rows. Database only.
+	if cfg.SeedFixtures {
+		if err := seedFixtures(store, log); err != nil {
+			return err
+		}
 	}
 
 	// Poll cast2md for newly transcribed episodes. No-op when cast2md is off.
@@ -312,6 +320,20 @@ func buildService(cfg *config.Config, store *storage.DB, tsnetHTTPClient *http.C
 	return service.New(store, registry, ytClient,
 		podcastSrc, cfg.Cast2MD, cfg.Karakeep.BaseURL, cfg.ExternalURL, embedder, mc,
 		cfg.Search, cfg.Summary, gateway, log)
+}
+
+// seedFixtures writes the preview data set for user 1 (the identity every
+// request has without an auth block and without tsnet) when the videos table
+// is empty.
+func seedFixtures(store *storage.DB, log *slog.Logger) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	seeded, err := store.SeedFixtures(ctx, 1)
+	if err != nil {
+		return fmt.Errorf("seed fixtures: %w", err)
+	}
+	log.Info("seed_fixtures", "seeded", seeded)
+	return nil
 }
 
 // buildAuth sets up application login when the config has an `auth:` block,
