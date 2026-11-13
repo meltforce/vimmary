@@ -10,6 +10,11 @@
 #
 # workflow_dispatch with `sha` redeploys a commit, e.g. to roll back further
 # than the previous image.
+#
+# The weekly schedule rebuilds the head of main, because the Dockerfile
+# installs yt-dlp unpinned and takes Alpine and Go patch releases from
+# floating tags. Its gate runs scripts/lint and scripts/test first; a red
+# gate opens an issue labelled rebuild-failed and deploys nothing.
 name: deploy
 
 on:
@@ -20,6 +25,8 @@ on:
       sha:
         description: "Full commit SHA to deploy (default: the head of main)"
         required: false
+  schedule:
+    - cron: "7 5 * * 1"
 
 permissions:
   contents: read
@@ -33,7 +40,68 @@ env:
   TARGET: smokey.coydog-fence.ts.net
 
 jobs:
+  gate:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg16
+        env:
+          POSTGRES_USER: vimmary
+          POSTGRES_PASSWORD: vimmary
+          POSTGRES_DB: vimmary
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vimmary -d vimmary"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgres://vimmary:vimmary@localhost:5432/vimmary?sslmode=disable
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: golangci/golangci-lint-action@v9.3.0
+        with:
+          version: v2.15.0
+          install-only: true
+      - run: scripts/lint
+      - run: scripts/test
+
+  gate-failed:
+    needs: gate
+    if: failure() && needs.gate.result == 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Open issue
+        run: |
+          {
+            echo "The weekly rebuild of \`${GITHUB_SHA:0:7}\` stopped at the gate (scripts/lint, scripts/test); nothing was deployed and production runs the previous image."
+            echo
+            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            echo "A new advisory (govulncheck) or a new linter finding can fail it without a change in this repo. This issue is the task for the next session: find the cause, fix it in a PR."
+          } > issue.md
+          gh api "repos/$GITHUB_REPOSITORY/issues" \
+            -f title="weekly rebuild failed: ${GITHUB_SHA:0:7}" -F "body=@issue.md" -f 'labels[]=rebuild-failed' --jq .html_url
+
   build:
+    needs: gate
+    if: ${{ !cancelled() && (needs.gate.result == 'success' || needs.gate.result == 'skipped') }}
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
@@ -105,7 +173,8 @@ jobs:
       - name: Report live
         if: success()
         run: |
-          pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/pulls" --jq '.[0].number // empty')
+          pr=""
+          [ "$GITHUB_EVENT_NAME" = schedule ] || pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/pulls" --jq '.[0].number // empty')
           if [ -n "$pr" ]; then
             gh api "repos/$GITHUB_REPOSITORY/issues/$pr/comments" \
               -f body="live: \`${SHA:0:7}\` is deployed to production ([run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID))." >/dev/null

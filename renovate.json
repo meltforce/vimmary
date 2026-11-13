@@ -19,9 +19,9 @@
   "dependencyDashboardTitle": "Renovate Dashboard",
   "customManagers": [
     {
-      "description": "golangci-lint is pinned twice: the prebuilt binary in ci.yml and the go install in scripts/setup. One dependency, so both move in one PR.",
+      "description": "golangci-lint is pinned for the prebuilt binary in ci.yml (and the weekly gate in deploy.yml) and for the go install in scripts/setup. One dependency, so all pins move in one PR.",
       "customType": "regex",
-      "managerFilePatterns": ["/^scripts/setup$/", "/^\\.github/workflows/ci\\.yml$/"],
+      "managerFilePatterns": ["/^scripts/setup$/", "/^\\.github/workflows/(ci|deploy)\\.yml$/"],
       "matchStrings": [
         "GOLANGCI_LINT_VERSION=(?<currentValue>v\\S+)",
         "golangci-lint-action@\\S+\\s+with:\\s+version: (?<currentValue>v\\S+)"
