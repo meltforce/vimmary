@@ -38,7 +38,7 @@ jobs:
 
       - name: Build image
         run: |
-          docker build --build-arg "VERSION=$GITHUB_SHA" -t "$APP-local:$GITHUB_SHA" .
+          docker build --build-arg "VERSION=$GITHUB_SHA" --build-arg "BUILD_SHA=$GITHUB_SHA" -t "$APP-local:$GITHUB_SHA" .
           docker save "$APP-local:$GITHUB_SHA" | gzip > image.tar.gz
           ls -lh image.tar.gz
 

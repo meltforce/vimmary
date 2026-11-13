@@ -22,10 +22,12 @@ COPY --from=frontend /app/web/dist ./web/dist
 # /version and the loopback /healthz report it as "build"; pipeline-deploy
 # waits for the SHA on /version. Without it every build reports "dev".
 ARG VERSION=dev
+# The full commit SHA; /healthz on the real listener reports it as "sha".
+ARG BUILD_SHA=dev
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -ldflags="-s -w -X main.Version=${VERSION}" -o vimmary ./cmd/vimmary
+    go build -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildSHA=${BUILD_SHA}" -o vimmary ./cmd/vimmary
 
 # Stage 3: Runtime
 FROM alpine:3.24

@@ -35,6 +35,10 @@ import (
 
 var Version = "dev"
 
+// BuildSHA is the commit the binary was built from, set at build time via
+// -ldflags from the BUILD_SHA build argument. /healthz reports it.
+var BuildSHA = "dev"
+
 // The startup sequence is the subject of two entries in INCIDENTS.md, both from
 // 2026-08-06, and both about the order rather than about any single step. It is
 // therefore spread over the named functions below in the order they must run:
@@ -394,7 +398,7 @@ func runMCPStdio(svc *service.Service, log *slog.Logger) error {
 // openListener, and keeping the two apart is what lets the health listener come
 // after everything is mounted.
 func buildHTTPServer(cfg *config.Config, svc *service.Service, store *storage.DB, authn *auth.Auth, log *slog.Logger) (*server.Server, error) {
-	srv := server.New(svc, store, Version, log, authn)
+	srv := server.New(svc, store, Version, BuildSHA, log, authn)
 
 	// With login configured, /mcp takes personal access tokens with scope
 	// mcp, and WhoIs only while tsnet runs; without it, WhoIs as before.

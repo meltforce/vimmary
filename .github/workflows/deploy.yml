@@ -127,7 +127,7 @@ jobs:
         env:
           SHA: ${{ steps.sha.outputs.sha }}
         run: |
-          docker build --build-arg "VERSION=$SHA" -t "$APP-local:$SHA" .
+          docker build --build-arg "VERSION=$SHA" --build-arg "BUILD_SHA=$SHA" -t "$APP-local:$SHA" .
           docker save "$APP-local:$SHA" | gzip > image.tar.gz
           ls -lh image.tar.gz
 
