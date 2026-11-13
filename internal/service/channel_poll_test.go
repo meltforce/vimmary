@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,18 +21,34 @@ type fakeChannelSource struct {
 	feedErr  error
 	fetches  int
 	resolves int
+	// resolvedChannels lists ResolveChannel inputs. The poll cycle walks every
+	// enabled subscription in the shared test database, including rows that
+	// other packages' tests create concurrently, so a test counts its own
+	// channel's entries rather than resolves.
+	resolvedChannels []string
 	// shorts marks video IDs the probe reports as Shorts; probes counts calls.
 	shorts   map[string]bool
 	shortErr error
 	probes   int
 }
 
-func (f *fakeChannelSource) ResolveChannel(context.Context, string) (*youtube.ChannelInfo, error) {
+func (f *fakeChannelSource) ResolveChannel(_ context.Context, input string) (*youtube.ChannelInfo, error) {
 	f.resolves++
+	f.resolvedChannels = append(f.resolvedChannels, input)
 	if f.info == nil {
 		return nil, errors.New("no channel ID found")
 	}
 	return f.info, nil
+}
+
+func (f *fakeChannelSource) resolvesOf(channelID string) int {
+	n := 0
+	for _, in := range f.resolvedChannels {
+		if strings.HasSuffix(in, "/"+channelID) {
+			n++
+		}
+	}
+	return n
 }
 
 func (f *fakeChannelSource) FetchChannelFeed(context.Context, string) ([]youtube.FeedEntry, error) {
@@ -407,12 +424,20 @@ func TestPollChannelsOnce_BackfillsIdentity(t *testing.T) {
 		t.Errorf("title = %q, want the resolved title", after.Title)
 	}
 
+	// An artless subscription that appears between the cycles, as a
+	// concurrent storage test's row does, is resolved on its own account.
+	otherID := strings.Replace(channelID, "UCtest", "UCothr", 1)
+	cleanupChannel(t, svc, 1, otherID)
+	if _, err := svc.db.UpsertChannelSubscription(ctx, 1, otherID, "Other", ""); err != nil {
+		t.Fatalf("UpsertChannelSubscription(other): %v", err)
+	}
+
 	// The filled column ends the backfill: no further resolve calls.
-	resolvesAfterFirst := src.resolves
+	resolvesAfterFirst := src.resolvesOf(channelID)
 	svc.pollChannelsOnce(ctx)
-	if src.resolves != resolvesAfterFirst {
+	if n := src.resolvesOf(channelID); n != resolvesAfterFirst {
 		t.Errorf("second cycle resolved again (%d -> %d), want the filled column to stop it",
-			resolvesAfterFirst, src.resolves)
+			resolvesAfterFirst, n)
 	}
 }
 
