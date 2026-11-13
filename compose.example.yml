@@ -5,7 +5,7 @@
 #
 #   curl -O https://raw.githubusercontent.com/meltforce/vimmary/main/compose.example.yml
 #   curl -o config.yaml https://raw.githubusercontent.com/meltforce/vimmary/main/config.example.yaml
-#   $EDITOR config.yaml            # at minimum: secrets.claude_api_key
+#   $EDITOR config.yaml            # API keys go into Settings → LLM, not here
 #   echo "POSTGRES_PASSWORD=..." > .env   # same value as secrets.postgres_password
 #   docker compose -f compose.example.yml up -d
 #
