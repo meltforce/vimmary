@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.tsx";
@@ -29,9 +29,20 @@ export default function LoginPage() {
   const [params] = useSearchParams();
   const next = safeNext(params.get("next"));
   const errorCode = params.get("error");
+  // Set by sign-out: without it the redirect below would sign the user straight
+  // back in: the provider (tsidp) signs a known browser in without asking.
+  const signedOut = params.has("signed_out");
 
   const methods = useQuery({ queryKey: ["auth", "methods"], queryFn: fetchLoginMethods, retry: false });
   const session = useQuery({ queryKey: ["auth", "me"], queryFn: fetchSession, retry: false });
+
+  // With OIDC as the only method the page has nothing to ask, so it hands over
+  // to the provider at once. An error code stops it, or a refusal would loop.
+  const only = methods.data?.length === 1 && methods.data[0].type === "oidc" ? methods.data[0] : null;
+  const autoStart = only && !errorCode && !signedOut && session.data === null ? only.start_url : null;
+  useEffect(() => {
+    if (autoStart) window.location.replace(`${autoStart}?next=${encodeURIComponent(next)}`);
+  }, [autoStart, next]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -49,9 +60,14 @@ export default function LoginPage() {
                 {ERRORS[errorCode] ?? `Signing in failed (${errorCode}).`}
               </p>
             ) : null}
+            {signedOut && !errorCode ? (
+              <p className="field-hint" style={{ margin: "0 0 18px", fontSize: 13 }}>
+                You are signed out.
+              </p>
+            ) : null}
             {session.data ? (
               <SignedIn login={session.data.login} next={next} />
-            ) : methods.isPending ? (
+            ) : methods.isPending || session.isPending || autoStart ? (
               <p className="field-hint">Loading…</p>
             ) : methods.error ? (
               <p className="field-error">{(methods.error as Error).message}</p>

@@ -58,11 +58,11 @@ export default function AccountSection() {
 
   const signOut = useMutation({
     mutationFn: logout,
-    onSuccess: () => window.location.assign("/login"),
+    onSuccess: () => window.location.assign("/login?signed_out=1"),
   });
   const revoke = useMutation({
     mutationFn: (s: AuthSession) => revokeSession(s.id),
-    onSuccess: (_, s) => (s.current ? window.location.assign("/login") : refresh()),
+    onSuccess: (_, s) => (s.current ? window.location.assign("/login?signed_out=1") : refresh()),
   });
   const unlink = useMutation({
     mutationFn: ({ issuer, subject }: { issuer: string; subject: string }) => unlinkIdentity(issuer, subject),
